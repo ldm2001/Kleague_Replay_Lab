@@ -8,6 +8,10 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const README = 'README.md';
 const DESIGN = 'docs/02-design/features/규정-데이터-룰엔진.design.md';
 
+// 어휘의 SSOT
+// README와 설계 문서는 이제 이것을 설명하는 쪽이고 정의하는 쪽이 아님
+const VOCABULARY = 'packages/shared-types/src/vocabulary.ts';
+
 const md = readFileSync(join(ROOT, README), 'utf8');
 const errors = [];
 
@@ -145,62 +149,81 @@ function typeAliasEnums(text) {
   return out;
 }
 
-// 8절과 11절에 겹쳐 적힌 열거형의 값이 같은지 봄
-// 어휘의 정의가 아직 README에 있어서 그 안의 중복만 막음
-function checkEnumPairs(ddl, tsUnions) {
-  const toSnake = (s) => s.replace(/[A-Z]/g, (c) => '_' + c.toLowerCase());
-  let pairs = 0;
+// vocabulary.ts의 as const 배열을 이름별로 읽음
+function vocabEnums() {
+  const src = readFileSync(join(ROOT, VOCABULARY), 'utf8');
+  const out = {};
+  for (const m of src.matchAll(/export const ([A-Z][A-Z0-9_]*) = \[([\s\S]*?)\] as const;/g)) {
+    out[m[1]] = [...m[2].matchAll(/"([A-Z][A-Z0-9_]*)"/g)].map((x) => x[1]);
+  }
+  return out;
+}
 
-  for (const [field, tsValues] of Object.entries(tsUnions)) {
-    const snake = toSnake(field);
-    const column = [snake, `var_${snake}`].find((c) => ddl[c]);
-    if (!column) continue; // 8절에 짝이 없으면 중복이 아님
-    pairs++;
+// 필드 이름과 어휘 이름이 원래 다른 자리
+// 필드는 자기 객체 안에서 이름이 붙고 어휘는 전역에서 붙어서 규칙으로는 이어지지 않음
+const FIELD_TO_VOCABULARY = {
+  verdict: 'OFFICIAL_VERDICT',
+  observedAtSpeed: 'PLAYBACK_SPEED',
+  status: 'FACT_STATUS',
+};
 
-    const a = new Set(ddl[column]);
-    const b = new Set(tsValues);
-    const only8 = [...a].filter((v) => !b.has(v));
-    const only11 = [...b].filter((v) => !a.has(v));
-    if (only8.length || only11.length) {
+// 문서에 적힌 열거형을 어휘와 대조함
+// 셋을 서로 비교하지 않고 전부 어휘 하나에 맞춤 — 그래야 문서가 조용히 뒤처지지 않음
+function checkAgainstVocabulary(vocab, where, enums, label) {
+  let matched = 0;
+
+  for (const [field, values] of Object.entries(enums)) {
+    // 파스칼케이스 타입 별칭이 앞에 밑줄을 달지 않게 잘라냄
+    const upper = field.replace(/[A-Z]/g, (c) => '_' + c).toUpperCase().replace(/^_/, '');
+    const name = [FIELD_TO_VOCABULARY[field], upper, `VAR_${upper}`, `OBSERVED_${upper}`]
+      .find((n) => n && vocab[n]);
+    if (!name) {
+      errors.push(`${where}  ${label} ${field}에 대응하는 어휘가 vocabulary.ts에 없습니다`);
+      continue;
+    }
+    matched++;
+
+    const a = new Set(vocab[name]);
+    const b = new Set(values);
+    const onlyVocab = [...a].filter((v) => !b.has(v));
+    const onlyDoc = [...b].filter((v) => !a.has(v));
+    if (onlyVocab.length || onlyDoc.length) {
       errors.push(
-        `${README}  열거형 ${column}(8절) ↔ ${field}(11절)이 다릅니다` +
-        (only8.length ? ` — 8절만: ${only8.join(', ')}` : '') +
-        (only11.length ? ` — 11절만: ${only11.join(', ')}` : ''),
+        `${where}  ${label} ${field} ↔ 어휘 ${name}이(가) 다릅니다` +
+        (onlyDoc.length ? ` — 문서만: ${onlyDoc.join(', ')}` : '') +
+        (onlyVocab.length ? ` — 어휘만: ${onlyVocab.join(', ')}` : ''),
       );
     }
   }
-  return pairs;
+  return matched;
 }
 
-// 설계 문서의 어휘 스케치가 README와 같은지 봄
-// 설계 문서가 같은 값을 세 번째로 적는 자리라 기계로 묶어 둠
-function checkDesignVocabulary(known) {
+// 설계 문서의 어휘 스케치가 어휘와 같은지 봄
+// 스케치는 구현되면 낡음 — 남겨 둘 거면 코드를 따라와야 함
+function checkDesignVocabulary(vocab) {
   if (!existsSync(join(ROOT, DESIGN))) return 0;
 
   const design = readFileSync(join(ROOT, DESIGN), 'utf8');
-  const toCamel = (s) => s.toLowerCase().replace(/_(\w)/g, (_, c) => c.toUpperCase());
-  const toPascal = (s) => { const c = toCamel(s); return c[0].toUpperCase() + c.slice(1); };
   let sketched = 0;
 
   for (const m of design.matchAll(/export const ([A-Z][A-Z0-9_]*) = \[([\s\S]*?)\] as const;/g)) {
     const name = m[1];
     const values = [...m[2].matchAll(/"([A-Z][A-Z0-9_]*)"/g)].map((x) => x[1]);
-    const key = [name.toLowerCase(), toCamel(name), toPascal(name)].find((k) => known[k]);
-    if (!key) {
-      errors.push(`${DESIGN}  ${name}이(가) README에 없는 열거형입니다 (어휘가 설계 문서에서 자라고 있습니다)`);
+    if (!vocab[name]) {
+      errors.push(`${DESIGN}  ${name}이(가) vocabulary.ts에 없는 열거형입니다 (어휘가 설계 문서에서 자라고 있습니다)`);
       continue;
     }
     sketched++;
 
-    const a = new Set(known[key]);
+    const a = new Set(vocab[name]);
     const b = new Set(values);
-    const onlyReadme = [...a].filter((v) => !b.has(v));
+    const onlyVocab = [...a].filter((v) => !b.has(v));
     const onlyDesign = [...b].filter((v) => !a.has(v));
-    if (onlyReadme.length || onlyDesign.length) {
+    if (onlyVocab.length || onlyDesign.length) {
       errors.push(
-        `${DESIGN}  ${name} ↔ README ${key}이(가) 다릅니다` +
-        (onlyReadme.length ? ` — README만: ${onlyReadme.join(', ')}` : '') +
-        (onlyDesign.length ? ` — 설계만: ${onlyDesign.join(', ')}` : ''),
+        `${DESIGN}  ${name} ↔ 어휘가 다릅니다` +
+        (onlyDesign.length ? ` — 설계만: ${onlyDesign.join(', ')}` : '') +
+        (onlyVocab.length ? ` — 어휘만: ${onlyVocab.join(', ')}` : ''),
       );
     }
   }
@@ -212,15 +235,17 @@ const sectionCount = checkSectionRefs();
 const typeCount = checkTypeRefs();
 checkCitationShape(parsed);
 
+const vocab = vocabEnums();
 const ddl = ddlEnums(sectionText(8));
-const tsUnions = tsEnums(sectionText(11));
-const pairs = checkEnumPairs(ddl, tsUnions);
-const sketched = checkDesignVocabulary({ ...ddl, ...tsUnions, ...typeAliasEnums(sectionText(11)) });
+const tsUnions = { ...tsEnums(sectionText(11)), ...typeAliasEnums(sectionText(11)) };
+const matched8 = checkAgainstVocabulary(vocab, README, ddl, '8절');
+const matched11 = checkAgainstVocabulary(vocab, README, tsUnions, '11절');
+const sketched = checkDesignVocabulary(vocab);
 
 console.log(
-  `JSON 블록 ${jsonCount}개 / 절 ${sectionCount}개 / ` +
-  `타입 ${typeCount}개 / 8절↔11절 공통 열거형 ${pairs}개 / ` +
-  `설계 문서 어휘 스케치 ${sketched}개`,
+  `JSON 블록 ${jsonCount}개 / 절 ${sectionCount}개 / 타입 ${typeCount}개 / ` +
+  `어휘 ${Object.keys(vocab).length}종 대조 — 8절 ${matched8}개, 11절 ${matched11}개, ` +
+  `설계 스케치 ${sketched}개`,
 );
 
 if (errors.length > 0) {
