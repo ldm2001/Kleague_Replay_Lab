@@ -9,7 +9,12 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 // 우리가 손으로 쓴 json만 검사 대상으로 둠
 // 도구가 만든 파일까지 신고하면 목록이 길어져서 아무도 안 보게 됨
 const SKIP_DIRS = new Set(['node_modules', 'rules', 'dist', 'build']);
-const isToolFile = (name) => name.startsWith('.');
+
+// 스키마를 도구가 정하는 파일
+// 키 이름이 우리 선택이 아니라서 우리 규칙을 들이대면 고칠 수 없는 오류만 쌓임
+const TOOL_FILES = new Set(['package.json', 'package-lock.json']);
+const isToolFile = (name) =>
+  name.startsWith('.') || TOOL_FILES.has(name) || /^tsconfig(\..+)?\.json$/.test(name);
 
 // ① 키는 snake_case로 씀
 const SNAKE = /^[a-z][a-z0-9_]*$/;

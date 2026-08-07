@@ -45,6 +45,7 @@ docs/.pdca-snapshots/
 node_modules/
 .next/
 dist/
+*.tsbuildinfo
 build/
 coverage/
 __pycache__/

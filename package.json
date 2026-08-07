@@ -1,0 +1,22 @@
+{
+  "name": "replay-lab",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "check": "npm run check:json && npm run check:readme && npm run check:enums && npm run check:links",
+    "check:json": "node scripts/check/json.mjs",
+    "check:readme": "node scripts/check/readme.mjs",
+    "check:enums": "node scripts/check/enums.mjs",
+    "check:links": "node scripts/check/links.mjs",
+    "check:no-edition-in-engine": "! grep -rn \"2025-26\\|2026-27\" packages/rule-engine/src 2>/dev/null",
+    "typecheck": "tsc --build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.0",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  }
+}
