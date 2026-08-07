@@ -1,0 +1,170 @@
+{
+  "case_id": "2026-08-01-kleague2-r20-goal-disallowed-push",
+  "case_schema_version": 2,
+  "record_type": "LABELED_EVAL_CASE",
+  "title": "헤더 득점 취소 — 공격 측 밀기 선언, VAR 미개입",
+  "status": "AWAITING_PIPELINE",
+  "requires_rule_types": [
+    "PUSH"
+  ],
+
+  "match": {
+    "competition": "KLEAGUE2",
+    "season": 2026,
+    "round": 20,
+    "match_date": "2026-08-01",
+    "venue": "청주종합운동장",
+    "home_team": "충북청주",
+    "away_team": "수원삼성",
+    "final_score": "2-2"
+  },
+
+  "applied_rule_version": {
+    "ifab_edition": "2025-26",
+    "basis": "2026 K리그2 대회요강",
+    "verification": "INFERRED",
+    "note": "대회요강의 명시적 판본 지정은 뇌진탕 교체 본조에 한정됨. 전체 문서 적용은 추론."
+  },
+
+  "incident": {
+    "period": "SECOND_HALF",
+    "clock_minute": 90,
+    "clock_label": "후반 추가시간",
+    "location": "청주 페널티지역 안",
+    "attacking_team": "수원삼성",
+    "scorer": "두비츠카스",
+    "description": "두비츠카스의 헤더가 골망을 흔들었고 주심이 득점 인정 신호를 냈으나, 이후 득점 직전 공격 측 반칙을 선언해 골을 취소함. VAR과의 교신 없이 종료 휘슬.",
+    "provenance": "PUBLIC_RECORD"
+  },
+
+  "observed_decision": {
+    "restart_type": "FREE_KICK_UNSPECIFIED",
+    "restart_beneficiary": "DEFENDING_TEAM",
+    "goal_decision": "NO_GOAL",
+    "card": "NONE",
+    "source": "REFEREE_SIGNAL",
+    "provenance": "PUBLIC_RECORD",
+    "note": "보도에서 직접/간접 프리킥 구분이 특정되지 않았습니다. 임의로 채우지 않고 UNSPECIFIED로 둡니다."
+  },
+
+  "reconstructed_facts": {
+    "hand_reconstructed": true,
+    "fact_schema_version": 2,
+    "facts": {
+      "camera_sufficiency": "medium",
+      "offence_type": {
+        "value": "PUSH",
+        "observed_at_speed": "SLOW",
+        "shot_ids": [
+          "s3"
+        ],
+        "provenance": "PUBLIC_RECORD"
+      },
+      "offending_team_role": {
+        "value": "ATTACKING",
+        "observed_at_speed": "NORMAL",
+        "shot_ids": [
+          "s1"
+        ],
+        "provenance": "PUBLIC_RECORD"
+      },
+      "contact_confirmed": {
+        "value": true,
+        "observed_at_speed": "SLOW",
+        "shot_ids": [
+          "s3"
+        ],
+        "provenance": "PUBLIC_RECORD"
+      },
+      "severity": {
+        "value": "UNKNOWN",
+        "observed_at_speed": "SLOW",
+        "shot_ids": [
+          "s3"
+        ],
+        "provenance": "PUBLIC_RECORD",
+        "note": "리플레이(슬로우)에서만 관측됨. 정상 속도 관측 없음."
+      },
+      "in_penalty_area": {
+        "value": true,
+        "observed_at_speed": "NORMAL",
+        "shot_ids": [
+          "s1"
+        ],
+        "provenance": "PUBLIC_RECORD"
+      },
+      "goal_scored_before_stoppage": {
+        "value": true,
+        "observed_at_speed": "NORMAL",
+        "shot_ids": [
+          "s1"
+        ],
+        "provenance": "PUBLIC_RECORD"
+      },
+      "play_restarted_after_decision": {
+        "value": false,
+        "observed_at_speed": "NORMAL",
+        "shot_ids": [
+          "s1"
+        ],
+        "provenance": "PUBLIC_RECORD",
+        "note": "재개 없이 종료 휘슬. VAR 시한 게이트가 닫히지 않았음을 뜻합니다."
+      }
+    }
+  },
+
+  "expected": {
+    "var_assessment": {
+      "reviewable": true,
+      "category": "GOAL_NO_GOAL",
+      "within_time_window": true,
+      "threshold_met": "UNDETERMINED",
+      "intervention": "NO_INTERVENTION"
+    },
+    "recommended_decision_class": "INCONCLUSIVE",
+    "inconclusive_reason": "SLOW_MOTION_ONLY",
+    "decision_match": "UNDETERMINED",
+    "citations_min": 1,
+    "expected_citation_keys": [
+      "IFAB:2025-26:VAR:CATEGORIES",
+      "IFAB:2025-26:VAR:REVIEW_PROCESS"
+    ]
+  },
+
+  "official_label": {
+    "announced_by": "KFA_REFEREE_COMMITTEE",
+    "announced_by_name": "KFA 심판평가협의체",
+    "announced_on": "2026-08-04",
+    "verdict": "CORRECT",
+    "quote": "주심의 현장 판정이 명백한 오류에 해당하지 않아",
+    "status": "EXTERNAL_OPINION",
+    "note": "협회는 VAR 미개입이 절차상 정상이라고 판단했습니다. 즉 문턱 게이트에서 걸린 것이지, 검토 범주 밖이어서가 아닙니다."
+  },
+
+  "on_field_explanation": {
+    "quote": "원심을 파울로 선언해서 VAR 판정이 불가하다",
+    "status": "CONTRADICTS_RULE_TEXT",
+    "refutation": "IFAB VAR 프로토콜은 주심의 판정을 VAR의 차단 조건이 아니라 전제 조건으로 규정합니다. 'the VAR is only used after the referee has made a (first/original) decision (including allowing play to continue)'. 검토 창을 닫는 조건은 재개(restart)이며, 이 장면은 재개 없이 종료됐습니다.",
+    "provenance": "RULE_TEXT"
+  },
+
+  "scoring": {
+    "mode": "SCORED",
+    "on_mismatch": "RECORD",
+    "note": "이 레코드는 통과·실패를 가르지 않습니다. 어긋남은 조사 대상으로 기록되고, 조사 결과 규칙 오류로 확인되면 그때 합성 픽스처가 하나 늘어납니다."
+  },
+
+  "why_this_case": [
+    "결론은 맞고 이유가 틀린 사례입니다. 미개입은 옳았지만 현장 설명은 규정을 정반대로 뒤집었습니다. 이 프로젝트가 존재하는 이유가 이 한 줄입니다.",
+    "현장과 협회가 같은 결론에 서로 다른 층위의 이유를 댔습니다. 현장은 범주 문제라 했고 협회는 문턱 문제라 했습니다. 네 게이트를 분리하지 않으면 이 차이가 화면에서 사라집니다.",
+    "정심 사례이므로 '항상 오심'이라 답하는 엔진을 걸러냅니다. 같은 경기 penalty-not-given 레코드와 쌍입니다.",
+    "reviewable=true와 intervention=NO_INTERVENTION이 동시에 성립합니다."
+  ],
+
+  "derived_fixtures": [
+    "var-assessment.fixtures.json#var-01-goal-disallowed-by-attacking-offence",
+    "var-assessment.fixtures.json#var-07-reviewable-but-threshold-not-met"
+  ],
+  "not_scored_reason": "정상 속도 관측이 없으므로 파울 여부는 결정되지 않습니다. 이 레코드는 판정의 옳고 그름이 아니라 게이트 처리 경로만 채점합니다.",
+  "personal_info_note": "심판 개인 식별 정보는 의도적으로 제외했습니다. 현장 설명 인용은 발화자를 특정하지 않습니다."
+}

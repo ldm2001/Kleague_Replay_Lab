@@ -1,0 +1,19 @@
+{
+  "sessionCount": 12,
+  "lastSession": {
+    "startedAt": "2026-08-06T17:25:32.895Z",
+    "platform": "claude",
+    "level": "Starter"
+  },
+  "pdca": {
+    "currentFeature": "규정-데이터-룰엔진",
+    "phase": "plan",
+    "updatedAt": "2026-08-05T04:38:38.000Z"
+  },
+  "project": {
+    "name": "Replay_Lab",
+    "description": "K리그 규정 기반 영상 판정 분석 시스템",
+    "level": "Dynamic",
+    "levelCorrectedFrom": "Starter"
+  }
+}

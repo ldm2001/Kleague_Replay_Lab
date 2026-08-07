@@ -1,0 +1,438 @@
+{
+  "suite": "var-assessment",
+  "fixture_schema_version": 2,
+  "description": "VAR 판단의 네 게이트(범주·시한·문턱·절차)가 서로 독립인지를 고정합니다. 네 값은 어떤 경우에도 하나로 합쳐지지 않아야 합니다.",
+  "assertion_mode": "STRICT",
+  "gates": [
+    "category",
+    "window",
+    "threshold",
+    "procedure"
+  ],
+  "cases": [
+    {
+      "id": "var-01-goal-disallowed-by-attacking-offence",
+      "gate": "category",
+      "given": {
+        "rule_version": "2025-26",
+        "facts": {
+          "event_type": "GOAL_DISALLOWED",
+          "disallow_reason": "ATTACKING_TEAM_FOUL",
+          "restart_occurred": false
+        }
+      },
+      "expect": {
+        "reviewable": true,
+        "category": "GOAL_NO_GOAL",
+        "citations_min": 1
+      },
+      "note": "득점 취소는 취소 사유와 무관하게 goal/no goal 범주에 들어갑니다. 사유를 범주 판단에 섞으면 이 케이스가 깨집니다.",
+      "derived_from": "datasets/labeled-cases/2026-08-01-kleague2-r20-goal-disallowed-push.json"
+    },
+    {
+      "id": "var-02-referee-decision-is-precondition-not-blocker",
+      "gate": "category",
+      "given": {
+        "rule_version": "2025-26",
+        "facts": {
+          "event_type": "PENALTY_NOT_GIVEN",
+          "referee_decision_made": true,
+          "referee_decision_type": "FOUL_AGAINST_ATTACKER",
+          "restart_occurred": false
+        }
+      },
+      "expect": {
+        "reviewable": true,
+        "category": "PENALTY_NO_PENALTY",
+        "citations_min": 1
+      },
+      "note": "주심이 이미 판정을 내렸다는 사실은 VAR을 막지 않습니다. 오히려 검토 대상이 되기 위한 전제입니다. `refereeDecisionMade=true`가 `reviewable=false`로 이어지면 실패해야 합니다.",
+      "derived_from": "datasets/labeled-cases/2026-08-01-kleague2-r20-penalty-not-given.json"
+    },
+    {
+      "id": "var-03-restart-closes-the-window",
+      "gate": "window",
+      "given": {
+        "rule_version": "2025-26",
+        "facts": {
+          "event_type": "PENALTY_NOT_GIVEN",
+          "restart_occurred": true,
+          "restart_type": "THROW_IN",
+          "send_off_category": null,
+          "mistaken_identity": false
+        }
+      },
+      "expect": {
+        "reviewable": true,
+        "category": "PENALTY_NO_PENALTY",
+        "within_time_window": false,
+        "window_closed_reason": "PLAY_RESTARTED",
+        "citations_min": 1
+      },
+      "note": "범주는 여전히 성립하고 시한만 닫힙니다. `reviewable=false`로 뭉개면 실패해야 합니다. 왜 못 보는지가 답이어야 합니다."
+    },
+    {
+      "id": "var-04-restart-exception-violent-conduct",
+      "gate": "window",
+      "given": {
+        "rule_version": "2025-26",
+        "facts": {
+          "event_type": "SENDING_OFF_NOT_GIVEN",
+          "restart_occurred": true,
+          "restart_type": "KICK_OFF",
+          "send_off_category": "VIOLENT_CONDUCT",
+          "mistaken_identity": false
+        }
+      },
+      "expect": {
+        "reviewable": true,
+        "category": "RED_CARD",
+        "within_time_window": true,
+        "window_exception": "VIOLENT_CONDUCT",
+        "citations_min": 1
+      },
+      "note": "재개 후에도 창이 열려 있는 예외입니다. 03과 같은 `restartOccurred=true`인데 결과가 반대여야 합니다."
+    },
+    {
+      "id": "var-05-restart-exception-mistaken-identity",
+      "gate": "window",
+      "given": {
+        "rule_version": "2025-26",
+        "facts": {
+          "event_type": "CARD_SHOWN",
+          "restart_occurred": true,
+          "restart_type": "DIRECT_FREE_KICK",
+          "send_off_category": null,
+          "mistaken_identity": true
+        }
+      },
+      "expect": {
+        "reviewable": true,
+        "category": "MISTAKEN_IDENTITY",
+        "within_time_window": true,
+        "window_exception": "MISTAKEN_IDENTITY",
+        "citations_min": 1
+      }
+    },
+    {
+      "id": "var-06-play-continued-is-not-a-restart",
+      "gate": "window",
+      "given": {
+        "rule_version": "2025-26",
+        "facts": {
+          "event_type": "PENALTY_NOT_GIVEN",
+          "restart_occurred": false,
+          "restart_type": "PLAY_CONTINUED",
+          "send_off_category": null,
+          "mistaken_identity": false
+        }
+      },
+      "expect": {
+        "reviewable": true,
+        "category": "PENALTY_NO_PENALTY",
+        "within_time_window": true,
+        "citations_min": 1
+      },
+      "note": "경기가 끊기지 않고 이어진 것은 재개가 아닙니다. `PLAY_CONTINUED`를 재개로 세면 창이 잘못 닫힙니다."
+    },
+    {
+      "id": "var-07-reviewable-but-threshold-not-met",
+      "gate": "threshold",
+      "given": {
+        "rule_version": "2025-26",
+        "facts": {
+          "event_type": "GOAL_DISALLOWED",
+          "disallow_reason": "ATTACKING_TEAM_FOUL",
+          "restart_occurred": false,
+          "error_magnitude": "NOT_CLEAR_AND_OBVIOUS"
+        }
+      },
+      "expect": {
+        "reviewable": true,
+        "within_time_window": true,
+        "threshold_met": "NOT_MET",
+        "intervention": "NO_INTERVENTION",
+        "citations_min": 1
+      },
+      "note": "이 프로젝트가 존재하는 이유입니다. `reviewable=true`와 `NO_INTERVENTION`이 동시에 성립해야 합니다. 두 값을 하나로 합치자는 단순화가 들어오면 이 케이스가 먼저 깨집니다.",
+      "derived_from": "datasets/labeled-cases/2026-08-01-kleague2-r20-goal-disallowed-push.json"
+    },
+    {
+      "id": "var-08-threshold-undetermined-when-speed-gated",
+      "gate": "threshold",
+      "given": {
+        "rule_version": "2025-26",
+        "facts": {
+          "event_type": "PENALTY_NOT_GIVEN",
+          "restart_occurred": false,
+          "error_magnitude": null,
+          "underlying_decision": {
+            "decision": "INCONCLUSIVE",
+            "inconclusive_reason": "SLOW_MOTION_ONLY"
+          }
+        }
+      },
+      "expect": {
+        "reviewable": true,
+        "within_time_window": true,
+        "threshold_met": "UNDETERMINED",
+        "intervention": null,
+        "citations_min": 1
+      },
+      "note": "밑단 판정이 보류면 문턱은 FALSE가 아니라 UNDETERMINED입니다. 못 봤다는 것과 오류가 아니라는 것은 다릅니다. push-03이 이 케이스의 입력을 만듭니다."
+    },
+    {
+      "id": "var-09-subjective-decision-goes-to-ofr",
+      "gate": "procedure",
+      "given": {
+        "rule_version": "2025-26",
+        "facts": {
+          "event_type": "PENALTY_NOT_GIVEN",
+          "restart_occurred": false,
+          "decision_nature": "SUBJECTIVE",
+          "error_magnitude": "CLEAR_AND_OBVIOUS"
+        }
+      },
+      "expect": {
+        "reviewable": true,
+        "threshold_met": "MET",
+        "review_procedure": "OFR",
+        "citations_min": 1
+      }
+    },
+    {
+      "id": "var-10-factual-decision-goes-to-var-only",
+      "gate": "procedure",
+      "given": {
+        "rule_version": "2025-26",
+        "facts": {
+          "event_type": "GOAL_DISALLOWED",
+          "disallow_reason": "OFFSIDE",
+          "restart_occurred": false,
+          "decision_nature": "FACTUAL",
+          "error_magnitude": "CLEAR_AND_OBVIOUS"
+        }
+      },
+      "expect": {
+        "reviewable": true,
+        "threshold_met": "MET",
+        "review_procedure": "VAR_ONLY",
+        "citations_min": 1
+      },
+      "note": "09와 10의 차이는 절차뿐입니다. 두 케이스 모두 `threshold_met=TRUE`여야 합니다. factual이라고 문턱을 면제하면 실패해야 합니다."
+    },
+    {
+      "id": "var-11-factual-does-not-exempt-threshold",
+      "gate": "threshold",
+      "given": {
+        "rule_version": "2025-26",
+        "facts": {
+          "event_type": "GOAL_DISALLOWED",
+          "disallow_reason": "OFFSIDE",
+          "restart_occurred": false,
+          "decision_nature": "FACTUAL",
+          "error_magnitude": "NOT_CLEAR_AND_OBVIOUS"
+        }
+      },
+      "expect": {
+        "reviewable": true,
+        "threshold_met": "NOT_MET",
+        "intervention": "NO_INTERVENTION",
+        "review_procedure": "VAR_ONLY",
+        "citations_min": 1
+      },
+      "note": "factual/subjective는 검토 절차만 정하고 문턱을 바꾸지 않습니다. 10과 같은 입력에서 errorMagnitude만 뒤집었을 때 절차는 그대로, 문턱만 뒤집혀야 합니다."
+    },
+    {
+      "id": "var-12-second-caution-not-reviewable-in-2025-26",
+      "gate": "category",
+      "given": {
+        "rule_version": "2025-26",
+        "facts": {
+          "event_type": "SECOND_CAUTION",
+          "restart_occurred": false,
+          "error_magnitude": "CLEAR_AND_OBVIOUS"
+        }
+      },
+      "expect": {
+        "reviewable": false,
+        "not_reviewable_reason": "OUTSIDE_REVIEWABLE_CATEGORIES",
+        "citations_min": 1
+      },
+      "note": "2025/26 범주 c는 `Direct red cards (not second yellow card/caution)`로 2차 경고를 명시적으로 제외합니다."
+    },
+    {
+      "id": "var-13-second-caution-reviewable-in-2026-27",
+      "gate": "category",
+      "given": {
+        "rule_version": "2026-27",
+        "facts": {
+          "event_type": "SECOND_CAUTION",
+          "restart_occurred": false,
+          "error_magnitude": "CLEAR_AND_OBVIOUS"
+        }
+      },
+      "expect": {
+        "reviewable": true,
+        "category": "RED_CARD",
+        "threshold_met": "MET",
+        "citations_min": 1
+      },
+      "note": "12와 입력이 같고 판본만 다릅니다. 판본이 결과를 바꾸는지를 고정합니다. 2026/27에서 범주 c는 `Red cards`로 이름이 바뀌고 2차 경고가 그 안의 불릿으로 들어왔습니다 — 범주가 신설된 게 아니라 기존 범주가 넓어진 것이므로 `category`는 여전히 `RED_CARD`여야 합니다."
+    },
+    {
+      "id": "var-14-corner-kick-requires-competition-adoption",
+      "gate": "category",
+      "given": {
+        "rule_version": "2026-27",
+        "competition_options": {
+          "corner_kick_review": false
+        },
+        "facts": {
+          "event_type": "CORNER_KICK_AWARDED",
+          "restart_occurred": false,
+          "error_magnitude": "CLEAR_AND_OBVIOUS"
+        }
+      },
+      "expect": {
+        "reviewable": false,
+        "not_reviewable_reason": "COMPETITION_OPTION_NOT_ADOPTED",
+        "citations_min": 1
+      },
+      "note": "2026/27 범주 e에는 `competition option`이 붙어 있습니다. IFAB가 열어둔 것과 대회가 채택한 것은 다릅니다. 판본만 보고 reviewable을 켜면 실패해야 합니다.",
+      "open_question": "K리그가 이 옵션을 채택했는지는 대회요강에서 별도 확인이 필요합니다. 확인 전까지 이 픽스처는 미채택을 가정하지 않고, 미채택일 때의 동작만 고정합니다."
+    },
+    {
+      "id": "var-15-corner-kick-reviewable-when-adopted",
+      "gate": "category",
+      "given": {
+        "rule_version": "2026-27",
+        "competition_options": {
+          "corner_kick_review": true
+        },
+        "facts": {
+          "event_type": "CORNER_KICK_AWARDED",
+          "restart_occurred": false,
+          "error_magnitude": "CLEAR_AND_OBVIOUS"
+        }
+      },
+      "expect": {
+        "reviewable": true,
+        "category": "CORNER_KICK",
+        "threshold_met": "MET",
+        "citations_min": 1
+      },
+      "note": "14와 입력이 같고 대회 옵션만 다릅니다. 옵션이 판본과 별개의 축이라는 것을 고정합니다."
+    },
+    {
+      "id": "var-16-corner-kick-not-a-category-in-2025-26",
+      "gate": "category",
+      "given": {
+        "rule_version": "2025-26",
+        "competition_options": {
+          "corner_kick_review": true
+        },
+        "facts": {
+          "event_type": "CORNER_KICK_AWARDED",
+          "restart_occurred": false,
+          "error_magnitude": "CLEAR_AND_OBVIOUS"
+        }
+      },
+      "expect": {
+        "reviewable": false,
+        "not_reviewable_reason": "OUTSIDE_REVIEWABLE_CATEGORIES",
+        "citations_min": 1
+      },
+      "note": "옵션을 켜도 판본에 범주가 없으면 열리지 않습니다. 옵션은 판본이 연 것을 채택할 뿐, 없는 범주를 만들지 못합니다."
+    },
+    {
+      "id": "var-17-unmapped-rule-version",
+      "gate": "category",
+      "given": {
+        "rule_version": null,
+        "match_date": "2030-03-01",
+        "facts": {
+          "event_type": "PENALTY_NOT_GIVEN",
+          "restart_occurred": false
+        }
+      },
+      "expect": {
+        "error": "UNKNOWN_RULE_VERSION",
+        "reviewable": null,
+        "citations_min": 0
+      },
+      "note": "매핑에 없는 날짜는 최신 판본으로 떨어지지 않습니다. 판본을 추측해서 판정하면 근거가 거짓이 됩니다."
+    },
+    {
+      "id": "var-18-out-of-scope-is-not-not-reviewable",
+      "gate": "category",
+      "given": {
+        "rule_version": "2025-26",
+        "facts": {
+          "event_type": "OTHER",
+          "event_description": "추가시간 길이 논란",
+          "restart_occurred": false
+        }
+      },
+      "expect": {
+        "decision": "OUT_OF_SCOPE",
+        "reviewable": false,
+        "not_reviewable_reason": "OUTSIDE_REVIEWABLE_CATEGORIES",
+        "citations_min": 1
+      },
+      "note": "규정이 다루지 않는 사건(OUT_OF_SCOPE)과 증거가 부족한 사건(INCONCLUSIVE)은 다릅니다. 여기서 INCONCLUSIVE가 나오면 실패해야 합니다. `eventDescription`은 자유 텍스트이며 판정에 쓰이지 않습니다 — `incident_type` 열거형을 열어두지 않기 위한 자리입니다."
+    },
+    {
+      "id": "var-21-competition-option-unset",
+      "gate": "category",
+      "given": {
+        "rule_version": "2026-27",
+        "competition_options": {},
+        "facts": {
+          "event_type": "CORNER_KICK_AWARDED",
+          "restart_occurred": false,
+          "error_magnitude": "CLEAR_AND_OBVIOUS"
+        }
+      },
+      "expect": {
+        "error": "UNKNOWN_COMPETITION_OPTION",
+        "reviewable": null,
+        "citations_min": 0
+      },
+      "note": "옵션 값이 없을 때 미채택으로 떨어지지 않습니다. 미채택으로 기본값을 잡으면 대회가 채택했을 때 조용히 틀리고, 채택으로 잡으면 없는 권한을 만듭니다. 모르면 모른다고 답합니다 — var-17의 UNKNOWN_RULE_VERSION과 같은 이유입니다.",
+      "open_question": "K리그의 코너킥 옵션 채택 여부는 계획 문서 미결 질문 #5입니다."
+    }
+  ],
+  "invariants": [
+    {
+      "id": "var-19-four-gates-are-independently-reported",
+      "gate": "all",
+      "applies_to": "이 스위트의 모든 케이스",
+      "expect": {
+        "result_contains_fields": [
+          "category",
+          "within_time_window",
+          "threshold_met",
+          "review_procedure"
+        ]
+      },
+      "note": "어떤 케이스에서도 네 게이트가 각각 별도 필드로 나와야 합니다. 하나로 접힌 결론만 돌아오면 실패입니다."
+    },
+    {
+      "id": "var-20-fact-signature-is-stable-and-name-free",
+      "gate": "all",
+      "applies_to": "이 스위트의 모든 케이스",
+      "expect": {
+        "fact_signature_deterministic": true,
+        "fact_signature_excludes": [
+          "match_id",
+          "team",
+          "player",
+          "referee",
+          "date"
+        ]
+      },
+      "note": "같은 사실 조합은 언제 어느 경기에서 나오든 같은 서명을 가져야 선례 조회가 됩니다. 경기 식별자가 섞이면 서명이 매번 달라져서 조회가 무의미해집니다. 심판 정보는 어떤 형태로도 들어가지 않습니다."
+    }
+  ]
+}
