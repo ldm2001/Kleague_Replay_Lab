@@ -1,0 +1,87 @@
+{
+  "timestamp": "2026-08-07T05:50:14.140Z",
+  "reason": "compaction",
+  "status": {
+    "version": "2.0",
+    "lastUpdated": "2026-08-07T05:49:44.609Z",
+    "activeFeatures": [
+      "규정-데이터-룰엔진",
+      "shared-types"
+    ],
+    "primaryFeature": "규정-데이터-룰엔진",
+    "features": {
+      "규정-데이터-룰엔진": {
+        "phase": "do",
+        "matchRate": null,
+        "iterationCount": 0,
+        "startedAt": "2026-08-05T04:38:38.000Z",
+        "updatedAt": "2026-08-07T00:00:00.000Z",
+        "documents": {
+          "plan": "docs/01-plan/features/규정-데이터-룰엔진.plan.md",
+          "design": "docs/02-design/features/규정-데이터-룰엔진.design.md",
+          "analysis": null,
+          "report": null
+        },
+        "notes": "README 14절 1단계. 밀기 1개 유형 × 1개 판본 수직 관통. 파서와 UI는 2단계로 제외. 설계 10절 구현 순서 9단계를 따르되, git 미초기화와 package.json 부재로 0단계(워크스페이스 부트스트랩)가 선행 필요."
+      },
+      "shared-types": {
+        "phase": "do",
+        "phaseNumber": 3,
+        "matchRate": null,
+        "iterationCount": 0,
+        "requirements": [],
+        "documents": {},
+        "timestamps": {
+          "started": "2026-08-07T05:49:43.445Z",
+          "lastUpdated": "2026-08-07T05:49:44.609Z"
+        },
+        "lastFile": "/Users/ldongmin/Projects/Replay_Lab/packages/shared-types/src/index.ts"
+      }
+    },
+    "pipeline": {
+      "currentPhase": 1,
+      "level": "Dynamic",
+      "phaseHistory": []
+    },
+    "session": {
+      "startedAt": "2026-08-05T04:19:54.810Z",
+      "onboardingCompleted": false,
+      "lastActivity": "2026-08-07T05:49:44.609Z"
+    },
+    "history": [
+      {
+        "timestamp": "2026-08-05T04:38:38.000Z",
+        "feature": "규정-데이터-룰엔진",
+        "action": "plan",
+        "phase": "plan",
+        "document": "docs/01-plan/features/규정-데이터-룰엔진.plan.md"
+      },
+      {
+        "timestamp": "2026-08-06T00:00:00.000Z",
+        "feature": "규정-데이터-룰엔진",
+        "action": "design",
+        "phase": "design",
+        "document": "docs/02-design/features/규정-데이터-룰엔진.design.md"
+      },
+      {
+        "timestamp": "2026-08-07T00:00:00.000Z",
+        "feature": "규정-데이터-룰엔진",
+        "action": "do",
+        "phase": "do",
+        "document": "docs/02-design/features/규정-데이터-룰엔진.design.md"
+      },
+      {
+        "timestamp": "2026-08-07T05:49:43.445Z",
+        "feature": "shared-types",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-08-07T05:49:44.609Z",
+        "feature": "shared-types",
+        "phase": "do",
+        "action": "updated"
+      }
+    ]
+  }
+}
