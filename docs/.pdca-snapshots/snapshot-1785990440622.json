@@ -1,0 +1,47 @@
+{
+  "timestamp": "2026-08-06T04:27:20.621Z",
+  "reason": "compaction",
+  "status": {
+    "version": "2.0",
+    "lastUpdated": "2026-08-05T04:38:38.000Z",
+    "activeFeatures": [
+      "규정-데이터-룰엔진"
+    ],
+    "primaryFeature": "규정-데이터-룰엔진",
+    "features": {
+      "규정-데이터-룰엔진": {
+        "phase": "plan",
+        "matchRate": null,
+        "iterationCount": 0,
+        "startedAt": "2026-08-05T04:38:38.000Z",
+        "updatedAt": "2026-08-05T04:38:38.000Z",
+        "documents": {
+          "plan": "docs/01-plan/features/규정-데이터-룰엔진.plan.md",
+          "design": null,
+          "analysis": null,
+          "report": null
+        },
+        "notes": "README 14절 1단계. 밀기 1개 유형 × 1개 판본 수직 관통. 파서와 UI는 2단계로 제외."
+      }
+    },
+    "pipeline": {
+      "currentPhase": 1,
+      "level": "Dynamic",
+      "phaseHistory": []
+    },
+    "session": {
+      "startedAt": "2026-08-05T04:19:54.810Z",
+      "onboardingCompleted": false,
+      "lastActivity": "2026-08-05T04:38:38.000Z"
+    },
+    "history": [
+      {
+        "timestamp": "2026-08-05T04:38:38.000Z",
+        "feature": "규정-데이터-룰엔진",
+        "action": "plan",
+        "phase": "plan",
+        "document": "docs/01-plan/features/규정-데이터-룰엔진.plan.md"
+      }
+    ]
+  }
+}
