@@ -22,6 +22,20 @@
       "when": 1727029202000,
       "tag": "0002_append_only_records",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "1",
+      "when": 1727029203000,
+      "tag": "0003_upload_intents",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "1",
+      "when": 1727029204000,
+      "tag": "0004_upload_intent_policy",
+      "breakpoints": true
     }
   ]
 }

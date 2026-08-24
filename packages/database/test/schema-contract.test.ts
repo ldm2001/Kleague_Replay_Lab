@@ -19,6 +19,7 @@ describe("database schema public contract", () => {
       "processingJobs",
       "rules",
       "shots",
+      "uploadIntents",
       "videoAssets",
     ]);
   });

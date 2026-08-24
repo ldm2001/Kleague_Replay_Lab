@@ -77,7 +77,7 @@ const validateIdempotencyKey = (
   return null;
 };
 
-export const createSubmitAnalysis =
+export const submit =
   ({ clock, hasher, repository, policy }: SubmitAnalysisDependencies) =>
   async (input: SubmitAnalysisInput): Promise<SubmitAnalysisResult> => {
     const snapshot = {
@@ -139,3 +139,5 @@ export const createSubmitAnalysis =
 
     return repository.submit(command);
   };
+
+export const createSubmitAnalysis = submit;

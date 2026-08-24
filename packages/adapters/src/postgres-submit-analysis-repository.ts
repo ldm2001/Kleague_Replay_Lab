@@ -200,8 +200,9 @@ export class PostgresSubmitAnalysisRepository implements SubmitAnalysisRepositor
   }
 }
 
-export const createPostgresSubmitAnalysisRepository = (
+export const submitRepo = (
   client: DatabaseHandle,
 ): PostgresSubmitAnalysisRepository => new PostgresSubmitAnalysisRepository(client);
 
-export const createSubmitAnalysisRepository = createPostgresSubmitAnalysisRepository;
+export const createPostgresSubmitAnalysisRepository = submitRepo;
+export const createSubmitAnalysisRepository = submitRepo;
