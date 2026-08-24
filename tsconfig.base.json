@@ -3,7 +3,8 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "lib": ["ES2023"],
+    "jsx": "preserve",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "types": ["node"],
     "strict": true,
     "noUncheckedIndexedAccess": true,
@@ -15,13 +16,13 @@
     "verbatimModuleSyntax": true,
     "baseUrl": ".",
     "paths": {
-      "@replay/application": ["packages/application/src/index.ts"],
-      "@replay/database": ["packages/database/src/index.ts"],
-      "@replay/adapters": ["packages/adapters/src/index.ts"],
-      "@replay/shared-types": ["packages/shared-types/src/index.ts"],
-      "@replay/rule-data": ["packages/rule-data/src/index.ts"],
-      "@replay/rule-engine": ["packages/rule-engine/src/index.ts"]
+      "@replay/application": ["web/src/application/index.ts"],
+      "@replay/database": ["web/src/database/index.ts"],
+      "@replay/adapters": ["web/src/adapters/index.ts"],
+      "@replay/shared-types": ["web/src/shared/index.ts"],
+      "@replay/rule-data": ["web/src/rules/data/index.ts"],
+      "@replay/rule-engine": ["web/src/rules/engine/index.ts"]
     }
   },
-  "include": ["packages/*/src/**/*.ts", "packages/*/test/**/*.ts", "vitest.config.ts"]
+  "include": ["web/src/**/*.ts", "web/src/**/*.tsx", "web/test/**/*.ts", "web/test/**/*.tsx", "vitest.config.ts"]
 }

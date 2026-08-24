@@ -1,5 +1,5 @@
 # 로컬 개발용 의존 서비스만 띄운다.
-# apps/web · workers/* 는 각자의 디렉터리에서 직접 실행한다.
+# web · workers/* 는 각자의 디렉터리에서 직접 실행한다.
 services:
   postgres:
     image: postgres:16-alpine

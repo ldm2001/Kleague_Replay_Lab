@@ -518,37 +518,34 @@ ORM 모델을 도메인 엔티티로 사용하지 않음
 ### 모듈 배치
 
 ```text
-apps/web
+web
   Frameworks and Drivers
   화면과 HTTP 진입점과 조립 지점
 
-packages/domain
-  외부 의존성이 없는 엔티티와 값 객체와 상태 전이 규칙
-
-packages/application
+web/src/application
   유스케이스와 입력 포트와 출력 포트
 
-packages/adapters
+web/src/adapters
   PostgreSQL Processing Job과 Object Storage와 Worker 포트 구현
 
-packages/rule-engine
+web/src/rules/engine
   결정론적 규칙 인터프리터
 
-packages/rule-data
+web/src/rules/data
   판본별 규칙과 대회별 적용 옵션
 
-packages/shared-types
+web/src/shared
   공통 상태값과 결과 타입
 
-packages/media-policy
+web/src/config
   업로드 제한과 TTL과 Queue 상한의 버전 정책
 
 workers/video
   Python 영상 파이프라인과 사실값 추출
 ```
 
-도메인 로직은 `packages/domain`과 `packages/rule-engine` 안에 유지
-Nextjs 전용 코드는 `apps/web` 밖으로 전파하지 않음
+도메인 로직은 `web/src/application`과 `web/src/rules/engine` 안에 유지
+Nextjs 전용 코드는 `web` 밖으로 전파하지 않음
 Python Worker와의 계약은 버전이 있는 JSON Schema 또는 OpenAPI로 고정
 
 ### Worker 통신 경계
@@ -683,9 +680,9 @@ Worker가 중단되어도 재시도 가능한 체크포인트와 시도 이력�
 
 | 데이터 | 저장 위치 | 변경 경로 | 선택 이유 |
 |---|---|---|---|
-| 공통 상태값과 결과 타입 | `packages/shared-types` | 검토된 코드 변경과 계약 테스트 | Nextjs와 Rule Engine과 Python 계약의 값 이름을 일치시키기 위함 |
-| 판본별 규칙과 K리그 채택 옵션 | `packages/rule-data` | 규정 적재 CLI와 검토된 데이터 변경 | 시즌 변경을 판정 코드의 조건문 추가 없이 처리하기 위함 |
-| 업로드 제한과 보존 기간과 Queue 상한 | `packages/media-policy` | 정책 버전 변경과 배포 | Web과 Worker가 같은 제한값을 사용하게 하기 위함 |
+| 공통 상태값과 결과 타입 | `web/src/shared` | 검토된 코드 변경과 계약 테스트 | Nextjs와 Rule Engine과 Python 계약의 값 이름을 일치시키기 위함 |
+| 판본별 규칙과 K리그 채택 옵션 | `web/src/rules/data` | 규정 적재 CLI와 검토된 데이터 변경 | 시즌 변경을 판정 코드의 조건문 추가 없이 처리하기 위함 |
+| 업로드 제한과 보존 기간과 Queue 상한 | `web/src/config` | 정책 버전 변경과 배포 | Web과 Worker가 같은 제한값을 사용하게 하기 위함 |
 | 분석 상태 | PostgreSQL `analyses.status` | Analysis State Machine을 호출하는 유스케이스 | 재시작과 중복 Worker 상황에서도 현재 단계를 복구하기 위함 |
 | 현재 사실 Revision | PostgreSQL `incident_candidates.current_fact_revision_id` | 사실값 보정과 Worker 결과 수신 유스케이스 | 과거 Revision을 보존하면서 현재 적용 대상을 한 값으로 선택하기 위함 |
 | 판정 결과와 적용 규정 버전 | PostgreSQL 불변 행 | `EvaluateIncident` 유스케이스 | 과거 분석 결과를 같은 입력과 버전으로 재현하기 위함 |
@@ -738,7 +735,7 @@ Worker가 중단되어도 재시도 가능한 체크포인트와 시도 이력�
 
 ### 설정과 성능 원칙
 
-- 업로드 최대 크기와 최대 길이와 해상도와 FPS와 허용 코덱은 `packages/media-policy` 한 곳에서 버전 관리
+- 업로드 최대 크기와 최대 길이와 해상도와 FPS와 허용 코덱은 `web/src/config` 한 곳에서 버전 관리
 - Nextjs와 Python Worker는 같은 `media_policy_version`을 검사
 - 정확한 제한값은 30분 하이라이트 표본과 k6 부하 테스트와 Worker 처리 시간 측정으로 결정
 - PostgreSQL Connection Pool은 서버리스 인스턴스 수와 DB 최대 연결 수를 함께 계산해 설정
@@ -1470,13 +1467,13 @@ status                 EXTERNAL_OPINION
 
 | 관리 대상 | 저장 위치 | 프로젝트 적용 | 선택 이유 |
 |---|---|---|---|
-| 공통 상태값과 결과 타입 | `packages/shared-types` | Nextjs와 Rule Engine의 타입으로 사용하고 Python 계약용 JSON Schema 생성 | 웹과 Worker가 같은 값 이름을 사용하기 위함 |
-| IFAB 판본별 규칙 | `packages/rule-data` | 판본별 JSON으로 저장하고 Rule Engine이 분석 시작 시 선택 | 규정 개정을 코드 조건문 대신 데이터 변경으로 반영하기 위함 |
-| K리그 채택 옵션 | `packages/rule-data` | 대회와 시즌과 적용 기간별로 저장 | IFAB 선택 규칙의 실제 K리그 적용 여부를 구분하기 위함 |
+| 공통 상태값과 결과 타입 | `web/src/shared` | Nextjs와 Rule Engine의 타입으로 사용하고 Python 계약용 JSON Schema 생성 | 웹과 Worker가 같은 값 이름을 사용하기 위함 |
+| IFAB 판본별 규칙 | `web/src/rules/data` | 판본별 JSON으로 저장하고 Rule Engine이 분석 시작 시 선택 | 규정 개정을 코드 조건문 대신 데이터 변경으로 반영하기 위함 |
+| K리그 채택 옵션 | `web/src/rules/data` | 대회와 시즌과 적용 기간별로 저장 | IFAB 선택 규칙의 실제 K리그 적용 여부를 구분하기 위함 |
 | 필수 관계와 저장 조건 | PostgreSQL 제약 | 외래키와 `NOT NULL`과 인용 최소 한 건을 검사 | 부분 저장과 연결이 끊긴 결과를 막기 위함 |
 
-현재 구현 파일이 없으므로 이 README가 초기 타입 목록을 기록
-구현 시작 시 `packages/shared-types`와 `packages/rule-data`를 만들고 README 예시는 해당 파일을 기준으로 검사
+공통 타입과 규정 데이터는 `web/src/shared`와 `web/src/rules/data`가 소유
+업로드 제한과 TTL 정책은 `web/src/config`에서 버전 관리
 
 ---
 
@@ -2033,43 +2030,26 @@ FC 안양 → ANY
 
 ### 디렉터리
 
-아래는 목표 구조 전체이고 구현은 `packages/shared-types`부터 채우는 중
-디렉터리는 만들어 두되 각 패키지의 `package.json`과 소스는 해당 작업에서 함께 생성
+현재 구현과 다음 수직 슬라이스에 필요한 구조만 유지
+기능이 시작되기 전인 디렉터리는 미리 만들지 않음
 
 ```text
 Replay_Lab/
 │
-├── apps/
-│   └── web/                            # Nextjs 제어 영역 · 화면과 공개 API와 내부 Worker API
-│       ├── src/
-│       │   ├── app/
-│       │   │   ├── (public)/
-│       │   │   ├── api/
-│       │   │   │   ├── uploads/
-│       │   │   │   ├── analyses/
-│       │   │   │   ├── evidence/
-│       │   │   │   └── internal/       # 작업 선점 · Lease 갱신 · Worker 결과 수신
-│       │   │   └── layout.tsx
-│       │   ├── components/
-│       │   ├── presenters/
-│       │   └── bootstrap/              # 의존성 조립과 환경변수 검증
-│       ├── public/
-│       └── next.config.ts
-│
-├── packages/
-│   ├── domain/                         # 다른 프로젝트 패키지를 import하지 않음
-│   ├── application/                    # use-cases와 ports만 가짐
-│   ├── adapters/                       # 포트 구현과 외부 라이브러리 격리
-│   ├── database/                       # Drizzle 스키마 · 제약 · 마이그레이션
-│   ├── rule-engine/                    # 판정 · fixtures로 회귀 검사
-│   ├── rule-data/                      # 판본별 규정 데이터 (코드에 판본 리터럴 없음)
-│   ├── contracts/                      # TypeScript와 Python의 버전 계약
-│   ├── shared-types/                   # 판본과 무관한 어휘의 SSOT
-│   └── media-policy/                   # 업로드 제한값의 단일 소유자
-│
-├── workers/
-│   ├── video/                          # Python · FFmpeg · OpenCV · 사실만 반환
-│   └── cleanup/                        # TypeScript · 만료 객체 삭제와 임시 행 정리
+├── web/                                # Nextjs 화면과 공개 API와 서버 조립
+│   ├── src/
+│   │   ├── app/                        # App Router와 Route Handler
+│   │   ├── components/                 # 상태가 필요한 최소 Client Component
+│   │   ├── api/                        # Route Handler가 호출하는 API 조립
+│   │   ├── application/                # Use Case와 Port
+│   │   ├── adapters/                   # PostgreSQL과 Object Storage 구현
+│   │   ├── database/                   # Drizzle 스키마와 마이그레이션
+│   │   ├── rules/                      # 규정 데이터와 Rule Engine
+│   │   ├── shared/                     # 공통 어휘와 계약 타입
+│   │   └── bootstrap/                  # 의존성 조립과 환경변수 검증
+│   ├── test/                           # 서버 계층 회귀 테스트
+│   ├── package.json
+│   └── next.config.ts
 │
 ├── rules/                              # 원문 조사 자료 (원문은 저장소에 넣지 않음)
 │   ├── ifab/{2024-25,2025-26,2026-27}/
@@ -2089,7 +2069,6 @@ Replay_Lab/
 │   └── 01-plan/features/
 │
 ├── infra/
-│   ├── docker/
 │   └── local/docker-compose.yml        # PostgreSQL과 S3 호환 스토리지
 │
 ├── .github/workflows/                  # ci · 서비스별 배포
@@ -2105,12 +2084,11 @@ Replay_Lab/
 구현 단계에서 추가할 의존성 검사
 
 ```text
-- domain은 다른 프로젝트 패키지를 import하지 않음
-- application은 domain과 포트만 import
-- adapters는 포트를 구현하고 외부 라이브러리를 격리
-- apps/web은 Nextjs 진입점과 조립만 담당
-- workers/video는 영상 사실을 반환하며 판정 규칙과 판정 결과 테이블을 직접 수정하지 않음
-- TypeScript와 Python은 packages/contracts의 버전 계약으로 통신
+- application은 규칙과 외부 구현을 직접 import하지 않음
+- adapters는 application Port를 구현하고 외부 라이브러리를 격리
+- web은 Nextjs 진입점과 조립만 담당
+- Python Worker를 추가할 때는 web과 별도 프로세스로 분리
+- TypeScript와 Python 계약이 필요해질 때만 계약 디렉터리를 추가
 - 금지 import는 ESLint 또는 dependency cruiser와 CI로 검사
 ```
 
@@ -2120,12 +2098,12 @@ Replay_Lab/
 
 아래 디렉터리와 파일과 케이스는 아직 구현되지 않은 목표 설계
 
-`packages/rule-engine/fixtures`는 입력을 고정해 규칙 엔진 회귀를 검사함
+`web/src/rules/engine/fixtures`는 입력을 고정해 규칙 엔진 회귀를 검사함
 `datasets/labeled-cases`는 영상 파이프라인 변경에 따라 사실값이 달라질 수 있으므로 회귀 테스트와 분리함
 
 `datasets/labeled-cases/`가 패키지 밖에 있는 것은 다음이 전부 다르기 때문임
 
-| | `packages/rule-engine/fixtures/` | `datasets/labeled-cases/` |
+| | `web/src/rules/engine/fixtures/` | `datasets/labeled-cases/` |
 |---|---|---|
 | 재는 것 | 규칙 적용의 정확성 | 현실에서의 정합성 |
 | 입력 | 손으로 고정 | 영상 파이프라인이 생성 |
@@ -2137,7 +2115,7 @@ Replay_Lab/
 
 ---
 
-### 합성 픽스처 — `packages/rule-engine/fixtures/`
+### 합성 픽스처 — `web/src/rules/engine/fixtures/`
 
 엔진이 **규정을 옳게 적용하는지**를 고정하는 합성 데이터임
 실제 경기와 무관함 팀명도 선수명도 날짜도 없음
@@ -2186,7 +2164,7 @@ push-03 / push-04 결과 동일 · 사유가 달라야 함                      
 
 #### 열거형은 이 문서와 맞아야 함
 
-픽스처에 쓰인 모든 대문자 값은 이 문서의 8절과 이후 `packages/shared-types`에 정의
+픽스처에 쓰인 모든 대문자 값은 이 문서의 8절과 이후 `web/src/shared`에 정의
 구현할 `check/enums.mjs`가 이를 검사해 픽스처가 타입보다 앞서 나가지 않게 함
 
 #### 판본과 대회 옵션은 다른 축임
@@ -2391,7 +2369,7 @@ IFAB 원문은 다단 레이아웃이라 파싱 비용이 크고 먼저 손대�
 - [ ] 규정 자료 metadata 작성
 - [ ] KFA 한국어 대조판 확보
 - [ ] 대회요강 판본 지정 범위 재확인
-- [x] `packages/shared-types` 공통 상태값과 결과 타입 정의
+- [x] `web/src/shared` 공통 상태값과 결과 타입 정의
 - [ ] TypeScript와 Python 사이 작업 계약과 사실 JSON Schema 정의
 - [x] IdempotencyRecord 스키마와 같은 키 다른 본문 충돌 테스트 작성
 - [ ] Worker 내부 작업 선점과 결과 수신 API 계약 작성
