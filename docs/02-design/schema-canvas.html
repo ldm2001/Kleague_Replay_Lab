@@ -1,0 +1,1330 @@
+<title>Replay Lab 스키마</title>
+<style>
+  :root {
+    --ground: #edf0ec;
+    --surface: #fafbf9;
+    --sunk: #e3e8e3;
+    --ink: #131a16;
+    --muted: #5a655f;
+    --faint: #8a938d;
+    --line: #ccd4ce;
+    --hair: #dde3dd;
+    --accent: #0e6b4c;
+    --accent-soft: #dce9e2;
+    --flag: #8f5b0d;
+    --flag-soft: #f2e8d5;
+    --clash: #93242a;
+    --clash-soft: #f3dedf;
+
+    --serif: "Iowan Old Style", Charter, "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+
+    --wrap: 1180px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0d1211;
+      --surface: #151b18;
+      --sunk: #101614;
+      --ink: #e4e9e5;
+      --muted: #94a09a;
+      --faint: #6d7972;
+      --line: #2b352f;
+      --hair: #212b26;
+      --accent: #4cbf94;
+      --accent-soft: #14261f;
+      --flag: #d9a143;
+      --flag-soft: #2a2114;
+      --clash: #e0787c;
+      --clash-soft: #2c1618;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground: #0d1211;
+    --surface: #151b18;
+    --sunk: #101614;
+    --ink: #e4e9e5;
+    --muted: #94a09a;
+    --faint: #6d7972;
+    --line: #2b352f;
+    --hair: #212b26;
+    --accent: #4cbf94;
+    --accent-soft: #14261f;
+    --flag: #d9a143;
+    --flag-soft: #2a2114;
+    --clash: #e0787c;
+    --clash-soft: #2c1618;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: var(--wrap);
+    margin: 0 auto;
+    padding: 0 28px;
+  }
+
+  /* ── 머리 ─────────────────────────────────────────── */
+
+  .masthead {
+    border-bottom: 1px solid var(--line);
+    padding: 56px 0 30px;
+  }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 14px;
+  }
+
+  h1 {
+    font-family: var(--serif);
+    font-size: clamp(2rem, 4.4vw, 2.85rem);
+    line-height: 1.12;
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    margin: 0 0 14px;
+    text-wrap: balance;
+  }
+
+  .standfirst {
+    max-width: 64ch;
+    color: var(--muted);
+    margin: 0 0 26px;
+    font-size: 1.0625rem;
+  }
+
+  .counts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    width: fit-content;
+  }
+
+  .count {
+    padding: 12px 22px;
+    border-right: 1px solid var(--hair);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .count:last-child { border-right: 0; }
+
+  .count b {
+    font-family: var(--mono);
+    font-size: 1.4rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+
+  .count span {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--faint);
+  }
+
+  .count.is-open b { color: var(--flag); }
+
+  /* ── 구획 ─────────────────────────────────────────── */
+
+  section { padding: 52px 0; border-bottom: 1px solid var(--hair); }
+  section:last-of-type { border-bottom: 0; }
+
+  h2 {
+    font-family: var(--serif);
+    font-size: 1.5rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 0 0 6px;
+  }
+
+  .lede {
+    color: var(--muted);
+    max-width: 68ch;
+    margin: 0 0 30px;
+  }
+
+  .lede code, p code, li code, td code {
+    font-family: var(--mono);
+    font-size: 0.875em;
+    background: var(--sunk);
+    padding: 1px 5px;
+    border: 1px solid var(--hair);
+  }
+
+  /* ── 근거 상태 태그 ────────────────────────────────── */
+
+  .tag {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 2.5px 7px;
+    border: 1px solid currentColor;
+    white-space: nowrap;
+  }
+
+  .tag.clash { color: var(--clash); background: var(--clash-soft); }
+  .tag.open  { color: var(--flag);  background: var(--flag-soft); }
+  .tag.ok    { color: var(--accent); background: var(--accent-soft); }
+
+  /* ── 미결 카드 ────────────────────────────────────── */
+
+  .decisions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+  }
+
+  .decision {
+    background: var(--surface);
+    padding: 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .decision-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .decision h3 {
+    font-size: 0.95rem;
+    font-weight: 650;
+    margin: 0;
+    letter-spacing: -0.005em;
+  }
+
+  .decision p { margin: 0; font-size: 0.9rem; color: var(--muted); }
+
+  .versus {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 4px 12px;
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    background: var(--sunk);
+    border: 1px solid var(--hair);
+    padding: 11px 13px;
+    overflow-x: auto;
+  }
+
+  .versus dt { color: var(--faint); white-space: nowrap; }
+  .versus dd { margin: 0; word-break: break-word; }
+  .versus dd.strike { color: var(--clash); }
+
+  .verdict {
+    font-size: 0.875rem;
+    padding-top: 11px;
+    border-top: 1px solid var(--hair);
+    color: var(--ink);
+  }
+
+  .verdict b {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+    display: block;
+    margin-bottom: 4px;
+  }
+
+  /* ── 다이어그램 ───────────────────────────────────── */
+
+  .diagram {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    padding: 20px;
+    overflow-x: auto;
+  }
+
+  .mermaid { min-width: 640px; }
+
+  /* ── 표 카드 ──────────────────────────────────────── */
+
+  .cluster-label {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--faint);
+    margin: 34px 0 12px;
+    padding-bottom: 7px;
+    border-bottom: 1px solid var(--hair);
+  }
+
+  .cluster-label:first-of-type { margin-top: 0; }
+
+  .tables {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    gap: 16px;
+  }
+
+  .tbl {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .tbl > header {
+    padding: 13px 16px;
+    border-bottom: 1px solid var(--hair);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .tbl > header h3 {
+    font-family: var(--mono);
+    font-size: 0.85rem;
+    font-weight: 650;
+    margin: 0;
+    color: var(--accent);
+  }
+
+  .tbl > p {
+    margin: 0;
+    padding: 12px 16px;
+    font-size: 0.85rem;
+    color: var(--muted);
+    border-bottom: 1px solid var(--hair);
+  }
+
+  .cols { margin: 0; padding: 8px 0; }
+
+  .col {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+    align-items: baseline;
+    padding: 3.5px 16px;
+    font-family: var(--mono);
+    font-size: 0.775rem;
+  }
+
+  .col .n { color: var(--ink); word-break: break-all; }
+  .col .t { color: var(--faint); font-size: 0.72rem; text-align: right; white-space: nowrap; }
+  .col.key .n { font-weight: 650; }
+  .col.key .t { color: var(--accent); }
+  .col.gate { background: var(--accent-soft); }
+  .col.unknown .n { color: var(--flag); }
+  .col.unknown .t { color: var(--flag); }
+
+  .col-note {
+    padding: 2px 16px 8px;
+    font-family: var(--sans);
+    font-size: 0.775rem;
+    color: var(--faint);
+    line-height: 1.45;
+  }
+
+  .rule-strip {
+    margin-top: auto;
+    padding: 11px 16px;
+    border-top: 1px solid var(--hair);
+    font-size: 0.8rem;
+    color: var(--muted);
+    background: var(--sunk);
+  }
+
+  /* ── 네 게이트 ────────────────────────────────────── */
+
+  .gates {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+  }
+
+  .gate {
+    background: var(--surface);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .gate-n {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--faint);
+  }
+
+  .gate h3 {
+    font-family: var(--serif);
+    font-size: 1.2rem;
+    font-weight: 600;
+    margin: 0;
+  }
+
+  .gate .field {
+    font-family: var(--mono);
+    font-size: 0.775rem;
+    color: var(--accent);
+    word-break: break-all;
+  }
+
+  .gate p { margin: 0; font-size: 0.845rem; color: var(--muted); }
+
+  .gate .why {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: var(--faint);
+    padding-top: 9px;
+    border-top: 1px solid var(--hair);
+    margin-top: auto;
+    word-break: break-all;
+  }
+
+  .gate-note {
+    margin: 18px 0 0;
+    padding: 16px 18px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    font-size: 0.9rem;
+  }
+
+  .gate-note strong { color: var(--clash); }
+
+  /* ── DBML ─────────────────────────────────────────── */
+
+  .source-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  .hint {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--faint);
+    letter-spacing: 0.04em;
+  }
+
+  pre.dbml {
+    margin: 0;
+    background: var(--sunk);
+    border: 1px solid var(--line);
+    padding: 18px 20px;
+    max-height: 620px;
+    overflow: auto;
+    font-family: var(--mono);
+    font-size: 0.76rem;
+    line-height: 1.65;
+    tab-size: 2;
+    cursor: text;
+  }
+
+  pre.dbml:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ── 꼬리 ─────────────────────────────────────────── */
+
+  footer {
+    border-top: 1px solid var(--line);
+    padding: 26px 0 60px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--faint);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 22px;
+  }
+
+  @media (max-width: 640px) {
+    .wrap { padding: 0 18px; }
+    .masthead { padding-top: 38px; }
+    .count { padding: 10px 16px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <p class="eyebrow">README 8절 · 12절 → docs/02-design/schema.dbml</p>
+    <h1>Replay Lab 스키마</h1>
+    <p class="standfirst">
+      판정 결과를 <em>결론</em>이 아니라 <em>이유</em>로 저장하는 데이터 모델.
+      네 게이트를 각각 다른 열에 두고, 사실값과 규정 판본과 엔진 버전을 함께 남겨
+      같은 입력이 같은 결과를 재현하게 한다.
+    </p>
+    <div class="counts">
+      <div class="count"><b>16</b><span>MVP 표</span></div>
+      <div class="count"><b>37</b><span>열거형</span></div>
+      <div class="count is-open"><b>7</b><span>확정 어휘</span></div>
+    </div>
+  </header>
+
+  <!-- ─────────────── 확정 어휘 ─────────────── -->
+  <section>
+    <h2>확정한 어휘 일곱</h2>
+    <p class="lede">
+      README 13절이 <strong>“픽스처에 쓰인 모든 대문자 값은 8절에 정의”</strong>라고 못박으므로
+      8절이 어휘의 소유자다. <span class="tag ok">채택</span>은 8절을 그대로 따른 것,
+      <span class="tag open">확장</span>은 8절 어휘로 원문을 표현할 수 없어 넓힌 것 —
+      넓힌 근거는 전부 IFAB 원문의 쪽수까지 적었다.
+    </p>
+
+    <div class="decisions">
+
+      <article class="decision">
+        <div class="decision-head">
+          <h3>error_magnitude</h3>
+          <span class="tag ok">채택</span>
+        </div>
+        <dl class="versus">
+          <dt>확정</dt>
+          <dd>CLEAR_AND_OBVIOUS · NOT_CLEAR_AND_OBVIOUS · UNDETERMINED</dd>
+          <dt>폐기</dt>
+          <dd class="strike">SERIOUS_MISSED_INCIDENT · MARGINAL</dd>
+        </dl>
+        <p>
+          원문은 <em>“clear and obvious error <strong>or</strong> serious missed incident”</em>로
+          둘을 나란히 놓는다. 정도 축에 섞으면 “놓친 사건”이 “덜 명백한 오심”으로 읽힌다.
+        </p>
+        <p class="verdict">
+          <b>대신</b>
+          <code>VarFacts.seriousMissedIncident: boolean</code>을 별도 입력으로 둔다.
+          문턱 게이트가 두 입력을 OR로 읽으므로, 오심 정도가 <code>UNDETERMINED</code>여도
+          미인지가 확인되면 문턱은 넘는다.
+        </p>
+      </article>
+
+      <article class="decision">
+        <div class="decision-head">
+          <h3>review_scenario</h3>
+          <span class="tag ok">채택</span>
+        </div>
+        <dl class="versus">
+          <dt>확정</dt>
+          <dd>8절 9값 그대로. <code>VAR_INCIDENT_TYPES</code> → <code>REVIEW_SCENARIOS</code></dd>
+          <dt>흡수</dt>
+          <dd class="strike">THROW_IN · OFFSIDE_POSITION → OTHER</dd>
+        </dl>
+        <p>
+          <code>OTHER</code>를 되살린 것이 핵심이다. 8절 1037행이 이 값을
+          <code>OUT_OF_SCOPE</code>로 가는 입구라고 명시한다 — 빼면
+          “규정이 다루지 않는다”고 답할 경로가 사라진다.
+          오프사이드는 단독 범주가 아니라 득점 검토 안에서 확인되고,
+          절차는 <code>decision_nature: FACTUAL</code>이 이미 가른다.
+        </p>
+        <p class="verdict">
+          <b>파급</b>
+          <code>PENALTY_NOT_AWARDED</code>→<code>PENALTY_NOT_GIVEN</code>,
+          <code>CORNER_AWARDED</code>→<code>CORNER_KICK_AWARDED</code>,
+          <code>DIRECT_SEND_OFF</code>→<code>CARD_SHOWN</code>+<code>SENDING_OFF_NOT_GIVEN</code>
+          (원문 범주가 양방향을 다 덮는다).
+        </p>
+      </article>
+
+      <article class="decision">
+        <div class="decision-head">
+          <h3>camera_sufficiency</h3>
+          <span class="tag ok">채택</span>
+        </div>
+        <dl class="versus">
+          <dt>확정</dt>
+          <dd>LOW · MEDIUM · HIGH</dd>
+          <dt>폐기</dt>
+          <dd class="strike">"low" · "medium" · "high" (11절 1690행)</dd>
+        </dl>
+        <p>
+          README가 두 절에서 다르게 적은 것이라 어느 쪽이든 README를 고쳐야 했다.
+          대문자로 간 이유는 13절이 대문자를 기준으로 검사 규칙을 세웠기 때문이다 —
+          소문자 하나를 남기면 <code>check/enums.mjs</code>가 영구적으로 예외를 하나 갖는다.
+        </p>
+        <p class="verdict">
+          <b>남은 소문자</b>
+          <code>DISPLACEMENT_LEVELS</code>(<code>none·possible·clear·uncertain</code>)와
+          <code>OBSERVED_SEVERITIES</code>의 <code>uncertain</code>은 그대로 둔다.
+          8절의 저장 열이 아니라 엔진 내부 사실값이고, 검사기가 어휘 소속으로 함께 검사한다.
+        </p>
+      </article>
+
+      <article class="decision">
+        <div class="decision-head">
+          <h3>mistakenIdentity</h3>
+          <span class="tag open">확장</span>
+        </div>
+        <dl class="versus">
+          <dt>확정</dt>
+          <dd>VarFacts.mistakenIdentity : boolean</dd>
+          <dt>근거</dt>
+          <dd>IFAB VAR 1.1.d</dd>
+        </dl>
+        <p>
+          <code>review_scenario</code>에 값을 추가하지 <em>않았다</em>.
+          원문은 <em>“when the referee cautions or sends off the wrong player”</em> —
+          선수 확인 오류는 사건의 종류가 아니라 카드 수여자의 속성이고,
+          경고와 퇴장 양쪽에서 일어난다. 사건 종류 축에 넣으면
+          “카드가 제시됐다”와 배타 관계가 되어 버린다.
+        </p>
+        <p class="verdict">
+          <b>범주 선택</b>
+          <code>CARD_SHOWN</code>은 <code>RED_CARD</code>와 <code>MISTAKEN_IDENTITY</code>
+          양쪽에 걸린다. 판본 규칙에 <code>requiresMistakenIdentity</code> 플래그를 두고
+          조건이 많은 쪽이 이긴다 — 데이터 줄 순서가 판정을 바꾸지 않게.
+        </p>
+      </article>
+
+      <article class="decision">
+        <div class="decision-head">
+          <h3>send_off_category</h3>
+          <span class="tag open">확장</span>
+        </div>
+        <dl class="versus">
+          <dt>확정</dt>
+          <dd>DOGSO · SERIOUS_FOUL_PLAY · BITING_OR_SPITTING · VIOLENT_CONDUCT · OFFENSIVE_LANGUAGE_OR_ACTION · SECOND_CAUTION · ENTERING_VOR · NONE</dd>
+          <dt>근거</dt>
+          <dd>Law 12.3 · 2025/26 p.117</dd>
+        </dl>
+        <p>
+          원문 아홉 항목을 판정에 필요한 만큼 묶었다. DOGSO 세 항목(고의 핸드볼 ·
+          자기 진영 밖 비고의 핸드볼 · 프리킥 반칙)은 퇴장 사유로는 하나이고,
+          <strong>biting과 spitting은 원문이 한 항목으로 적었다</strong> —
+          제 계획서가 둘로 나눴던 것이 근거 없는 세분이었다.
+        </p>
+        <p class="verdict">
+          <b>소유자</b>
+          열이 아니라 <code>fact_revisions.facts</code> 안의 값. 8절에 열거형으로 적는다.
+        </p>
+      </article>
+
+      <article class="decision">
+        <div class="decision-head">
+          <h3>var_window_exception</h3>
+          <span class="tag open">확장</span>
+        </div>
+        <dl class="versus">
+          <dt>확정</dt>
+          <dd>MISTAKEN_IDENTITY · VIOLENT_CONDUCT · BITING_OR_SPITTING · OFFENSIVE_LANGUAGE_OR_ACTION · NONE</dd>
+          <dt>8절 초안</dt>
+          <dd class="strike">MISTAKEN_IDENTITY · VIOLENT_CONDUCT · NONE</dd>
+        </dl>
+        <p>
+          작업 중에 새로 나온 일곱 번째다. 원문 VAR 1.10 / Law 5.3은 다섯을 든다 —
+          <em>“mistaken identity or … violent conduct, spitting, biting or extremely
+          offensive, insulting and/or abusive action(s)”</em>.
+          8절의 두 값으로는 <strong>“침 뱉기로 재개 후 퇴장”</strong>을 표현할 수 없다.
+        </p>
+        <p class="verdict">
+          <b>효과</b>
+          <code>send_off_category</code>와 값을 맞춰 두어 변환표가 사라졌다.
+          예외 목록에 걸린 퇴장 사유가 곧 예외 사유다.
+        </p>
+      </article>
+
+      <article class="decision">
+        <div class="decision-head">
+          <h3>값 목록이 비어 있던 열 다섯</h3>
+          <span class="tag ok">채택</span>
+        </div>
+        <dl class="versus">
+          <dt>observed_card</dt><dd>disciplinary_action 공유</dd>
+          <dt>disciplinary_action</dt><dd>NONE · CAUTION · SECOND_CAUTION · SEND_OFF</dd>
+          <dt>foul_decision</dt><dd>11절 Decision 5값</dd>
+          <dt>goal_decision</dt><dd>observed_goal_decision 공유</dd>
+          <dt>restart_type</dt><dd>observed_restart_type 11값 공유</dd>
+        </dl>
+        <p>
+          관측 열과 추천 열이 <strong>같은 어휘를 공유</strong>한다.
+          두 벌을 두면 <code>decision_match</code> 비교가 값 변환을 먼저 해야 하고,
+          그 변환표가 두 어휘가 어긋날 수 있는 자리가 된다.
+        </p>
+        <p class="verdict">
+          <b>비대칭은 남긴다</b>
+          엔진은 어휘의 부분집합만 낸다 — <code>UNKNOWN</code>은 관측 전용이고,
+          <code>SECOND_CAUTION</code>은 이 사건 하나로 알 수 없으므로 관측에서만 들어온다.
+          <code>NONE</code>을 새로 만들지 않고 8절의 <code>PLAY_CONTINUED</code>를 쓴다.
+        </p>
+      </article>
+
+    </div>
+  </section>
+
+  <!-- ─────────────── 네 게이트 ─────────────── -->
+  <section>
+    <h2>네 게이트</h2>
+    <p class="lede">
+      이 스키마가 존재하는 이유. 네 값을 하나로 접으면 “왜 개입하지 않았는가”에 답할 수 없다.
+      각 게이트는 <em>막았는가</em>와 <em>왜 막았는가</em>를 서로 다른 열에 남긴다.
+    </p>
+
+    <div class="gates">
+      <div class="gate">
+        <span class="gate-n">게이트 1</span>
+        <h3>범주</h3>
+        <span class="field">var_reviewable · var_category</span>
+        <p>판본이 이 사건 유형을 검토 대상으로 여는가. 대회 채택 옵션은 별개 축이다.</p>
+        <span class="why">↳ var_not_reviewable_reason<br>OUTSIDE_REVIEWABLE_CATEGORIES<br>COMPETITION_OPTION_NOT_ADOPTED</span>
+      </div>
+      <div class="gate">
+        <span class="gate-n">게이트 2</span>
+        <h3>시한</h3>
+        <span class="field">var_within_time_window</span>
+        <p>창이 아직 열려 있는가. <strong>닫는 유일한 조건은 재개</strong>다. 주심이 판정을 내렸다는 사실은 전제이지 차단 조건이 아니다.</p>
+        <span class="why">↳ var_window_closed_reason PLAY_RESTARTED<br>↳ var_window_exception ≠ NONE 이면 재개해도 열림</span>
+      </div>
+      <div class="gate">
+        <span class="gate-n">게이트 3</span>
+        <h3>문턱</h3>
+        <span class="field">var_threshold_met</span>
+        <p>명백한 오심인가. 불리언이 아니다 — 강도가 속도 게이트에 걸리면 <code>UNDETERMINED</code>가 정직한 값이다.</p>
+        <span class="why">↳ MET · NOT_MET · UNDETERMINED</span>
+      </div>
+      <div class="gate">
+        <span class="gate-n">게이트 4</span>
+        <h3>절차</h3>
+        <span class="field">var_review_procedure</span>
+        <p>개입한다면 어느 절차인가. 사실적·주관적 구분에서만 나오며 <strong>문턱과 무관</strong>하다.</p>
+        <span class="why">↳ OFR (주관적) · VAR_ONLY (사실적) · NONE</span>
+      </div>
+    </div>
+
+    <p class="gate-note">
+      <strong>동시에 성립해야 하는 상태</strong> —
+      <code>var_reviewable = true</code> 이면서 <code>var_intervention = NO_INTERVENTION</code>.
+      검토 대상이지만 문턱을 넘지 않아 개입하지 않은 경우다.
+      이 둘을 한 값으로 합치면 “검토 대상이 아니었다”와 “검토했지만 개입할 정도가 아니었다”가
+      같은 문장이 된다. 픽스처 <code>var-19</code>가 이걸 검사한다.
+    </p>
+  </section>
+
+  <!-- ─────────────── 재현 체인 ─────────────── -->
+  <section>
+    <h2>재현 체인</h2>
+    <p class="lede">
+      판정 결과 한 행에서 거슬러 올라가면 어떤 사실값을, 어느 규정 판본으로, 어느 엔진 버전이
+      평가했는지가 전부 나온다. 이 네 표의 행은 갱신하지 않고 새 행으로 쌓인다.
+    </p>
+
+    <div class="diagram">
+      <pre class="mermaid">
+erDiagram
+    anonymous_sessions ||--o{ analyses : "소유 경계"
+    anonymous_sessions ||--o{ video_assets : ""
+    anonymous_sessions ||--o{ idempotency_records : ""
+    idempotency_records }o--|| analyses : "중복 생성 차단"
+    video_assets ||--o{ analyses : ""
+    matches ||--o{ analyses : ""
+    clubs ||--o{ matches : "홈·원정"
+    analyses ||--o{ processing_jobs : ""
+    video_assets ||--o{ processing_jobs : ""
+    analyses ||--o{ shots : ""
+    analyses ||--o{ incident_candidates : ""
+    analyses ||--o{ evidence_assets : ""
+    incident_candidates ||--o{ fact_revisions : "덮어쓰지 않음"
+    fact_revisions ||--o{ fact_revision_shots : "근거 샷"
+    shots ||--o{ fact_revision_shots : ""
+    incident_candidates ||--o{ evidence_assets : ""
+    incident_candidates ||--o{ decision_results : ""
+    fact_revisions ||--o{ decision_results : "무엇을 봤는가"
+    competition_rule_versions ||--o{ decision_results : "어느 판본인가"
+    competition_rule_versions ||--o{ analyses : ""
+    incident_candidates ||--o{ official_verdicts : "외부 발표"
+      </pre>
+    </div>
+
+    <p class="cluster-label">체인의 네 표</p>
+    <div class="tables">
+
+      <article class="tbl">
+        <header>
+          <h3>incident_candidates</h3>
+          <span class="tag ok">확인</span>
+        </header>
+        <p>전체 영상에서 찾은 판정 확인 후보. 탐지 신뢰도가 낮아도 행을 만들고 화면에 표시한다.</p>
+        <div class="cols">
+          <div class="col key"><span class="n">id</span><span class="t">uuid pk</span></div>
+          <div class="col key"><span class="n">analysis_id</span><span class="t">→ analyses</span></div>
+          <div class="col"><span class="n">candidate_index</span><span class="t">int</span></div>
+          <div class="col gate"><span class="n">review_scenario</span><span class="t">enum · 범주 입력</span></div>
+          <div class="col"><span class="n">start_ms · end_ms</span><span class="t">int</span></div>
+          <div class="col"><span class="n">broadcast_clock</span><span class="t">varchar</span></div>
+          <div class="col"><span class="n">detection_confidence</span><span class="t">real</span></div>
+          <div class="col gate"><span class="n">camera_sufficiency</span><span class="t">enum · 각도 게이트</span></div>
+          <div class="col key"><span class="n">current_fact_revision_id</span><span class="t">→ fact_revisions</span></div>
+          <div class="col"><span class="n">review_status</span><span class="t">enum</span></div>
+          <div class="col"><span class="n">created_at</span><span class="t">timestamptz</span></div>
+        </div>
+        <p class="col-note">
+          <code>review_scenario</code>는 중계에서 <em>관측한</em> 판정 상황이지 VAR 범주가 아니다.
+          범주로 가는 매핑은 판본 데이터에 있다 — <code>SECOND_CAUTION</code>이 2025/26 에선
+          어디에도 닿지 않고 2026/27 에선 <code>RED_CARD</code>에 닿는 것이 그 매핑의 전부다.
+        </p>
+        <div class="rule-strip">코드에 매핑을 두면 판본 교체가 코드 수정이 된다.</div>
+      </article>
+
+      <article class="tbl">
+        <header>
+          <h3>fact_revisions</h3>
+          <span class="tag ok">확인</span>
+        </header>
+        <p>관찰 사실은 덮어쓰지 않고 Revision 으로 쌓는다. 현재 Revision 은 후보 행이 가리킨다.</p>
+        <div class="cols">
+          <div class="col key"><span class="n">id</span><span class="t">uuid pk</span></div>
+          <div class="col key"><span class="n">analysis_id</span><span class="t">→ analyses</span></div>
+          <div class="col key"><span class="n">incident_candidate_id</span><span class="t">→ incident_candidates</span></div>
+          <div class="col"><span class="n">revision</span><span class="t">int</span></div>
+          <div class="col gate"><span class="n">facts</span><span class="t">jsonb · 게이트 입력</span></div>
+          <div class="col"><span class="n">fact_schema_version</span><span class="t">int</span></div>
+          <div class="col"><span class="n">source</span><span class="t">MODEL·USER·CURATOR</span></div>
+          <div class="col"><span class="n">extraction_confidence</span><span class="t">real</span></div>
+          <div class="col"><span class="n">model_version</span><span class="t">varchar</span></div>
+          <div class="col"><span class="n">created_at</span><span class="t">timestamptz</span></div>
+        </div>
+        <p class="col-note">
+          <code>facts</code> 안에 게이트가 읽는 값이 함께 들어간다 —
+          <code>referee_decision_type</code> · <code>decision_nature</code> ·
+          <code>error_magnitude</code> · <code>contact_type</code> ·
+          <code>observed_at_speed</code>. 샷 참조는 JSON 배열이 아니라
+          <code>fact_revision_shots</code> 연결 표에 저장한다.
+        </p>
+        <div class="rule-strip"><code>decision_nature</code>는 <code>error_magnitude</code>에 영향을 주지 않는다. 서로를 읽으면 게이트 분리가 무너진다.</div>
+      </article>
+
+      <article class="tbl">
+        <header>
+          <h3>fact_revision_shots</h3>
+          <span class="tag ok">확정</span>
+        </header>
+        <p>사실 Revision과 근거 샷을 연결한다. Rule Engine 입력으로 읽을 때만 <code>Observed.shotIds</code> 배열로 복원한다.</p>
+        <div class="cols">
+          <div class="col key"><span class="n">fact_revision_id</span><span class="t">uuid pk · → fact_revisions</span></div>
+          <div class="col key"><span class="n">shot_id</span><span class="t">uuid pk · → shots</span></div>
+          <div class="col key"><span class="n">analysis_id</span><span class="t">복합 FK 무결성 키</span></div>
+        </div>
+        <div class="rule-strip">다른 분석의 샷을 사실값 근거로 연결하는 저장은 복합 FK가 거부한다.</div>
+      </article>
+
+      <article class="tbl">
+        <header>
+          <h3>decision_results</h3>
+          <span class="tag ok">확정</span>
+        </header>
+        <p>한 번 쓰면 고치지 않는다. 사실값이 바뀌면 새 <code>fact_revisions</code> 행과 새 결과 행을 만든다.</p>
+        <div class="cols">
+          <div class="col key"><span class="n">id</span><span class="t">uuid pk</span></div>
+          <div class="col key"><span class="n">incident_candidate_id</span><span class="t">uniq ①</span></div>
+          <div class="col key"><span class="n">fact_revision_id</span><span class="t">uniq ①</span></div>
+          <div class="col key"><span class="n">applied_rule_version_id</span><span class="t">uniq ①</span></div>
+          <div class="col"><span class="n">observed_restart_type</span><span class="t">enum · 11값</span></div>
+          <div class="col"><span class="n">observed_restart_beneficiary</span><span class="t">enum</span></div>
+          <div class="col"><span class="n">observed_card</span><span class="t">disciplinary_action</span></div>
+          <div class="col"><span class="n">observed_goal_decision</span><span class="t">enum</span></div>
+          <div class="col"><span class="n">observed_source</span><span class="t">enum</span></div>
+          <div class="col"><span class="n">foul_decision</span><span class="t">enum · 5값</span></div>
+          <div class="col"><span class="n">severity</span><span class="t">enum · 3값</span></div>
+          <div class="col"><span class="n">goal_decision</span><span class="t">관측과 공유</span></div>
+          <div class="col"><span class="n">restart_type</span><span class="t">관측과 공유 · 11값</span></div>
+          <div class="col"><span class="n">disciplinary_action</span><span class="t">enum · 4값</span></div>
+          <div class="col"><span class="n">decision_match</span><span class="t">enum</span></div>
+          <div class="col gate"><span class="n">var_reviewable · var_category</span><span class="t">게이트 1</span></div>
+          <div class="col gate"><span class="n">var_within_time_window</span><span class="t">게이트 2</span></div>
+          <div class="col gate"><span class="n">var_threshold_met</span><span class="t">게이트 3</span></div>
+          <div class="col gate"><span class="n">var_review_procedure</span><span class="t">게이트 4</span></div>
+          <div class="col"><span class="n">var_intervention</span><span class="t">enum</span></div>
+          <div class="col"><span class="n">var_no_intervention_reason</span><span class="t">어느 게이트가</span></div>
+          <div class="col"><span class="n">var_not_reviewable_reason</span><span class="t">왜</span></div>
+          <div class="col"><span class="n">var_window_closed_reason</span><span class="t">왜</span></div>
+          <div class="col"><span class="n">var_window_exception</span><span class="t">enum</span></div>
+          <div class="col"><span class="n">judgment_confidence_level</span><span class="t">varchar</span></div>
+          <div class="col"><span class="n">inconclusive_reason</span><span class="t">enum · 4값</span></div>
+          <div class="col key"><span class="n">fact_signature</span><span class="t">bytea · 캐시 키</span></div>
+          <div class="col key"><span class="n">rule_engine_version</span><span class="t">uniq ①</span></div>
+          <div class="col"><span class="n">evaluation_schema_version</span><span class="t">int</span></div>
+          <div class="col"><span class="n">evaluation_snapshot</span><span class="t">jsonb</span></div>
+          <div class="col key"><span class="n">citations</span><span class="t">jsonb · ≥ 1</span></div>
+          <div class="col"><span class="n">cited_laws</span><span class="t">text[] generated</span></div>
+          <div class="col"><span class="n">created_at</span><span class="t">갱신 시각 없음</span></div>
+        </div>
+        <p class="col-note">
+          ① <code>(incident_candidate_id, fact_revision_id, applied_rule_version_id,
+          rule_engine_version)</code> 유일 제약. 같은 입력으로 다시 평가하면 기존 행을 반환한다.
+        </p>
+        <div class="rule-strip"><code>citations JSONB NOT NULL CHECK (jsonb_array_length(citations) &gt;= 1)</code> — 조항 없이 결론만 저장하는 경로를 만들지 않는다.</div>
+      </article>
+
+      <article class="tbl">
+        <header>
+          <h3>rules · competition_rule_versions</h3>
+          <span class="tag ok">확인</span>
+        </header>
+        <p>조항 단위 인용과 출처만 저장한다. 규정 원문 전문은 저장하지 않는다.</p>
+        <div class="cols">
+          <div class="col key"><span class="n">rules.id</span><span class="t">uuid pk</span></div>
+          <div class="col"><span class="n">authority</span><span class="t">IFAB·KFA·KLEAGUE</span></div>
+          <div class="col"><span class="n">edition · law · section</span><span class="t">varchar</span></div>
+          <div class="col"><span class="n">concept · revision</span><span class="t">varchar·int</span></div>
+          <div class="col"><span class="n">content_sha256</span><span class="t">bytea</span></div>
+          <div class="col"><span class="n">original_text</span><span class="t">조항 단위</span></div>
+          <div class="col unknown"><span class="n">official_korean</span><span class="t">KFA 대조판 미확보</span></div>
+          <div class="col"><span class="n">plain_korean</span><span class="t">text</span></div>
+          <div class="col"><span class="n">source_page · source_url</span><span class="t">varchar·text</span></div>
+          <div class="col"><span class="n">review_status</span><span class="t">varchar</span></div>
+        </div>
+        <p class="col-note">
+          <code>competition_rule_versions</code>의 <code>verification_status</code>는
+          README 3절 기준 현재 <code>INFERRED</code>다. 대회 → 판본 매핑을 코드로 굳히지 않고
+          1단계에서는 호출자가 판본 id 를 직접 준다.
+        </p>
+        <div class="rule-strip">발행된 <code>rules</code> 행은 수정하지 않는다. 교정은 새 revision 으로 만든다.</div>
+      </article>
+
+    </div>
+  </section>
+
+  <!-- ─────────────── 나머지 표 ─────────────── -->
+  <section>
+    <h2>나머지 표</h2>
+    <p class="lede">
+      1단계에는 등장하지 않는다. 2단계 업로드 슬라이스와 3단계 파이프라인이 채운다.
+    </p>
+
+    <p class="cluster-label">세션과 업로드 · 2단계</p>
+    <div class="tables">
+      <article class="tbl">
+        <header><h3>anonymous_sessions</h3><span class="tag ok">확인</span></header>
+        <p>계정이 아니라 결과 접근 경계. 원문 토큰은 저장하지 않고 해시만 남긴다.</p>
+        <div class="cols">
+          <div class="col key"><span class="n">token_hash</span><span class="t">bytea uniq</span></div>
+          <div class="col"><span class="n">created_at · last_seen_at</span><span class="t">timestamptz</span></div>
+          <div class="col"><span class="n">expires_at · revoked_at</span><span class="t">timestamptz</span></div>
+        </div>
+        <div class="rule-strip">UUID 만으로 권한을 대신하지 않는다.</div>
+      </article>
+
+      <article class="tbl">
+        <header><h3>idempotency_records</h3><span class="tag ok">확인</span></header>
+        <p>분석 생성과 사실 보정의 중복 요청이 같은 결과 자원으로 수렴하게 한다.</p>
+        <div class="cols">
+          <div class="col key"><span class="n">(session, operation, key_hash)</span><span class="t">uniq</span></div>
+          <div class="col"><span class="n">request_hash</span><span class="t">정규화 본문 해시</span></div>
+          <div class="col"><span class="n">analysis_id</span><span class="t">→ analyses</span></div>
+          <div class="col"><span class="n">candidate · fact_revision</span><span class="t">PATCH_FACTS 반환값</span></div>
+        </div>
+        <div class="rule-strip">본문 해시가 다르면 <code>409 IDEMPOTENCY_KEY_REUSED</code>.</div>
+      </article>
+
+      <article class="tbl">
+        <header><h3>video_assets</h3><span class="tag ok">확인</span></header>
+        <p>바이트는 Private Object Storage 에. 분석 종료 뒤 바이트를 먼저 지우고 메타데이터는 Analysis TTL까지 유지한다.</p>
+        <div class="cols">
+          <div class="col"><span class="n">object_key</span><span class="t">서버 생성</span></div>
+          <div class="col"><span class="n">content_sha256 · size_bytes</span><span class="t">bytea·bigint</span></div>
+          <div class="col"><span class="n">duration_ms · width · height</span><span class="t">int</span></div>
+          <div class="col"><span class="n">status</span><span class="t">enum · 7값</span></div>
+          <div class="col"><span class="n">rights_confirmed_at</span><span class="t">timestamptz</span></div>
+          <div class="col"><span class="n">object_deleted_at</span><span class="t">바이트 삭제 완료</span></div>
+        </div>
+        <div class="rule-strip">클라이언트가 보낸 파일명과 Content Type 을 신뢰하지 않는다. magic bytes 와 ffprobe 로 검증.</div>
+      </article>
+
+      <article class="tbl">
+        <header><h3>analyses</h3><span class="tag ok">확인</span></header>
+        <p>업로드 영상 하나를 처리하는 Aggregate.</p>
+        <div class="cols">
+          <div class="col"><span class="n">retention_class</span><span class="t">TEMPORARY·CURATED</span></div>
+          <div class="col"><span class="n">source_url · source_platform</span><span class="t">선택 메타데이터</span></div>
+          <div class="col"><span class="n">source_fingerprint</span><span class="t">bytea</span></div>
+          <div class="col key"><span class="n">video_asset_id</span><span class="t">TEMPORARY 필수 · uniq</span></div>
+          <div class="col key"><span class="n">applied_rule_version_id</span><span class="t">match_date 기준 확정</span></div>
+          <div class="col"><span class="n">pipeline_version</span><span class="t">varchar</span></div>
+          <div class="col"><span class="n">expires_at</span><span class="t">TEMPORARY 는 필수</span></div>
+        </div>
+        <div class="rule-strip">공개 API 가 만드는 분석은 항상 <code>TEMPORARY</code> · 24시간 TTL. 사용자 업로드를 자동으로 <code>CURATED</code>로 바꾸지 않는다.</div>
+      </article>
+    </div>
+
+    <p class="cluster-label">파이프라인 · 3단계</p>
+    <div class="tables">
+      <article class="tbl">
+        <header><h3>processing_jobs</h3><span class="tag ok">확인</span></header>
+        <p>MVP 의 PostgreSQL 작업 큐. <code>FOR UPDATE SKIP LOCKED</code>로 한 행씩 선점한다.</p>
+        <div class="cols">
+          <div class="col"><span class="n">job_type</span><span class="t">enum · 4값</span></div>
+          <div class="col"><span class="n">job_revision · attempt</span><span class="t">int</span></div>
+          <div class="col"><span class="n">lease_owner · lease_token_hash</span><span class="t">varchar·bytea</span></div>
+          <div class="col"><span class="n">lease_until · next_attempt_at</span><span class="t">timestamptz</span></div>
+          <div class="col key"><span class="n">(target, job_type, payload_version)</span><span class="t">uniq</span></div>
+        </div>
+        <div class="rule-strip">두 대상이 동시에 있거나 필요한 대상이 없으면 CHECK 로 거부한다.</div>
+      </article>
+
+      <article class="tbl">
+        <header><h3>shots</h3><span class="tag ok">확인</span></header>
+        <p>샷 분할 결과. <code>fact_revision_shots</code>가 사실값 근거와 이 표를 연결한다.</p>
+        <div class="cols">
+          <div class="col gate"><span class="n">playback_speed</span><span class="t">NORMAL·SLOW·UNKNOWN</span></div>
+          <div class="col"><span class="n">is_replay</span><span class="t">boolean</span></div>
+          <div class="col"><span class="n">camera_angle_label</span><span class="t">varchar</span></div>
+        </div>
+        <div class="rule-strip"><code>playback_speed</code>가 <code>observed_at_speed</code>의 근거다. 속도 게이트가 이 값을 읽는다.</div>
+      </article>
+
+      <article class="tbl">
+        <header><h3>evidence_assets</h3><span class="tag ok">확인</span></header>
+        <p>사용자에게 보여줄 프레임과 클립.</p>
+        <div class="cols">
+          <div class="col"><span class="n">kind</span><span class="t">FRAME·CLIP</span></div>
+          <div class="col"><span class="n">object_key</span><span class="t">응답에 포함하지 않음</span></div>
+          <div class="col"><span class="n">expires_at · object_deleted_at</span><span class="t">timestamptz</span></div>
+        </div>
+        <div class="rule-strip">삭제 완료 전에도 만료된 미디어의 프록시 응답은 차단한다.</div>
+      </article>
+
+      <article class="tbl">
+        <header><h3>official_verdicts</h3><span class="tag ok">확인</span></header>
+        <p>외부 기관이 그 장면을 어떻게 판단했는지. 시스템 판정과 별도로 표시한다.</p>
+        <div class="cols">
+          <div class="col"><span class="n">announced_by</span><span class="t">발표 주체</span></div>
+          <div class="col"><span class="n">announced_by_name</span><span class="t">발표문의 기관명</span></div>
+          <div class="col"><span class="n">verdict</span><span class="t">CORRECT·INCORRECT·NO_COMMENT</span></div>
+          <div class="col"><span class="n">status</span><span class="t">EXTERNAL_OPINION</span></div>
+        </div>
+        <div class="rule-strip">심판 개인 식별 정보는 <code>quote</code>에도 넣지 않는다. 발표문에 이름이 있으면 제거하고 저장한다.</div>
+      </article>
+    </div>
+
+    <p class="cluster-label">경기와 구단 · MVP 최소 범위</p>
+    <div class="tables">
+      <article class="tbl">
+        <header><h3>matches</h3><span class="tag ok">확인</span></header>
+        <p>경기 한 건. <code>match_date</code>가 적용 판본을 확정하는 기준이다.</p>
+        <div class="cols">
+          <div class="col"><span class="n">competition · season</span><span class="t">varchar</span></div>
+          <div class="col key"><span class="n">match_date</span><span class="t">판본 확정 기준</span></div>
+          <div class="col"><span class="n">home_club_id · away_club_id</span><span class="t">→ clubs</span></div>
+          <div class="col"><span class="n">score_home · score_away</span><span class="t">smallint</span></div>
+        </div>
+      </article>
+
+      <article class="tbl">
+        <header><h3>clubs</h3><span class="tag ok">MVP</span></header>
+        <p>경기 선택과 결과 표시용 구단 기준 데이터.</p>
+        <div class="cols">
+          <div class="col key"><span class="n">id</span><span class="t">uuid pk</span></div>
+          <div class="col"><span class="n">canonical_name</span><span class="t">text</span></div>
+          <div class="col key"><span class="n">short_code</span><span class="t">varchar uniq · 예 SUW</span></div>
+        </div>
+        <div class="rule-strip">공식 엠블럼과 구단명 이력과 시즌별 소속은 MVP 밖의 확장 마이그레이션으로 분리한다.</div>
+      </article>
+    </div>
+  </section>
+
+  <!-- ─────────────── DBML ─────────────── -->
+  <section>
+    <h2>DBML 전문</h2>
+    <div class="source-head">
+      <p class="lede" style="margin:0">
+        <code>docs/02-design/schema.dbml</code> — VS Code의 DBML Canvas 확장으로 관계를 확인한다.
+      </p>
+      <span class="hint" id="selhint">블록을 클릭하면 전체가 선택된다</span>
+    </div>
+    <pre class="dbml" id="dbml" tabindex="0">// Replay_Lab 데이터 모델
+// 출처: README 8절 (데이터 모델 초안) · 12절 (구단 데이터)
+//
+// 표기 규율 (README 2절 근거 규율)
+//   [확인]  README 8절에 열이나 값이 그대로 적혀 있음
+//   [추론]  README 다른 절의 서술에서 끌어냄 · 근거 절을 함께 적음
+//   [미정]  README가 말하지 않음 · 채우지 않고 질문으로 남김
+
+Project replay_lab {
+  database_type: 'PostgreSQL'
+}
+
+// ── 열거형 (37) ─────────────────────────────────────
+
+enum review_scenario {
+  GOAL_DISALLOWED
+  GOAL_AWARDED
+  PENALTY_NOT_GIVEN
+  PENALTY_GIVEN
+  SENDING_OFF_NOT_GIVEN
+  CARD_SHOWN
+  SECOND_CAUTION
+  CORNER_KICK_AWARDED
+  OTHER [note: '버리는 값이 아님. 엔진이 OUT_OF_SCOPE 를 반환하는 입구']
+}
+
+enum camera_sufficiency { LOW MEDIUM HIGH }
+enum playback_speed { NORMAL SLOW UNKNOWN }
+enum severity {
+  CARELESS        [note: '징계 없음']
+  RECKLESS        [note: '경고']
+  EXCESSIVE_FORCE [note: '퇴장']
+}
+
+// VAR 네 게이트 — 합치지 않는다
+enum var_category {
+  GOAL_NO_GOAL
+  PENALTY_NO_PENALTY
+  RED_CARD
+  MISTAKEN_IDENTITY
+  CORNER_KICK [note: '2026/27 신설 + competition option']
+  NONE
+}
+enum var_threshold_result {
+  MET
+  NOT_MET
+  UNDETERMINED [note: '불리언이 아닌 이유: 강도가 속도 게이트에 걸리면 이 값이 정직하다']
+}
+enum var_intervention { NO_INTERVENTION OVERTURNED CONFIRMED }
+enum var_no_intervention_reason {
+  NOT_REVIEWABLE    [note: '범주 게이트']
+  TOO_LATE          [note: '시한 게이트']
+  THRESHOLD_NOT_MET [note: '문턱 게이트']
+}
+enum var_not_reviewable_reason {
+  OUTSIDE_REVIEWABLE_CATEGORIES  [note: '판본에 그 범주가 없음']
+  COMPETITION_OPTION_NOT_ADOPTED [note: '판본엔 있으나 대회가 채택 안 함']
+}
+enum var_window_closed_reason {
+  PLAY_RESTARTED [note: '검토 창을 닫는 유일한 조건. 원심 선언은 차단 조건이 아니다']
+}
+// IFAB VAR 1.10 / Law 5.3 원문이 다섯을 든다. README 8절 초안의 두 값으로는
+// "침 뱉기로 재개 후 퇴장"을 표현할 수 없어 원문이 나눈 만큼으로 넓혔다.
+enum var_window_exception {
+  MISTAKEN_IDENTITY
+  VIOLENT_CONDUCT
+  BITING_OR_SPITTING
+  OFFENSIVE_LANGUAGE_OR_ACTION
+  NONE
+}
+
+// IFAB Law 12.3 「Sending-off offences」 2025/26 p.117 아홉 항목을 묶은 것.
+// DOGSO 세 항목은 퇴장 사유로는 하나. biting/spitting은 원문이 한 항목.
+// 열이 아니라 fact_revisions.facts 안의 값이다.
+enum send_off_category {
+  DOGSO
+  SERIOUS_FOUL_PLAY
+  BITING_OR_SPITTING
+  VIOLENT_CONDUCT
+  OFFENSIVE_LANGUAGE_OR_ACTION
+  SECOND_CAUTION
+  ENTERING_VOR
+  NONE [note: '퇴장 사안이 아님']
+}
+
+// observed_card 와 disciplinary_action 이 함께 쓴다.
+// 엔진은 SECOND_CAUTION 을 내지 않는다 — 이 사건 하나로는 알 수 없다.
+enum disciplinary_action { NONE CAUTION SECOND_CAUTION SEND_OFF }
+
+enum foul_decision { FOUL NO_FOUL NORMAL_CONTACT INCONCLUSIVE OUT_OF_SCOPE }
+enum var_review_procedure {
+  OFR      [note: '주관적 판정']
+  VAR_ONLY [note: '사실적 판정']
+  NONE
+}
+enum inconclusive_reason {
+  CAMERA_INSUFFICIENT   [note: '각도 부족']
+  SEVERITY_UNDETERMINED [note: '강도 특정 불가']
+  SLOW_MOTION_ONLY      [note: '정상 속도 관측 없음 — 속도 게이트']
+  OUT_OF_SCOPE          [note: '규정에 조문 없음. 영상이 부족한 게 아니다']
+}
+
+// facts JSONB 안의 값 — 열이 아니지만 게이트가 읽는다
+enum referee_decision_type {
+  NO_FOUL
+  FOUL_AGAINST_ATTACKER
+  FOUL_AGAINST_DEFENDER
+  PLAY_ON
+  UNKNOWN [note: '이 값이 UNKNOWN 이 아니라는 사실이 VAR 검토의 전제']
+}
+enum decision_nature { FACTUAL SUBJECTIVE }
+enum error_magnitude { CLEAR_AND_OBVIOUS NOT_CLEAR_AND_OBVIOUS UNDETERMINED }
+enum contact_type { PUSHING CHARGING HANDBALL TACKLE OTHER }
+// 불리언 두 개도 facts 안에 있다 — 열거형이 아니지만 게이트가 읽는다
+//   mistaken_identity       주심이 다른 선수에게 카드를 줬는가 (VAR 1.1.d)
+//                           → MISTAKEN_IDENTITY 범주와 재개 후 예외의 입구
+//   serious_missed_incident 주심단이 사건 자체를 보지 못했는가
+//                           → 문턱 게이트가 error_magnitude 와 OR 로 읽는다
+
+// ── 재현 체인 ───────────────────────────────────────
+
+Table incident_candidates {
+  id uuid [pk]
+  analysis_id uuid [not null]
+  candidate_index integer [not null]
+  review_scenario review_scenario [not null]
+  start_ms integer [not null]
+  end_ms integer [not null]
+  broadcast_clock varchar
+  detection_confidence real
+  camera_sufficiency camera_sufficiency [not null]
+  current_fact_revision_id uuid
+  review_status varchar [not null]
+  created_at timestamptz [not null]
+}
+
+Table fact_revisions {
+  id uuid [pk]
+  incident_candidate_id uuid [not null]
+  revision integer [not null]
+  facts jsonb [not null]
+  fact_schema_version integer [not null]
+  source varchar [not null]
+  extraction_confidence real
+  model_version varchar
+  created_at timestamptz [not null]
+
+  indexes { (incident_candidate_id, revision) [unique] }
+}
+
+Table decision_results {
+  id uuid [pk]
+  analysis_id uuid [not null]
+  incident_candidate_id uuid [not null]
+  fact_revision_id uuid [not null]
+  applied_rule_version_id uuid [not null]
+
+  observed_restart_type varchar [not null]
+  observed_restart_beneficiary varchar [not null]
+  observed_card disciplinary_action
+  observed_goal_decision varchar [not null]
+  observed_source varchar        [not null]
+
+  // 관측 열과 같은 어휘를 쓴다. 두 벌을 두면 decision_match 비교가
+  // 값 변환을 먼저 해야 하고, 그 변환표가 어긋날 수 있는 자리가 된다.
+  foul_decision foul_decision
+  severity severity
+  goal_decision observed_goal_decision
+  restart_type observed_restart_type
+  disciplinary_action disciplinary_action
+
+  decision_match varchar [not null]
+
+  var_reviewable boolean [not null]
+  var_category var_category [not null]
+  var_within_time_window boolean [not null]
+  var_threshold_met var_threshold_result [not null]
+  var_intervention var_intervention [not null]
+  var_no_intervention_reason var_no_intervention_reason
+  var_not_reviewable_reason var_not_reviewable_reason
+  var_window_closed_reason var_window_closed_reason
+  var_window_exception var_window_exception [not null]
+  var_review_procedure var_review_procedure [not null]
+
+  judgment_confidence_level varchar [not null]
+  inconclusive_reason inconclusive_reason
+  fact_signature bytea [not null]
+  rule_engine_version varchar [not null]
+  evaluation_schema_version integer [not null]
+  evaluation_snapshot jsonb [not null]
+
+  citations jsonb [not null, note: 'CHECK jsonb_array_length(citations) >= 1']
+  cited_laws "text[]" [note: 'GENERATED ALWAYS AS (...) STORED']
+  created_at timestamptz [not null, note: '갱신 시각은 두지 않는다']
+
+  indexes {
+    (incident_candidate_id, fact_revision_id, applied_rule_version_id, rule_engine_version) [unique]
+    (fact_signature, applied_rule_version_id, rule_engine_version)
+  }
+}
+
+Table rules {
+  id uuid [pk]
+  authority varchar [not null]
+  edition varchar [not null]
+  law varchar [not null]
+  section varchar [not null]
+  concept varchar [not null]
+  revision integer [not null]
+  content_sha256 bytea [not null]
+  original_text text
+  official_korean text [note: 'KFA 대조판 확보 전까지 비워 둔다']
+  plain_korean text
+  source_page varchar
+  source_url text
+  review_status varchar [not null]
+}
+
+Table competition_rule_versions {
+  id uuid [pk]
+  competition varchar [not null]
+  season varchar [not null]
+  effective_from date [not null]
+  effective_to date
+  ifab_edition varchar [not null]
+  source_document text
+  verification_status varchar [not null, note: '현재 INFERRED']
+}
+
+// ── 나머지 10표는 docs/02-design/schema.dbml 참조 ──
+//    anonymous_sessions · idempotency_records · video_assets
+//    matches · analyses · processing_jobs · shots
+//    evidence_assets · official_verdicts
+//    clubs · fact_revision_shots
+
+Ref: incident_candidates.current_fact_revision_id - fact_revisions.id
+Ref: fact_revisions.incident_candidate_id > incident_candidates.id
+Ref: decision_results.incident_candidate_id > incident_candidates.id
+Ref: decision_results.fact_revision_id > fact_revisions.id
+Ref: decision_results.applied_rule_version_id > competition_rule_versions.id
+</pre>
+  </section>
+
+  <footer>
+    <span>Replay_Lab · 1단계 규정 데이터와 Rule Engine</span>
+    <span>근거: README 8절 · 12절 · 13절</span>
+    <span>DB 는 2단계에 만든다 — 1단계 산출물은 순수 함수와 JSON</span>
+  </footer>
+
+</div>
+
+<script>
+  (function () {
+    var block = document.getElementById('dbml');
+    var hint = document.getElementById('selhint');
+    if (!block) return;
+    block.addEventListener('click', function () {
+      var range = document.createRange();
+      range.selectNodeContents(block);
+      var sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      if (hint) hint.textContent = '선택됨 — 복사 단축키로 가져가면 된다';
+    });
+  })();
+</script>

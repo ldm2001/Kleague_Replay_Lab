@@ -1,0 +1,258 @@
+{
+  "suite": "var-assessment",
+  "defaults": { "ruleVersion": "ifab-2025-26", "competitionOptions": {} },
+  "baseline": {
+    "reviewScenario": "PENALTY_NOT_GIVEN",
+    "restartOccurred": false,
+    "sendOffCategory": "NONE",
+    "mistakenIdentity": false,
+    "seriousMissedIncident": false,
+    "decisionNature": "SUBJECTIVE",
+    "errorMagnitude": "CLEAR_AND_OBVIOUS"
+  },
+  "cases": [
+    {
+      "id": "var-01",
+      "gate": "CATEGORY",
+      "concern": "검토 가능 범주에 해당하면 네 게이트가 모두 열린 상태로 나온다",
+      "note": "이 스위트의 기준선. 나머지 케이스는 여기서 값 하나씩만 뒤집는다.",
+      "given": { "facts": {} },
+      "expect": {
+        "reviewable": true,
+        "category": "PENALTY_NO_PENALTY",
+        "withinTimeWindow": true,
+        "thresholdMet": "MET",
+        "reviewProcedure": "OFR",
+        "intervention": "OVERTURNED",
+        "noInterventionReason": null
+      }
+    },
+    {
+      "id": "var-02",
+      "gate": "CATEGORY",
+      "concern": "범주 밖이면 오심의 정도와 무관하게 검토 불가다",
+      "note": "범주 게이트를 건너뛰면 '명백한 오심인데 VAR가 왜 개입 안 했나'라는 잘못된 출력이 나온다.",
+      "given": { "facts": { "reviewScenario": "OTHER" } },
+      "expect": {
+        "reviewable": false,
+        "category": "NONE",
+        "notReviewableReason": "OUTSIDE_REVIEWABLE_CATEGORIES",
+        "noInterventionReason": "NOT_REVIEWABLE",
+        "reviewProcedure": "NONE"
+      }
+    },
+    {
+      "id": "var-03",
+      "gate": "TIME_WINDOW",
+      "concern": "재개되면 검토 창이 닫힌다",
+      "note": "var-04와 restartOccurred가 같고 sendOffCategory만 다르다. 두 결과가 같아지면 예외 목록이 읽히지 않고 있는 것이다.",
+      "given": {
+        "facts": {
+          "reviewScenario": "SENDING_OFF_NOT_GIVEN",
+          "restartOccurred": true,
+          "sendOffCategory": "SERIOUS_FOUL_PLAY"
+        }
+      },
+      "expect": {
+        "withinTimeWindow": false,
+        "windowClosedReason": "PLAY_RESTARTED",
+        "windowException": "NONE",
+        "noInterventionReason": "TOO_LATE"
+      }
+    },
+    {
+      "id": "var-04",
+      "gate": "TIME_WINDOW",
+      "concern": "폭력 행위 관련 퇴장은 재개 뒤에도 창이 열려 있다",
+      "note": "var-03의 짝. windowException이 NONE이 아니면 재개 여부와 무관하게 withinTimeWindow가 참이어야 한다.",
+      "given": {
+        "facts": {
+          "reviewScenario": "SENDING_OFF_NOT_GIVEN",
+          "restartOccurred": true,
+          "sendOffCategory": "VIOLENT_CONDUCT"
+        }
+      },
+      "expect": {
+        "withinTimeWindow": true,
+        "windowClosedReason": null,
+        "windowException": "VIOLENT_CONDUCT"
+      }
+    },
+    {
+      "id": "var-05",
+      "gate": "TIME_WINDOW",
+      "concern": "선수 확인 오류도 재개 뒤 예외다",
+      "note": "예외가 퇴장 사유 목록에만 걸리면 선수 확인 오류가 빠진다. 두 예외 경로가 서로 다른 필드에서 온다는 것을 고정한다. 선수 확인 오류를 reviewScenario 값으로 두지 않는 이유: 그것은 사건의 종류가 아니라 카드 수여자의 속성이고, 사건은 여전히 '카드가 나왔다'이다.",
+      "given": { "facts": { "reviewScenario": "CARD_SHOWN", "restartOccurred": true, "mistakenIdentity": true } },
+      "expect": {
+        "withinTimeWindow": true,
+        "windowException": "MISTAKEN_IDENTITY",
+        "category": "MISTAKEN_IDENTITY"
+      }
+    },
+    {
+      "id": "var-06",
+      "gate": "TIME_WINDOW",
+      "concern": "주심이 이미 판정을 내렸다는 사실은 검토를 막지 않는다",
+      "note": "'원심을 선언했으니 VAR 검토가 불가하다'는 규정을 뒤집은 진술이다. 엔진은 이 형태의 결론을 낼 수 없어야 한다. 검토 창을 닫는 유일한 조건은 재개다.",
+      "given": { "facts": { "reviewScenario": "PENALTY_GIVEN", "restartOccurred": false } },
+      "expect": { "reviewable": true, "withinTimeWindow": true, "windowClosedReason": null }
+    },
+    {
+      "id": "var-07",
+      "gate": "THRESHOLD",
+      "concern": "속행 판정도 심각한 미인지 사건으로 검토 대상이 된다",
+      "note": "'판정을 내리지 않았다'를 검토 불가로 접으면 미인지 사건 경로가 통째로 사라진다.",
+      "given": { "facts": { "seriousMissedIncident": true, "errorMagnitude": "UNDETERMINED" } },
+      "expect": { "reviewable": true, "thresholdMet": "MET", "intervention": "OVERTURNED" }
+    },
+    {
+      "id": "var-08",
+      "gate": "CATEGORY",
+      "concern": "득점 인정은 득점 범주다",
+      "note": "var-09와 함께 한 범주가 두 사건 유형을 덮는다는 것을 고정한다.",
+      "given": { "facts": { "reviewScenario": "GOAL_AWARDED" } },
+      "expect": { "reviewable": true, "category": "GOAL_NO_GOAL" }
+    },
+    {
+      "id": "var-09",
+      "gate": "CATEGORY",
+      "concern": "득점 취소도 같은 득점 범주다",
+      "note": "var-08의 짝. 둘이 다른 범주로 갈리면 범주 매핑이 사건 결과를 보고 있는 것이다.",
+      "given": { "facts": { "reviewScenario": "GOAL_DISALLOWED" } },
+      "expect": { "reviewable": true, "category": "GOAL_NO_GOAL" }
+    },
+    {
+      "id": "var-10",
+      "gate": "PROCEDURE",
+      "concern": "주관적 판정은 온필드 리뷰다",
+      "note": "var-11과 decisionNature가 같고 errorMagnitude만 다르다. 절차는 같고 문턱만 뒤집혀야 한다.",
+      "given": { "facts": { "decisionNature": "SUBJECTIVE", "errorMagnitude": "CLEAR_AND_OBVIOUS" } },
+      "expect": { "reviewProcedure": "OFR", "thresholdMet": "MET" }
+    },
+    {
+      "id": "var-11",
+      "gate": "PROCEDURE",
+      "concern": "문턱이 바뀌어도 절차는 바뀌지 않는다",
+      "note": "var-10의 짝. 절차가 함께 바뀌면 문턱 게이트와 절차 게이트가 한 값에서 나오고 있는 것이다.",
+      "given": { "facts": { "decisionNature": "SUBJECTIVE", "errorMagnitude": "NOT_CLEAR_AND_OBVIOUS" } },
+      "expect": {
+        "reviewProcedure": "OFR",
+        "thresholdMet": "NOT_MET",
+        "reviewable": true,
+        "intervention": "NO_INTERVENTION",
+        "noInterventionReason": "THRESHOLD_NOT_MET"
+      }
+    },
+    {
+      "id": "var-12",
+      "gate": "CATEGORY",
+      "concern": "2025/26에서 2차 경고는 검토 범주가 아니다",
+      "note": "var-13과 입력이 같고 rule_version만 다르다. 두 결과가 같아지면 범주 목록이 데이터가 아니라 코드에 있는 것이다.",
+      "given": { "ruleVersion": "ifab-2025-26", "facts": { "reviewScenario": "SECOND_CAUTION" } },
+      "expect": {
+        "reviewable": false,
+        "category": "NONE",
+        "notReviewableReason": "OUTSIDE_REVIEWABLE_CATEGORIES"
+      }
+    },
+    {
+      "id": "var-13",
+      "gate": "CATEGORY",
+      "concern": "2026/27에서 2차 경고는 퇴장 범주에 들어간다",
+      "note": "var-12의 짝. 판본이 결과를 바꾼다는 것을 고정한다.",
+      "given": { "ruleVersion": "ifab-2026-27", "facts": { "reviewScenario": "SECOND_CAUTION" } },
+      "expect": { "reviewable": true, "category": "RED_CARD", "notReviewableReason": null }
+    },
+    {
+      "id": "var-14",
+      "gate": "CATEGORY",
+      "concern": "판본이 열어둔 범주라도 대회가 채택하지 않으면 검토 대상이 아니다",
+      "note": "category를 NONE으로 접지 않는다. '규정에 없다'와 '우리 대회는 안 쓴다'를 같은 문장으로 답하면 3계층 구조가 화면에서 사라진다.",
+      "given": {
+        "ruleVersion": "ifab-2026-27",
+        "competitionOptions": { "corner_kick_review": false },
+        "facts": { "reviewScenario": "CORNER_KICK_AWARDED" }
+      },
+      "expect": {
+        "reviewable": false,
+        "category": "CORNER_KICK",
+        "notReviewableReason": "COMPETITION_OPTION_NOT_ADOPTED",
+        "noInterventionReason": "NOT_REVIEWABLE"
+      }
+    },
+    {
+      "id": "var-15",
+      "gate": "CATEGORY",
+      "concern": "대회가 채택하면 같은 판본에서 검토 대상이 된다",
+      "note": "var-14의 짝. 판본은 같고 채택 옵션만 다르다. 옵션이 판본과 별개 축임을 고정한다.",
+      "given": {
+        "ruleVersion": "ifab-2026-27",
+        "competitionOptions": { "corner_kick_review": true },
+        "facts": { "reviewScenario": "CORNER_KICK_AWARDED" }
+      },
+      "expect": { "reviewable": true, "category": "CORNER_KICK", "notReviewableReason": null }
+    },
+    {
+      "id": "var-16",
+      "gate": "PROCEDURE",
+      "concern": "사실적 판정은 VAR-only 리뷰다",
+      "note": "사실적·주관적 구분은 문턱을 가르지 않고 절차만 가른다. var-10과 결과 절차가 달라야 한다.",
+      "given": { "facts": { "reviewScenario": "GOAL_DISALLOWED", "decisionNature": "FACTUAL" } },
+      "expect": { "reviewProcedure": "VAR_ONLY", "thresholdMet": "MET" }
+    },
+    {
+      "id": "var-17",
+      "gate": "THRESHOLD",
+      "concern": "문턱을 판단할 수 없으면 미달로 접지 않는다",
+      "note": "문턱 판단은 강도에 의존하고 강도가 속도 게이트에 걸리면 UNDETERMINED가 정직한 값이다. 여기서 THRESHOLD_NOT_MET이 나오면 확인하지 않은 것을 확인한 것처럼 답하는 것이다.",
+      "given": { "facts": { "errorMagnitude": "UNDETERMINED" } },
+      "expect": {
+        "reviewable": true,
+        "thresholdMet": "UNDETERMINED",
+        "intervention": "NO_INTERVENTION",
+        "noInterventionReason": null
+      }
+    },
+    {
+      "id": "var-18",
+      "gate": "CATEGORY",
+      "concern": "문턱을 넘어도 범주 밖이면 개입 사유가 NOT_REVIEWABLE이어야 한다",
+      "note": "정답을 내면서 이유를 틀리는 경우가 여기서 잡힌다. 개입하지 않은 결과는 var-11과 같지만 이유가 다르다. 두 게이트를 합치면 이 구분이 사라진다. OTHER는 어느 범주에도 닿지 않는 관측을 받는 값이다 — 스로인 판정이나 오프사이드 위치 단독 장면이 여기로 들어온다.",
+      "given": { "facts": { "reviewScenario": "OTHER", "errorMagnitude": "CLEAR_AND_OBVIOUS" } },
+      "expect": {
+        "reviewable": false,
+        "thresholdMet": "MET",
+        "intervention": "NO_INTERVENTION",
+        "noInterventionReason": "NOT_REVIEWABLE",
+        "notReviewableReason": "OUTSIDE_REVIEWABLE_CATEGORIES"
+      }
+    },
+    {
+      "id": "var-21",
+      "gate": "CATEGORY",
+      "concern": "채택 여부를 모르면 미채택으로 추정하지 않고 오류를 낸다",
+      "note": "var-14와 짝이다. K리그의 실제 코너킥 검토 채택 여부는 아직 미확인이다. 값 없음을 false로 접으면 확인하지 않은 것이 확인된 것으로 바뀐다.",
+      "given": {
+        "ruleVersion": "ifab-2026-27",
+        "competitionOptions": {},
+        "facts": { "reviewScenario": "CORNER_KICK_AWARDED" }
+      },
+      "expect": { "error": "UNKNOWN_COMPETITION_OPTION" }
+    }
+  ],
+  "invariants": [
+    {
+      "id": "var-19",
+      "check": "FOUR_GATES_SEPARATE",
+      "appliesTo": "ALL_SUCCESSFUL_CASES",
+      "note": "이 스위트 전체의 핵심 기준. 네 값이 하나로 접힌 결론만 돌아오면 개별 케이스가 통과해도 여기서 차단된다. 검사는 세 가지다 — 네 필드가 각각 존재할 것, reviewable이 true이면서 개입하지 않은 결과가 최소 하나 있을 것, 범주 밖이면서 문턱을 넘은 결과가 최소 하나 있을 것."
+    },
+    {
+      "id": "var-20",
+      "check": "FACT_SIGNATURE_SAFE_AND_DETERMINISTIC",
+      "appliesTo": "ALL_SUCCESSFUL_CASES",
+      "note": "서명은 사건이 아니라 사실 조합을 가리켜야 한다. 경기·심판 식별자가 섞이면 서명이 개인을 추적하는 키가 되고, 결정적이지 않으면 재현 검증에 쓸 수 없다. 서로 다른 입력이 같은 서명을 갖는 것도 실패다."
+    }
+  ]
+}

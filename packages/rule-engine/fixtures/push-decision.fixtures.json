@@ -1,0 +1,130 @@
+{
+  "suite": "push-decision",
+  "defaults": { "ruleVersion": "ifab-2025-26" },
+  "baseline": {
+    "contactDetected": { "value": true, "observedAtSpeed": "NORMAL" },
+    "severity": { "value": "RECKLESS", "observedAtSpeed": "NORMAL" },
+    "opponentDisplacement": { "value": "clear", "observedAtSpeed": "NORMAL" },
+    "insidePenaltyArea": { "value": false, "observedAtSpeed": "NORMAL" },
+    "cameraSufficiency": "HIGH"
+  },
+  "cases": [
+    {
+      "id": "push-01",
+      "gate": "CAMERA",
+      "concern": "각도가 부족하면 다른 사실값이 아무리 선명해도 판정하지 않는다",
+      "note": "각도 게이트가 다른 게이트보다 먼저 걸리지 않게 되면, 근거가 부족한 상태에서 강도 판정이 나간다. push-02와 cameraSufficiency 하나만 다르다.",
+      "given": { "facts": { "cameraSufficiency": "LOW" } },
+      "expect": {
+        "decision": "INCONCLUSIVE",
+        "inconclusiveReason": "CAMERA_INSUFFICIENT",
+        "severity": null,
+        "confidence": "LOW"
+      }
+    },
+    {
+      "id": "push-02",
+      "gate": "CAMERA",
+      "concern": "각도가 충분하면 같은 입력이 판정까지 간다",
+      "note": "push-01의 짝. 이 케이스가 함께 깨지면 원인은 각도 게이트가 아니라 적용표에 있다.",
+      "given": { "facts": { "cameraSufficiency": "MEDIUM" } },
+      "expect": {
+        "decision": "FOUL",
+        "severity": "RECKLESS",
+        "restart": "DIRECT_FREE_KICK",
+        "disciplinary": "CAUTION",
+        "inconclusiveReason": null
+      }
+    },
+    {
+      "id": "push-03",
+      "gate": "SPEED",
+      "concern": "슬로우모션에서만 본 강도는 판정 입력으로 승인하지 않는다",
+      "note": "하이라이트에는 리플레이만 있고 라이브 컷이 없는 장면이 실제로 있다. 이게 자주 걸리는 것은 결함이 아니라 의도한 동작이다. push-04와 결과는 같고 사유가 달라야 한다.",
+      "given": { "facts": { "severity": { "value": "EXCESSIVE_FORCE", "observedAtSpeed": "SLOW" } } },
+      "expect": {
+        "decision": "INCONCLUSIVE",
+        "inconclusiveReason": "SLOW_MOTION_ONLY",
+        "disciplinary": null
+      }
+    },
+    {
+      "id": "push-04",
+      "gate": "SEVERITY",
+      "concern": "정상 속도로 봤지만 강도를 특정 못한 것은 속도 게이트와 다른 사유다",
+      "note": "push-03과 결과가 같다. 두 사유를 하나로 뭉개면 사용자가 다음에 무엇을 해야 하는지가 사라진다 — 앞은 라이브 컷을 찾으면 풀리고 뒤는 더 나은 앵글이 필요하다.",
+      "given": { "facts": { "severity": { "value": "uncertain", "observedAtSpeed": "NORMAL" } } },
+      "expect": {
+        "decision": "INCONCLUSIVE",
+        "inconclusiveReason": "SEVERITY_UNDETERMINED"
+      }
+    },
+    {
+      "id": "push-05",
+      "gate": "CONTACT",
+      "concern": "접촉이 없으면 강도를 묻지 않고 반칙이 아니다",
+      "note": "접촉 확인에까지 속도 게이트를 걸면 규정에 없는 제약이 생긴다. 원문은 슬로우모션을 point of contact에 쓰라고 적고 있다. 그래서 관측 속도를 SLOW로 두고도 통과해야 한다.",
+      "given": {
+        "facts": {
+          "contactDetected": { "value": false, "observedAtSpeed": "SLOW" },
+          "severity": { "value": "uncertain", "observedAtSpeed": "SLOW" }
+        }
+      },
+      "expect": { "decision": "NO_FOUL", "restart": "PLAY_CONTINUED", "inconclusiveReason": null }
+    },
+    {
+      "id": "push-06",
+      "gate": "SEVERITY",
+      "concern": "밀림 없는 부주의 접촉은 반칙이 아니라 정상적인 몸싸움이다",
+      "note": "접촉이 있으면 곧 반칙이라는 결론이 나오면 이 케이스가 깨진다. Law 12는 접촉 유무가 아니라 부주의·무모·과도한 힘으로 가른다.",
+      "given": {
+        "facts": {
+          "severity": { "value": "CARELESS", "observedAtSpeed": "NORMAL" },
+          "opponentDisplacement": { "value": "none", "observedAtSpeed": "NORMAL" }
+        }
+      },
+      "expect": { "decision": "NORMAL_CONTACT", "restart": "PLAY_CONTINUED", "disciplinary": "NONE" }
+    },
+    {
+      "id": "push-07",
+      "gate": "SEVERITY",
+      "concern": "possible은 파울이 아니라 보류다",
+      "note": "'있었을 수도 있다'를 파울 쪽으로 접으면 관측하지 않은 것을 관측한 것처럼 답하게 된다. 베이스라인과 displacement 하나만 다르다 (push-06은 severity도 함께 덮으므로 단일값 대조 상대가 아니다).",
+      "given": { "facts": { "opponentDisplacement": { "value": "possible", "observedAtSpeed": "NORMAL" } } },
+      "expect": { "decision": "INCONCLUSIVE", "inconclusiveReason": "SEVERITY_UNDETERMINED" }
+    },
+    {
+      "id": "push-08",
+      "gate": "APPLY",
+      "concern": "재개는 지역이 정하고 징계는 강도가 정한다",
+      "note": "두 값이 한 곳에서 결정되면 페널티지역 안의 부주의 반칙에 퇴장이 붙는 식의 오류가 생긴다. 베이스라인과 insidePenaltyArea·severity가 다르다 (push-02는 cameraSufficiency까지 다르므로 대조 상대가 아니다).",
+      "given": {
+        "facts": {
+          "insidePenaltyArea": { "value": true, "observedAtSpeed": "NORMAL" },
+          "severity": { "value": "EXCESSIVE_FORCE", "observedAtSpeed": "NORMAL" }
+        }
+      },
+      "expect": {
+        "decision": "FOUL",
+        "severity": "EXCESSIVE_FORCE",
+        "restart": "PENALTY_KICK",
+        "disciplinary": "SEND_OFF"
+      }
+    }
+  ],
+  "invariants": [
+    {
+      "id": "push-09",
+      "check": "EVERY_RESULT_HAS_CITATION",
+      "appliesTo": "ALL_CASES",
+      "note": "조항 없이 결론만 반환하는 경로가 생기면 결과 화면이 근거 없는 판정을 표시하게 된다. 이 스위트에 어떤 케이스를 추가해도 이 검사는 면제되지 않는다."
+    },
+    {
+      "id": "push-10",
+      "check": "ACCOUNTS_SURVIVE_BLOCKED_FACTS",
+      "appliesTo": ["push-01", "push-03", "push-04", "push-05", "push-07"],
+      "expectedAppliesCount": 5,
+      "note": "규정이 무엇을 요구하는지는 영상과 무관하게 말할 수 있다. 게이트에서 바로 반환하면 accounts가 빈 채로 나가고, 사용자는 '판정 불가'만 보게 된다. expectedAppliesCount를 둔 이유는 막힌 케이스 집합이 조용히 줄어드는 것을 막기 위함이다. push-05가 목록에 있는 이유: 결론이 NO_FOUL로 확정돼도 서지 않은 사실은 그대로 보고한다 — 막힌 사실 보고를 결론이 흐린 경우로만 좁히지 않는다."
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "name": "replay-lab",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.base.json --noEmit",
+    "check:enums": "node scripts/check/enums.mjs",
+    "check:edition": "node scripts/check/no-edition-literal.mjs",
+    "db:migrate": "node scripts/database/migrate.mjs",
+    "check": "npm run typecheck && npm run check:edition && npm run check:enums && npm run test"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2",
+    "vitest": "^3.2.7"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.45.2",
+    "postgres": "^3.4.9"
+  }
+}

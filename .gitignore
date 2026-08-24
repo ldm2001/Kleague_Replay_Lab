@@ -1,0 +1,44 @@
+# 의존성
+node_modules/
+.venv/
+__pycache__/
+*.py[cod]
+
+# 빌드 산출물
+.next/
+dist/
+build/
+*.tsbuildinfo
+.vitest/
+coverage/
+
+# 환경변수 — .env.example만 저장소에 둔다
+.env
+.env.*
+!.env.example
+
+# 규정 원문 (README 2절) — 저작권 자료는 저장소에 넣지 않는다.
+# 추적하는 것은 metadata.json뿐이다 — 아직 작성 전이라 지금은 아무것도 살리지 않는다.
+rules/**/*
+!rules/**/
+!rules/**/metadata.json
+
+# 영상 — 어떤 형태로도 저장소에 두지 않는다 (README 2절)
+*.mp4
+*.mov
+*.mkv
+*.avi
+*.webm
+*.m4v
+*.ts.video
+
+# 라벨링 사례 — 라운드마다 늘어나고 원본 식별자를 담을 수 있다
+datasets/labeled-cases/**/*
+!datasets/labeled-cases/**/
+!datasets/labeled-cases/**/README.md
+
+# 로컬 도구
+.DS_Store
+.omc/
+.superpowers/
+.git.disabled/

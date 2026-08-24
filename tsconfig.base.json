@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2023"],
+    "types": ["node"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "verbatimModuleSyntax": true,
+    "baseUrl": ".",
+    "paths": {
+      "@replay/application": ["packages/application/src/index.ts"],
+      "@replay/database": ["packages/database/src/index.ts"],
+      "@replay/adapters": ["packages/adapters/src/index.ts"],
+      "@replay/shared-types": ["packages/shared-types/src/index.ts"],
+      "@replay/rule-data": ["packages/rule-data/src/index.ts"],
+      "@replay/rule-engine": ["packages/rule-engine/src/index.ts"]
+    }
+  },
+  "include": ["packages/*/src/**/*.ts", "packages/*/test/**/*.ts", "vitest.config.ts"]
+}
