@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "1",
+      "when": 1727029200000,
+      "tag": "0000_initial_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "1",
+      "when": 1727029201000,
+      "tag": "0001_ttl_expiry_policy",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "1",
+      "when": 1727029202000,
+      "tag": "0002_append_only_records",
+      "breakpoints": true
+    }
+  ]
+}

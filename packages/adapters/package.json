@@ -1,0 +1,13 @@
+{
+  "name": "@replay/adapters",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "dependencies": {
+    "@replay/application": "0.0.0",
+    "@replay/database": "0.0.0",
+    "drizzle-orm": "^0.45.2"
+  }
+}

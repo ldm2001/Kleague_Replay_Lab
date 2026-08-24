@@ -1,0 +1,40 @@
+# 로컬 개발용 의존 서비스만 띄운다.
+# apps/web · workers/* 는 각자의 디렉터리에서 직접 실행한다.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: replay
+      POSTGRES_PASSWORD: replay
+      POSTGRES_DB: replay_lab
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U replay -d replay_lab"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # S3 호환 Object Storage. 운영에서는 관리형 스토리지로 대체한다.
+  storage:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: replay
+      MINIO_ROOT_PASSWORD: replay-secret
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - storage-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres-data:
+  storage-data:

@@ -1,0 +1,131 @@
+{
+  "versionId": "ifab-2025-26",
+  "authority": "IFAB",
+  "edition": "2025-26",
+  "concepts": {
+    "LAW_12_DIRECT_FREE_KICK": [
+      {
+        "key": "law-12-1-direct-free-kick",
+        "revision": 1,
+        "law": "12",
+        "section": "1",
+        "relevance": "PRIMARY",
+        "sourcePage": "109",
+        "quoteSnapshot": "A direct free kick is awarded if a player commits any of the following offences against an opponent in a manner considered by the referee to be careless, reckless or using excessive force: charges; jumps at; kicks or attempts to kick; pushes; strikes or attempts to strike (including head-butt); tackles or challenges; trips or attempts to trip. If an offence involves contact, it is penalised by a direct free kick."
+      }
+    ],
+    "LAW_12_DISCIPLINE": [
+      {
+        "key": "law-12-1-discipline",
+        "revision": 1,
+        "law": "12",
+        "section": "1",
+        "relevance": "PRIMARY",
+        "sourcePage": "109",
+        "quoteSnapshot": "Careless is when a player shows a lack of attention or consideration when making a challenge or acts without precaution. No disciplinary sanction is needed. Reckless is when a player acts with disregard to the danger to, or consequences for, an opponent and must be cautioned. Using excessive force is when a player exceeds the necessary use of force and/or endangers the safety of an opponent and must be sent off."
+      }
+    ],
+    "VAR_REVIEWABLE_CATEGORIES": [
+      {
+        "key": "var-1-1-categories",
+        "revision": 1,
+        "law": "VAR",
+        "section": "1.1",
+        "relevance": "PRIMARY",
+        "sourcePage": "147",
+        "quoteSnapshot": "A video assistant referee (VAR) is a match official, with independent access to match footage, who may assist the referee only in the event of a 'clear and obvious error' or 'serious missed incident' in relation to: a. Goal/no goal b. Penalty/no penalty c. Direct red card (not second yellow card/caution) d. Mistaken identity (when the referee cautions or sends off the wrong player of the offending team)"
+      },
+      {
+        "key": "var-2-reviewable-decisions",
+        "revision": 1,
+        "law": "VAR",
+        "section": "2",
+        "relevance": "PRIMARY",
+        "sourcePage": "148",
+        "quoteSnapshot": "The referee may receive assistance from the VAR only in relation to four categories of match-changing decisions/incidents. In all these situations, the VAR is only used after the referee has made a (first/original) decision (including allowing play to continue), or if a serious incident is missed/not seen by the match officials."
+      }
+    ],
+    "VAR_TIME_WINDOW": [
+      {
+        "key": "var-1-10-restart-closes-window",
+        "revision": 1,
+        "law": "VAR",
+        "section": "1.10",
+        "relevance": "PRIMARY",
+        "sourcePage": "148",
+        "quoteSnapshot": "If play has stopped and been restarted, the referee may not undertake a 'review' except for a case of mistaken identity or for a potential sending-off offence relating to violent conduct, spitting, biting or extremely offensive, insulting and/or abusive action(s)."
+      },
+      {
+        "key": "var-1-2-original-decision-required",
+        "revision": 1,
+        "law": "VAR",
+        "section": "1.2",
+        "relevance": "SUPPORTING",
+        "sourcePage": "147",
+        "quoteSnapshot": "The referee must always make a decision, i.e. the referee is not permitted to give 'no decision' and then use the VAR to make the decision; a decision to allow play to continue after an alleged offence can be reviewed."
+      }
+    ],
+    "VAR_THRESHOLD": [
+      {
+        "key": "var-1-3-clear-and-obvious",
+        "revision": 1,
+        "law": "VAR",
+        "section": "1.3",
+        "relevance": "PRIMARY",
+        "sourcePage": "147",
+        "quoteSnapshot": "The original decision given by the referee will not be changed unless the video review clearly shows that the decision was a 'clear and obvious error'."
+      }
+    ],
+    "VAR_REVIEW_PROCESS": [
+      {
+        "key": "var-3-replay-speed",
+        "revision": 1,
+        "law": "VAR",
+        "section": "3",
+        "relevance": "PRIMARY",
+        "sourcePage": "151",
+        "quoteSnapshot": "The VAR can 'check' the footage in normal speed and/or in slow motion but, in general, slow-motion replays should only be used for facts, e.g. position of offence/player, point of contact for physical offences and handball, ball out of play (including goal/no goal); normal speed should be used for the 'intensity' of an offence or to decide if it was a handball offence"
+      },
+      {
+        "key": "var-1-5-final-decision-ofr",
+        "revision": 1,
+        "law": "VAR",
+        "section": "1.5",
+        "relevance": "SUPPORTING",
+        "sourcePage": "148",
+        "quoteSnapshot": "The final decision is always taken by the referee, either based on information from the VAR or after the referee has undertaken an 'on-field review' (OFR)."
+      }
+    ]
+  },
+  "varCategories": [
+    {
+      "id": "GOAL_NO_GOAL",
+      "appliesTo": ["GOAL_AWARDED", "GOAL_DISALLOWED"],
+      "requiresCompetitionOption": null,
+      "requiresMistakenIdentity": false
+    },
+    {
+      "id": "PENALTY_NO_PENALTY",
+      "appliesTo": ["PENALTY_GIVEN", "PENALTY_NOT_GIVEN"],
+      "requiresCompetitionOption": null,
+      "requiresMistakenIdentity": false
+    },
+    {
+      "id": "RED_CARD",
+      "appliesTo": ["CARD_SHOWN", "SENDING_OFF_NOT_GIVEN"],
+      "requiresCompetitionOption": null,
+      "requiresMistakenIdentity": false
+    },
+    {
+      "id": "MISTAKEN_IDENTITY",
+      "appliesTo": ["CARD_SHOWN", "SECOND_CAUTION", "SENDING_OFF_NOT_GIVEN"],
+      "requiresCompetitionOption": null,
+      "requiresMistakenIdentity": true
+    }
+  ],
+  "timeWindowExceptions": {
+    "mistakenIdentity": true,
+    "sendOffCategories": ["VIOLENT_CONDUCT", "BITING_OR_SPITTING", "OFFENSIVE_LANGUAGE_OR_ACTION"]
+  },
+  "layerConflicts": []
+}
