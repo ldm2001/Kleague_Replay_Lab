@@ -12,6 +12,9 @@ build/
 .vitest/
 coverage/
 
+# 프로젝트 문서와 분석 자료는 로컬 전용으로 관리
+/docs/
+
 # 환경변수 — .env.example만 저장소에 둔다
 .env
 .env.*
