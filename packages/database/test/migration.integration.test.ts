@@ -27,6 +27,16 @@ describeDatabase("initial PostgreSQL migration", () => {
     expect(tableNames).toContain("fact_revision_shots");
     expect(tableNames).toContain("processing_jobs");
     expect(tableNames).toContain("decision_results");
+    expect(tableNames).toContain("upload_intents");
+
+    const [policyColumn] = await sql<{ column_name: string }[]>`
+      select column_name
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'upload_intents'
+        and column_name = 'media_policy_version'
+    `;
+    expect(policyColumn?.column_name).toBe("media_policy_version");
   });
 
   it("installs the relational constraints required by the DBML", async () => {

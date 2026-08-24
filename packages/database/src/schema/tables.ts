@@ -47,6 +47,7 @@ import {
   varThresholdResult,
   varWindowClosedReason,
   varWindowException,
+  uploadIntentStatus,
   videoAssetStatus,
 } from "./enums.js";
 
@@ -122,6 +123,30 @@ export const videoAssets = pgTable("video_assets", {
   expiresAt: timestamp("expires_at", { withTimezone: true, mode: "string" }),
   objectDeletedAt: timestamp("object_deleted_at", { withTimezone: true, mode: "string" }),
 });
+
+export const uploadIntents = pgTable(
+  "upload_intents",
+  {
+    id: id(),
+    anonymousSessionId: uuid("anonymous_session_id").notNull().references(() => anonymousSessions.id),
+    objectKey: text("object_key").notNull().unique(),
+    expectedSizeBytes: bigint("expected_size_bytes", { mode: "number" }).notNull(),
+    declaredContentType: varchar("declared_content_type", { length: 128 }).notNull(),
+    rightsConfirmedAt: timestamp("rights_confirmed_at", { withTimezone: true, mode: "string" }).notNull(),
+    status: uploadIntentStatus().notNull(),
+    mediaPolicyVersion: varchar("media_policy_version", { length: 64 }).notNull(),
+    createdAt: createdAt(),
+    expiresAt: timestamp("expires_at", { withTimezone: true, mode: "string" }).notNull(),
+    completedAt: timestamp("completed_at", { withTimezone: true, mode: "string" }),
+  },
+  (table) => [
+    uniqueIndex("upload_intents_session_status_expiry_idx").on(
+      table.anonymousSessionId,
+      table.status,
+      table.expiresAt,
+    ),
+  ],
+);
 
 export const analyses = pgTable(
   "analyses",

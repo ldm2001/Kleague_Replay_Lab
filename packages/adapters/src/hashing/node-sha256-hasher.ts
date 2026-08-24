@@ -7,4 +7,5 @@ export class NodeSha256Hasher implements Hasher {
   }
 }
 
-export const createNodeSha256Hasher = (): Hasher => new NodeSha256Hasher();
+export const hash = (): Hasher => new NodeSha256Hasher();
+export const createNodeSha256Hasher = hash;

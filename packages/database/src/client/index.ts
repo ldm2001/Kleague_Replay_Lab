@@ -8,7 +8,7 @@ export type DatabaseClient = {
   close: () => Promise<void>;
 };
 
-export const createDatabaseClient = (databaseUrl = process.env.DATABASE_URL): DatabaseClient => {
+export const client = (databaseUrl = process.env.DATABASE_URL): DatabaseClient => {
   if (!databaseUrl) {
     throw new Error("DATABASE_URL is required");
   }
@@ -25,3 +25,5 @@ export const createDatabaseClient = (databaseUrl = process.env.DATABASE_URL): Da
     close: () => sql.end({ timeout: 5 }),
   };
 };
+
+export const createDatabaseClient = client;

@@ -6,6 +6,10 @@ export const videoAssetStatus = pgEnum(
   "video_asset_status",
   values(["CREATED", "UPLOADING", "VALIDATING", "VALID", "REJECTED", "EXPIRED", "DELETED"]),
 );
+export const uploadIntentStatus = pgEnum(
+  "upload_intent_status",
+  values(["CREATED", "UPLOADING", "COMPLETED", "EXPIRED", "REJECTED"]),
+);
 export const retentionClass = pgEnum("retention_class", values(["TEMPORARY", "CURATED"]));
 export const jobType = pgEnum(
   "job_type",

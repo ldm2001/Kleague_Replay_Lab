@@ -2386,22 +2386,22 @@ IFAB 원문은 다단 레이아웃이라 파싱 비용이 크고 먼저 손대�
 - [x] Nextjs와 TypeScript와 Python Worker 기술 경계 확정
 - [x] 클린 아키텍처와 ACID와 데이터 저장 위치와 패턴 선택 이유 문서화
 - [ ] 비활성 Git 기록의 규정 원문 추적 범위 확인과 공개 저장소 처리 방식 결정
-- [ ] 원문 미디어와 비밀값을 제외하는 gitignore 작성
+- [x] 원문 미디어와 비밀값을 제외하는 gitignore 작성
 - [ ] 목표 디렉터리와 금지 import 검사 구성
 - [ ] 규정 자료 metadata 작성
 - [ ] KFA 한국어 대조판 확보
 - [ ] 대회요강 판본 지정 범위 재확인
-- [ ] `packages/shared-types` 공통 상태값과 결과 타입 정의
+- [x] `packages/shared-types` 공통 상태값과 결과 타입 정의
 - [ ] TypeScript와 Python 사이 작업 계약과 사실 JSON Schema 정의
-- [ ] IdempotencyRecord 스키마와 같은 키 다른 본문 충돌 테스트 작성
+- [x] IdempotencyRecord 스키마와 같은 키 다른 본문 충돌 테스트 작성
 - [ ] Worker 내부 작업 선점과 결과 수신 API 계약 작성
-- [ ] `ProcessingJob` 대상 제약과 상태 전이와 Lease 불변식 테스트 작성
-- [ ] PostgreSQL 스키마와 제약과 마이그레이션 작성
+- [x] `ProcessingJob` 대상 제약과 상태 전이와 Lease 불변식 테스트 작성
+- [x] PostgreSQL 스키마와 제약과 마이그레이션 작성
 - [ ] 익명 세션과 Object Storage 포트 정의
-- [ ] Rule Engine 인터페이스와 인용 필수 계약 정의
-- [ ] `Observed<T>` 타입과 속도 게이트 구현
-- [ ] 밀기 규칙과 규칙 인터프리터 구현
-- [ ] 합성 픽스처와 불변식 작성
+- [x] Rule Engine 인터페이스와 인용 필수 계약 정의
+- [x] `Observed<T>` 타입과 속도 게이트 구현
+- [x] 밀기 규칙과 규칙 인터프리터 구현
+- [x] 합성 픽스처와 불변식 작성
 - [ ] Nextjs App Router 초기 구성
 - [ ] 분석 요청과 상태 조회 화면 스켈레톤 구현
 
