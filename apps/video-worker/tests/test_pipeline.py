@@ -7,7 +7,9 @@ import cv2
 import numpy as np
 import pytest
 
-from replay_video.pipeline import MediaError, probe, run, shots
+from replay_video.application.pipeline import run
+from replay_video.infrastructure.probe import MediaError, probe
+from replay_video.infrastructure.shots import shots
 
 
 def video(path: Path) -> None:

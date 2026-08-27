@@ -14,15 +14,14 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "verbatimModuleSyntax": true,
-    "baseUrl": ".",
     "paths": {
-      "@replay/application": ["web/src/application/index.ts"],
-      "@replay/database": ["web/src/database/index.ts"],
-      "@replay/adapters": ["web/src/adapters/index.ts"],
-      "@replay/shared-types": ["web/src/shared/index.ts"],
-      "@replay/rule-data": ["web/src/rules/data/index.ts"],
-      "@replay/rule-engine": ["web/src/rules/engine/index.ts"]
+      "@replay/application": ["./apps/web/src/application/index.ts"],
+      "@replay/database": ["./apps/web/src/database/index.ts"],
+      "@replay/adapters": ["./apps/web/src/adapters/index.ts"],
+      "@replay/shared-types": ["./apps/web/src/shared/index.ts"],
+      "@replay/rule-data": ["./apps/web/src/rules/data/index.ts"],
+      "@replay/rule-engine": ["./apps/web/src/rules/engine/index.ts"]
     }
   },
-  "include": ["web/next-env.d.ts", "web/src/**/*.ts", "web/src/**/*.tsx", "web/test/**/*.ts", "web/test/**/*.tsx", "vitest.config.ts"]
+  "include": ["apps/web/next-env.d.ts", "apps/web/src/**/*.ts", "apps/web/src/**/*.tsx", "apps/web/test/**/*.ts", "apps/web/test/**/*.tsx", "vitest.config.ts"]
 }

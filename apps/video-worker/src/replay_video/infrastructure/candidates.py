@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .models import Candidate, Shot, VideoMetadata
+from ..domain.models import Candidate, Shot, VideoMetadata
 from .signals import signals
 
 

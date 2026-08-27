@@ -13,16 +13,16 @@ describe("LandingPage", () => {
   it("presents the adopted cloud-style landing structure with product-specific copy", () => {
     render(<LandingPage />);
 
-    expect(existsSync(resolve("web/src/assets/hero/kleague-ball.jpg"))).toBe(true);
-    expect(existsSync(resolve("web/src/assets/review/foul.jpg"))).toBe(true);
-    expect(existsSync(resolve("web/src/assets/review/handball.jpg"))).toBe(true);
-    expect(existsSync(resolve("web/src/assets/review/charging.webp"))).toBe(true);
-    expect(existsSync(resolve("web/src/assets/review/goal.jpg"))).toBe(true);
-    expect(existsSync(resolve("web/src/assets/brand/kleague-logo.png"))).toBe(true);
-    expect(existsSync(resolve("web/src/assets/brand/kleague-logo-light.png"))).toBe(true);
+    expect(existsSync(resolve("apps/web/src/assets/hero/kleague-ball.jpg"))).toBe(true);
+    expect(existsSync(resolve("apps/web/src/assets/review/foul.jpg"))).toBe(true);
+    expect(existsSync(resolve("apps/web/src/assets/review/handball.jpg"))).toBe(true);
+    expect(existsSync(resolve("apps/web/src/assets/review/charging.webp"))).toBe(true);
+    expect(existsSync(resolve("apps/web/src/assets/review/goal.jpg"))).toBe(true);
+    expect(existsSync(resolve("apps/web/src/assets/brand/kleague-logo.png"))).toBe(true);
+    expect(existsSync(resolve("apps/web/src/assets/brand/kleague-logo-light.png"))).toBe(true);
     expect(screen.getByRole("heading", { name: "경기 판정의 새로운 근거를 열다" })).toBeInTheDocument();
-    expect(screen.getByTestId("hero-art")).toHaveAttribute("src", "/web/src/assets/hero/kleague-ball.jpg");
-    expect(screen.getByTestId("site-logo")).toHaveAttribute("src", "/web/src/assets/brand/kleague-logo-light.png");
+    expect(screen.getByTestId("hero-art")).toHaveAttribute("src", "/apps/web/src/assets/hero/kleague-ball.jpg");
+    expect(screen.getByTestId("site-logo")).toHaveAttribute("src", "/apps/web/src/assets/brand/kleague-logo-light.png");
     expect(screen.getByRole("link", { name: "솔루션" })).toHaveAttribute("href", "#solutions");
     expect(screen.getByRole("link", { name: "분석 기능" })).toHaveAttribute("href", "#services");
     expect(screen.getByRole("link", { name: "규정" })).toHaveAttribute("href", "#rules");
@@ -31,10 +31,10 @@ describe("LandingPage", () => {
     expect(screen.getByText("판정 후보 탐지")).toBeInTheDocument();
     expect(screen.getByText("IFAB와 K리그 요강 대조")).toBeInTheDocument();
     expect(screen.getByText("근거 프레임과 클립")).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "파울 판정 예시" })).toHaveAttribute("src", "/web/src/assets/review/foul.jpg");
-    expect(screen.getByRole("img", { name: "핸드볼 판정 예시" })).toHaveAttribute("src", "/web/src/assets/review/handball.jpg");
-    expect(screen.getByRole("img", { name: "차징과 터치 판정 예시" })).toHaveAttribute("src", "/web/src/assets/review/charging.webp");
-    expect(screen.getByRole("img", { name: "득점 취소 판정 예시" })).toHaveAttribute("src", "/web/src/assets/review/goal.jpg");
+    expect(screen.getByRole("img", { name: "파울 판정 예시" })).toHaveAttribute("src", "/apps/web/src/assets/review/foul.jpg");
+    expect(screen.getByRole("img", { name: "핸드볼 판정 예시" })).toHaveAttribute("src", "/apps/web/src/assets/review/handball.jpg");
+    expect(screen.getByRole("img", { name: "차징과 터치 판정 예시" })).toHaveAttribute("src", "/apps/web/src/assets/review/charging.webp");
+    expect(screen.getByRole("img", { name: "득점 취소 판정 예시" })).toHaveAttribute("src", "/apps/web/src/assets/review/goal.jpg");
     expect(screen.getAllByRole("link", { name: "영상 분석 시작하기" }).every((link) => link.getAttribute("href") === "/analyze")).toBe(true);
     expect(screen.getAllByRole("link", { name: "분석 흐름 보기" }).every((link) => link.getAttribute("href") === "/analyze")).toBe(true);
     expect(screen.queryByRole("heading", { name: "경기 영상 업로드" })).not.toBeInTheDocument();

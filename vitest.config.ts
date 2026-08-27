@@ -7,15 +7,15 @@ const resolvePackage = (relativePath: string) =>
 export default defineConfig({
   resolve: {
     alias: {
-      "@replay/application": resolvePackage("./web/src/application/index.ts"),
-      "@replay/database": resolvePackage("./web/src/database/index.ts"),
-      "@replay/adapters": resolvePackage("./web/src/adapters/index.ts"),
-      "@replay/shared-types": resolvePackage("./web/src/shared/index.ts"),
-      "@replay/rule-data": resolvePackage("./web/src/rules/data/index.ts"),
-      "@replay/rule-engine": resolvePackage("./web/src/rules/engine/index.ts"),
+      "@replay/application": resolvePackage("./apps/web/src/application/index.ts"),
+      "@replay/database": resolvePackage("./apps/web/src/database/index.ts"),
+      "@replay/adapters": resolvePackage("./apps/web/src/adapters/index.ts"),
+      "@replay/shared-types": resolvePackage("./apps/web/src/shared/index.ts"),
+      "@replay/rule-data": resolvePackage("./apps/web/src/rules/data/index.ts"),
+      "@replay/rule-engine": resolvePackage("./apps/web/src/rules/engine/index.ts"),
     },
   },
   test: {
-    include: ["web/test/**/*.test.ts", "web/src/**/*.test.{ts,tsx}"],
+    include: ["apps/web/test/**/*.test.ts", "apps/web/src/**/*.test.{ts,tsx}"],
   },
 });

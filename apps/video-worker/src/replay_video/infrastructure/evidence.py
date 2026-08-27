@@ -5,7 +5,7 @@ from pathlib import Path
 
 import cv2
 
-from .models import Candidate, Evidence, VideoMetadata
+from ..domain.models import Candidate, Evidence, VideoMetadata
 
 
 def _frame(source: Path, destination: Path, timestamp_ms: int) -> None:

@@ -49,7 +49,7 @@ NHN Cloud형 랜딩 구조를 참고해 짙은 코발트 영웅 영역과 밝은
 - 업로드 화면은 별도 Client Component로 분리하고 랜딩과 분석 페이지의 서버 영역은 Server Component로 유지
 - 업로드 진행률은 120ms 단위로 묶고 막대 폭 대신 `transform`만 변경
 - 영상과 증거 영역은 고정된 비율과 최소 높이를 사용해 레이아웃 이동을 줄임
-- 브랜드 로고와 메인 영웅 이미지와 검토 범위 이미지는 `web/src/assets`에서 정적 import하고 문구와 버튼은 코드로 렌더링
+- 브랜드 로고와 메인 영웅 이미지와 검토 범위 이미지는 `apps/web/src/assets`에서 정적 import하고 문구와 버튼은 코드로 렌더링
 
 | 기능 | 설명 |
 |---|---|
@@ -534,30 +534,30 @@ web
   Frameworks and Drivers
   화면과 HTTP 진입점과 조립 지점
 
-web/src/application
+apps/web/src/application
   유스케이스와 입력 포트와 출력 포트
 
-web/src/adapters
+apps/web/src/adapters
   PostgreSQL Processing Job과 Object Storage와 Worker 포트 구현
 
-web/src/rules/engine
+apps/web/src/rules/engine
   결정론적 규칙 인터프리터
 
-web/src/rules/data
+apps/web/src/rules/data
   판본별 규칙과 대회별 적용 옵션
 
-web/src/shared
+apps/web/src/shared
   공통 상태값과 결과 타입
 
-web/src/config
+apps/web/src/config
   업로드 제한과 TTL과 Queue 상한의 버전 정책
 
-workers/video
+apps/video-worker
   Python 영상 파이프라인과 사실값 추출
 ```
 
-도메인 로직은 `web/src/application`과 `web/src/rules/engine` 안에 유지
-Nextjs 전용 코드는 `web` 밖으로 전파하지 않음
+도메인 로직은 `apps/web/src/application`과 `apps/web/src/rules/engine` 안에 유지
+Nextjs 전용 코드는 `apps/web` 경계 밖으로 전파하지 않음
 Python Worker와의 계약은 버전이 있는 JSON Schema 또는 OpenAPI로 고정
 
 ### Worker 통신 경계
@@ -692,9 +692,9 @@ Worker가 중단되어도 재시도 가능한 체크포인트와 시도 이력�
 
 | 데이터 | 저장 위치 | 변경 경로 | 선택 이유 |
 |---|---|---|---|
-| 공통 상태값과 결과 타입 | `web/src/shared` | 검토된 코드 변경과 계약 테스트 | Nextjs와 Rule Engine과 Python 계약의 값 이름을 일치시키기 위함 |
-| 판본별 규칙과 K리그 채택 옵션 | `web/src/rules/data` | 규정 적재 CLI와 검토된 데이터 변경 | 시즌 변경을 판정 코드의 조건문 추가 없이 처리하기 위함 |
-| 업로드 제한과 보존 기간과 Queue 상한 | `web/src/config` | 정책 버전 변경과 배포 | Web과 Worker가 같은 제한값을 사용하게 하기 위함 |
+| 공통 상태값과 결과 타입 | `apps/web/src/shared` | 검토된 코드 변경과 계약 테스트 | Nextjs와 Rule Engine과 Python 계약의 값 이름을 일치시키기 위함 |
+| 판본별 규칙과 K리그 채택 옵션 | `apps/web/src/rules/data` | 규정 적재 CLI와 검토된 데이터 변경 | 시즌 변경을 판정 코드의 조건문 추가 없이 처리하기 위함 |
+| 업로드 제한과 보존 기간과 Queue 상한 | `apps/web/src/config` | 정책 버전 변경과 배포 | Web과 Worker가 같은 제한값을 사용하게 하기 위함 |
 | 분석 상태 | PostgreSQL `analyses.status` | Analysis State Machine을 호출하는 유스케이스 | 재시작과 중복 Worker 상황에서도 현재 단계를 복구하기 위함 |
 | 현재 사실 Revision | PostgreSQL `incident_candidates.current_fact_revision_id` | 사실값 보정과 Worker 결과 수신 유스케이스 | 과거 Revision을 보존하면서 현재 적용 대상을 한 값으로 선택하기 위함 |
 | 판정 결과와 적용 규정 버전 | PostgreSQL 불변 행 | `EvaluateIncident` 유스케이스 | 과거 분석 결과를 같은 입력과 버전으로 재현하기 위함 |
@@ -747,7 +747,7 @@ Worker가 중단되어도 재시도 가능한 체크포인트와 시도 이력�
 
 ### 설정과 성능 원칙
 
-- 업로드 최대 크기와 최대 길이와 해상도와 FPS와 허용 코덱은 `web/src/config` 한 곳에서 버전 관리
+- 업로드 최대 크기와 최대 길이와 해상도와 FPS와 허용 코덱은 `apps/web/src/config` 한 곳에서 버전 관리
 - Nextjs와 Python Worker는 같은 `media_policy_version`을 검사
 - 정확한 제한값은 30분 하이라이트 표본과 k6 부하 테스트와 Worker 처리 시간 측정으로 결정
 - PostgreSQL Connection Pool은 서버리스 인스턴스 수와 DB 최대 연결 수를 함께 계산해 설정
@@ -1479,13 +1479,13 @@ status                 EXTERNAL_OPINION
 
 | 관리 대상 | 저장 위치 | 프로젝트 적용 | 선택 이유 |
 |---|---|---|---|
-| 공통 상태값과 결과 타입 | `web/src/shared` | Nextjs와 Rule Engine의 타입으로 사용하고 Python 계약용 JSON Schema 생성 | 웹과 Worker가 같은 값 이름을 사용하기 위함 |
-| IFAB 판본별 규칙 | `web/src/rules/data` | 판본별 JSON으로 저장하고 Rule Engine이 분석 시작 시 선택 | 규정 개정을 코드 조건문 대신 데이터 변경으로 반영하기 위함 |
-| K리그 채택 옵션 | `web/src/rules/data` | 대회와 시즌과 적용 기간별로 저장 | IFAB 선택 규칙의 실제 K리그 적용 여부를 구분하기 위함 |
+| 공통 상태값과 결과 타입 | `apps/web/src/shared` | Nextjs와 Rule Engine의 타입으로 사용하고 Python 계약용 JSON Schema 생성 | 웹과 Worker가 같은 값 이름을 사용하기 위함 |
+| IFAB 판본별 규칙 | `apps/web/src/rules/data` | 판본별 JSON으로 저장하고 Rule Engine이 분석 시작 시 선택 | 규정 개정을 코드 조건문 대신 데이터 변경으로 반영하기 위함 |
+| K리그 채택 옵션 | `apps/web/src/rules/data` | 대회와 시즌과 적용 기간별로 저장 | IFAB 선택 규칙의 실제 K리그 적용 여부를 구분하기 위함 |
 | 필수 관계와 저장 조건 | PostgreSQL 제약 | 외래키와 `NOT NULL`과 인용 최소 한 건을 검사 | 부분 저장과 연결이 끊긴 결과를 막기 위함 |
 
-공통 타입과 규정 데이터는 `web/src/shared`와 `web/src/rules/data`가 소유
-업로드 제한과 TTL 정책은 `web/src/config`에서 버전 관리
+공통 타입과 규정 데이터는 `apps/web/src/shared`와 `apps/web/src/rules/data`가 소유
+업로드 제한과 TTL 정책은 `apps/web/src/config`에서 버전 관리
 
 ---
 
@@ -2048,21 +2048,27 @@ FC 안양 → ANY
 ```text
 Replay_Lab/
 │
-├── web/                                # Nextjs 화면과 공개 API와 서버 조립
-│   ├── src/
-│   │   ├── app/                        # App Router와 Route Handler
-│   │   ├── components/                 # 상태가 필요한 최소 Client Component
-│   │   ├── api/                        # Route Handler가 호출하는 API 조립
-│   │   ├── application/                # Use Case와 Port
-│   │   ├── adapters/                   # PostgreSQL과 Object Storage 구현
-│   │   ├── database/                   # Drizzle 스키마와 마이그레이션
-│   │   ├── rules/                      # 규정 데이터와 Rule Engine
-│   │   ├── shared/                     # 공통 어휘와 계약 타입
-│   │   ├── assets/                     # 브랜드와 화면 이미지
-│   │   └── bootstrap/                  # 의존성 조립과 환경변수 검증
-│   ├── test/                           # 서버 계층 회귀 테스트
-│   ├── package.json
-│   └── next.config.ts
+├── apps/
+│   ├── web/                            # Nextjs 화면과 공개 API와 서버 조립
+│   │   ├── src/
+│   │   │   ├── app/                    # App Router와 Route Handler
+│   │   │   ├── components/             # 상태가 필요한 최소 Client Component
+│   │   │   ├── api/                    # Route Handler가 호출하는 API 조립
+│   │   │   ├── application/            # Use Case와 Port
+│   │   │   ├── adapters/               # PostgreSQL과 Object Storage 구현
+│   │   │   ├── database/               # Drizzle 스키마와 마이그레이션
+│   │   │   ├── rules/                  # 규정 데이터와 Rule Engine
+│   │   │   ├── shared/                 # 공통 어휘와 계약 타입
+│   │   │   ├── assets/                 # 브랜드와 화면 이미지
+│   │   │   └── bootstrap/              # 의존성 조립과 환경변수 검증
+│   │   ├── test/                       # 서버 계층 회귀 테스트
+│   │   ├── package.json
+│   │   └── next.config.ts
+│   └── video-worker/                   # Python 영상 파이프라인과 테스트
+│       ├── src/                        # 실행 패키지
+│       ├── tests/                      # Worker와 파이프라인 테스트
+│       ├── pyproject.toml
+│       └── README.md
 │
 ├── rules/                              # 원문 조사 자료 (원문은 저장소에 넣지 않음)
 │   ├── ifab/{2024-25,2025-26,2026-27}/
@@ -2082,9 +2088,6 @@ Replay_Lab/
 │   ├── design/database/
 │   ├── analysis/
 │   └── _internal/                      # 도구 상태와 작업 기록
-│
-├── workers/
-│   └── video/                         # Python 영상 파이프라인과 테스트
 │
 ├── infra/
 │   └── local/docker-compose.yml        # PostgreSQL과 S3 호환 스토리지
@@ -2116,12 +2119,12 @@ Replay_Lab/
 
 아래 디렉터리와 파일과 케이스는 아직 구현되지 않은 목표 설계
 
-`web/src/rules/engine/fixtures`는 입력을 고정해 규칙 엔진 회귀를 검사함
+`apps/web/src/rules/engine/fixtures`는 입력을 고정해 규칙 엔진 회귀를 검사함
 `datasets/labeled-cases`는 영상 파이프라인 변경에 따라 사실값이 달라질 수 있으므로 회귀 테스트와 분리함
 
 `datasets/labeled-cases/`가 패키지 밖에 있는 것은 다음이 전부 다르기 때문임
 
-| | `web/src/rules/engine/fixtures/` | `datasets/labeled-cases/` |
+| | `apps/web/src/rules/engine/fixtures/` | `datasets/labeled-cases/` |
 |---|---|---|
 | 재는 것 | 규칙 적용의 정확성 | 현실에서의 정합성 |
 | 입력 | 손으로 고정 | 영상 파이프라인이 생성 |
@@ -2133,7 +2136,7 @@ Replay_Lab/
 
 ---
 
-### 합성 픽스처 — `web/src/rules/engine/fixtures/`
+### 합성 픽스처 — `apps/web/src/rules/engine/fixtures/`
 
 엔진이 **규정을 옳게 적용하는지**를 고정하는 합성 데이터임
 실제 경기와 무관함 팀명도 선수명도 날짜도 없음
@@ -2182,7 +2185,7 @@ push-03 / push-04 결과 동일 · 사유가 달라야 함                      
 
 #### 열거형은 이 문서와 맞아야 함
 
-픽스처에 쓰인 모든 대문자 값은 이 문서의 8절과 이후 `web/src/shared`에 정의
+픽스처에 쓰인 모든 대문자 값은 이 문서의 8절과 이후 `apps/web/src/shared`에 정의
 구현할 `check/enums.mjs`가 이를 검사해 픽스처가 타입보다 앞서 나가지 않게 함
 
 #### 판본과 대회 옵션은 다른 축임
@@ -2387,7 +2390,7 @@ IFAB 원문은 다단 레이아웃이라 파싱 비용이 크고 먼저 손대�
 - [ ] 규정 자료 metadata 작성
 - [ ] KFA 한국어 대조판 확보
 - [ ] 대회요강 판본 지정 범위 재확인
-- [x] `web/src/shared` 공통 상태값과 결과 타입 정의
+- [x] `apps/web/src/shared` 공통 상태값과 결과 타입 정의
 - [ ] TypeScript와 Python 사이 작업 계약과 사실 JSON Schema 정의
 - [x] IdempotencyRecord 스키마와 같은 키 다른 본문 충돌 테스트 작성
 - [ ] Worker 내부 작업 선점과 결과 수신 API 계약 작성
