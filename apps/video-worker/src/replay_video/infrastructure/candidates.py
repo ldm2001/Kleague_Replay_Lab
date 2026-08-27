@@ -6,7 +6,7 @@ from ..domain.models import Candidate, Shot, VideoMetadata
 from .signals import signals
 
 
-def _shot_for(timestamp_ms: int, items: tuple[Shot, ...]) -> Shot | None:
+def segment(timestamp_ms: int, items: tuple[Shot, ...]) -> Shot | None:
     return next((item for item in items if item.start_ms <= timestamp_ms <= item.end_ms), None)
 
 
@@ -20,7 +20,7 @@ def candidates(
 ) -> tuple[Candidate, ...]:
     peaks: list[tuple[int, float]] = []
     for signal in signals(source, metadata):
-        shot = _shot_for(signal.timestamp_ms, shot_list)
+        shot = segment(signal.timestamp_ms, shot_list)
         if shot is None or (shot.start_ms > 0 and abs(signal.timestamp_ms - shot.start_ms) < 250):
             continue
         if signal.score < motion_threshold:

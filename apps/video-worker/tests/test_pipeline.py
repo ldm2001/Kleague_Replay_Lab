@@ -7,12 +7,12 @@ import cv2
 import numpy as np
 import pytest
 
-from replay_video.application.pipeline import run
+from replay_video.application.pipeline import pipeline
 from replay_video.infrastructure.probe import MediaError, probe
 from replay_video.infrastructure.shots import shots
 
 
-def video(path: Path) -> None:
+def fixture(path: Path) -> None:
     writer = cv2.VideoWriter(
         str(path),
         cv2.VideoWriter_fourcc(*"mp4v"),
@@ -33,9 +33,9 @@ def video(path: Path) -> None:
         writer.release()
 
 
-def test_probe_reads_real_video_metadata(tmp_path: Path) -> None:
+def test_probe_metadata(tmp_path: Path) -> None:
     source = tmp_path / "sample.mp4"
-    video(source)
+    fixture(source)
 
     metadata = probe(source)
 
@@ -47,9 +47,9 @@ def test_probe_reads_real_video_metadata(tmp_path: Path) -> None:
     assert metadata.codec
 
 
-def test_shots_split_a_broadcast_hard_cut(tmp_path: Path) -> None:
+def test_shots_cut(tmp_path: Path) -> None:
     source = tmp_path / "sample.mp4"
-    video(source)
+    fixture(source)
 
     result = shots(source, probe(source))
 
@@ -59,12 +59,12 @@ def test_shots_split_a_broadcast_hard_cut(tmp_path: Path) -> None:
     assert result[1].end_ms == pytest.approx(4000, abs=150)
 
 
-def test_run_creates_candidates_and_evidence_assets(tmp_path: Path) -> None:
+def test_pipeline_assets(tmp_path: Path) -> None:
     source = tmp_path / "sample.mp4"
     output = tmp_path / "result"
-    video(source)
+    fixture(source)
 
-    result = run(source, output)
+    result = pipeline(source, output)
 
     assert result.schema_version == 1
     assert result.video.width == 320
@@ -87,6 +87,6 @@ def test_run_creates_candidates_and_evidence_assets(tmp_path: Path) -> None:
         assert item.path.stat().st_size > 0
 
 
-def test_probe_rejects_missing_media(tmp_path: Path) -> None:
+def test_probe_missing(tmp_path: Path) -> None:
     with pytest.raises(MediaError, match="media-not-found"):
         probe(tmp_path / "missing.mp4")

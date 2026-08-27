@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { SubmitAnalysisCommand, SubmitAnalysisRepositoryResult } from "@replay/application";
-import { createDatabaseClient } from "@replay/database";
-import { createPostgresSubmitAnalysisRepository } from "@replay/adapters";
+import { client } from "@replay/database";
+import { analysisRepo } from "@replay/adapters";
 
 const databaseUrl = process.env.DATABASE_URL;
 const describeDatabase = databaseUrl ? describe : describe.skip;
@@ -19,28 +19,28 @@ const expiresAt = "2030-01-02T12:00:00.000Z";
 const seedCreatedAt = "2029-01-01T12:00:00.000Z";
 
 describeDatabase("PostgreSQL submit-analysis repository", () => {
-  const client = databaseUrl ? createDatabaseClient(databaseUrl) : null;
-  if (!client) return;
+  const database = databaseUrl ? client(databaseUrl) : null;
+  if (!database) return;
 
-  const repository = createPostgresSubmitAnalysisRepository(client);
+  const repository = analysisRepo(database);
   const seeds: Seed[] = [];
 
   beforeAll(async () => {
-    await client.sql`select 1`;
+    await database.sql`select 1`;
   });
 
   afterEach(async () => {
     for (const seed of seeds.splice(0)) {
-      await client.sql`delete from analyses where anonymous_session_id = ${seed.sessionId}`;
-      await client.sql`delete from video_assets where id = ${seed.videoId}`;
-      await client.sql`delete from competition_rule_versions where id = ${seed.ruleId}`;
-      await client.sql`delete from matches where id = ${seed.matchId}`;
-      await client.sql`delete from anonymous_sessions where id = ${seed.sessionId}`;
+      await database.sql`delete from analyses where anonymous_session_id = ${seed.sessionId}`;
+      await database.sql`delete from video_assets where id = ${seed.videoId}`;
+      await database.sql`delete from competition_rule_versions where id = ${seed.ruleId}`;
+      await database.sql`delete from matches where id = ${seed.matchId}`;
+      await database.sql`delete from anonymous_sessions where id = ${seed.sessionId}`;
     }
   });
 
   afterAll(async () => {
-    await client.close();
+    await database.close();
   });
 
   const seedScenario = async (overrides: {
@@ -62,7 +62,7 @@ describeDatabase("PostgreSQL submit-analysis repository", () => {
     };
     seeds.push(seed);
 
-    await client.sql`
+    await database.sql`
       insert into anonymous_sessions (id, token_hash, created_at, expires_at, revoked_at)
       values (
         ${seed.sessionId},
@@ -74,7 +74,7 @@ describeDatabase("PostgreSQL submit-analysis repository", () => {
     `;
 
     const videoSessionId = overrides.videoSessionId ?? seed.sessionId;
-    await client.sql`
+    await database.sql`
       insert into video_assets (
         id, anonymous_session_id, object_key, content_sha256, content_type,
         size_bytes, status, rights_confirmed_at, created_at, expires_at, object_deleted_at
@@ -94,13 +94,13 @@ describeDatabase("PostgreSQL submit-analysis repository", () => {
       )
     `;
 
-    await client.sql`
+    await database.sql`
       insert into matches (id, competition, season, match_date)
       values (${seed.matchId}, ${`Submit Analysis Cup ${suffix}`}, '2030', '2030-01-01')
     `;
 
     if (overrides.withRule !== false) {
-      await client.sql`
+      await database.sql`
         insert into competition_rule_versions (
           id, competition, season, effective_from, effective_to,
           ifab_edition, source_document, verification_status
@@ -116,7 +116,7 @@ describeDatabase("PostgreSQL submit-analysis repository", () => {
     return seed;
   };
 
-  const commandFor = (
+  const request = (
     seed: Seed,
     overrides: Partial<SubmitAnalysisCommand> = {},
   ): SubmitAnalysisCommand => ({
@@ -136,16 +136,16 @@ describeDatabase("PostgreSQL submit-analysis repository", () => {
     ...overrides,
   });
 
-  const countRows = async (seed: Seed) => {
-    const [analysisCount] = await client.sql<{ count: string }[]>`
+  const counts = async (seed: Seed) => {
+    const [analysisCount] = await database.sql<{ count: string }[]>`
       select count(*)::text as count from analyses where anonymous_session_id = ${seed.sessionId}
     `;
-    const [jobCount] = await client.sql<{ count: string }[]>`
+    const [jobCount] = await database.sql<{ count: string }[]>`
       select count(*)::text as count
       from processing_jobs
       where analysis_id in (select id from analyses where anonymous_session_id = ${seed.sessionId})
     `;
-    const [idempotencyCount] = await client.sql<{ count: string }[]>`
+    const [idempotencyCount] = await database.sql<{ count: string }[]>`
       select count(*)::text as count from idempotency_records where anonymous_session_id = ${seed.sessionId}
     `;
     return {
@@ -158,12 +158,12 @@ describeDatabase("PostgreSQL submit-analysis repository", () => {
   it("creates a queued analysis, job, and idempotency record with persisted command values", async () => {
     const seed = await seedScenario();
 
-    const result = await repository.submit(commandFor(seed));
+    const result = await repository.submit(request(seed));
 
     expect(result.kind).toBe("CREATED");
     if (result.kind !== "CREATED") return;
 
-    const [analysis] = await client.sql<{
+    const [analysis] = await database.sql<{
       id: string;
       status: string;
       retention_class: string;
@@ -175,7 +175,7 @@ describeDatabase("PostgreSQL submit-analysis repository", () => {
       created_at: string;
       expires_at: string;
     }[]>`select * from analyses where id = ${result.analysisId}`;
-    const [job] = await client.sql<{
+    const [job] = await database.sql<{
       job_type: string;
       status: string;
       payload_version: number;
@@ -184,7 +184,7 @@ describeDatabase("PostgreSQL submit-analysis repository", () => {
       max_attempts: number;
       next_attempt_at: string;
     }[]>`select * from processing_jobs where analysis_id = ${result.analysisId}`;
-    const [idempotency] = await client.sql<{
+    const [idempotency] = await database.sql<{
       operation: string;
       key_hash: Buffer;
       request_hash: Buffer;
@@ -220,12 +220,12 @@ describeDatabase("PostgreSQL submit-analysis repository", () => {
     expect(new Date(idempotency!.expires_at).toISOString()).toBe(expiresAt);
     expect(idempotency?.key_hash).toEqual(Buffer.from([1, 2, 3, 4]));
     expect(idempotency?.request_hash).toEqual(Buffer.from([5, 6, 7, 8]));
-    expect(await countRows(seed)).toEqual({ analyses: 1, jobs: 1, idempotency: 1 });
+    expect(await counts(seed)).toEqual({ analyses: 1, jobs: 1, idempotency: 1 });
   });
 
   it("replays the same request and rejects a different request under the same key", async () => {
     const seed = await seedScenario();
-    const command = commandFor(seed);
+    const command = request(seed);
 
     const created = await repository.submit(command);
     expect(created.kind).toBe("CREATED");
@@ -233,9 +233,9 @@ describeDatabase("PostgreSQL submit-analysis repository", () => {
 
     const replayed = await repository.submit(command);
     expect(replayed).toEqual({ kind: "REPLAYED", analysisId: created.analysisId });
-    expect(await countRows(seed)).toEqual({ analyses: 1, jobs: 1, idempotency: 1 });
+    expect(await counts(seed)).toEqual({ analyses: 1, jobs: 1, idempotency: 1 });
 
-    await client.sql`
+    await database.sql`
       update idempotency_records
       set expires_at = '2030-01-01T12:00:01.000Z'
       where anonymous_session_id = ${seed.sessionId}
@@ -248,7 +248,7 @@ describeDatabase("PostgreSQL submit-analysis repository", () => {
       requestHash: Uint8Array.from([8, 7, 6, 5]),
     });
     expect(conflict).toEqual({ kind: "IDEMPOTENCY_KEY_REUSED" });
-    expect(await countRows(seed)).toEqual({ analyses: 1, jobs: 1, idempotency: 1 });
+    expect(await counts(seed)).toEqual({ analyses: 1, jobs: 1, idempotency: 1 });
   });
 
   it("returns VIDEO_ASSET_UNAVAILABLE for invalid session or video ownership state", async () => {
@@ -268,22 +268,22 @@ describeDatabase("PostgreSQL submit-analysis repository", () => {
     for (const [index, state] of invalidStates.entries()) {
       const seed = await seedScenario(state.overrides);
       const result = await repository.submit(
-        commandFor(seed, {
+        request(seed, {
           keyHash: Uint8Array.from([10, index + 1]),
           requestHash: Uint8Array.from([20, index + 1]),
         }),
       );
       expect(result, state.name).toEqual({ kind: "VIDEO_ASSET_UNAVAILABLE" });
-      expect(await countRows(seed)).toEqual({ analyses: 0, jobs: 0, idempotency: 0 });
+      expect(await counts(seed)).toEqual({ analyses: 0, jobs: 0, idempotency: 0 });
     }
 
     const owner = await seedScenario();
     const otherSession = await seedScenario();
-    await client.sql`
+    await database.sql`
       update video_assets set anonymous_session_id = ${otherSession.sessionId} where id = ${owner.videoId}
     `;
     const otherSessionResult = await repository.submit(
-      commandFor(owner, { keyHash: Uint8Array.from([11, 1]), requestHash: Uint8Array.from([21, 1]) }),
+      request(owner, { keyHash: Uint8Array.from([11, 1]), requestHash: Uint8Array.from([21, 1]) }),
     );
     expect(otherSessionResult).toEqual({ kind: "VIDEO_ASSET_UNAVAILABLE" });
   });
@@ -299,7 +299,7 @@ describeDatabase("PostgreSQL submit-analysis repository", () => {
       signalLocked = resolve;
     });
 
-    const holder = client.sql.begin(async (transaction) => {
+    const holder = database.sql.begin(async (transaction) => {
       await transaction`select id from video_assets where id = ${seed.videoId} for update`;
       signalLocked?.();
       await holderMayUpdate;
@@ -308,65 +308,65 @@ describeDatabase("PostgreSQL submit-analysis repository", () => {
     await holderLocked;
 
     const submitting = repository.submit(
-      commandFor(seed, { keyHash: Uint8Array.from([71, 72]), requestHash: Uint8Array.from([81, 82]) }),
+      request(seed, { keyHash: Uint8Array.from([71, 72]), requestHash: Uint8Array.from([81, 82]) }),
     );
     await new Promise((resolve) => setTimeout(resolve, 100));
     releaseHolder?.();
     await holder;
 
     await expect(submitting).resolves.toEqual({ kind: "VIDEO_ASSET_UNAVAILABLE" });
-    expect(await countRows(seed)).toEqual({ analyses: 0, jobs: 0, idempotency: 0 });
+    expect(await counts(seed)).toEqual({ analyses: 0, jobs: 0, idempotency: 0 });
   });
 
   it("returns MATCH_UNAVAILABLE when the requested match is absent", async () => {
     const seed = await seedScenario();
 
     const result = await repository.submit(
-      commandFor(seed, { matchId: randomUUID() }),
+      request(seed, { matchId: randomUUID() }),
     );
 
     expect(result).toEqual({ kind: "MATCH_UNAVAILABLE" });
-    expect(await countRows(seed)).toEqual({ analyses: 0, jobs: 0, idempotency: 0 });
+    expect(await counts(seed)).toEqual({ analyses: 0, jobs: 0, idempotency: 0 });
   });
 
   it("returns RULE_VERSION_UNAVAILABLE when no rule applies to the match date", async () => {
     const seed = await seedScenario({ withRule: false });
 
-    const result = await repository.submit(commandFor(seed));
+    const result = await repository.submit(request(seed));
 
     expect(result).toEqual({ kind: "RULE_VERSION_UNAVAILABLE" });
-    expect(await countRows(seed)).toEqual({ analyses: 0, jobs: 0, idempotency: 0 });
+    expect(await counts(seed)).toEqual({ analyses: 0, jobs: 0, idempotency: 0 });
   });
 
   it("maps only the duplicate video constraint to VIDEO_ASSET_ALREADY_SUBMITTED", async () => {
     const seed = await seedScenario();
-    const first = await repository.submit(commandFor(seed));
+    const first = await repository.submit(request(seed));
     expect(first.kind).toBe("CREATED");
 
     const duplicate = await repository.submit(
-      commandFor(seed, {
+      request(seed, {
         keyHash: Uint8Array.from([31, 32, 33]),
         requestHash: Uint8Array.from([41, 42, 43]),
       }),
     );
 
     expect(duplicate).toEqual({ kind: "VIDEO_ASSET_ALREADY_SUBMITTED" });
-    expect(await countRows(seed)).toEqual({ analyses: 1, jobs: 1, idempotency: 1 });
+    expect(await counts(seed)).toEqual({ analyses: 1, jobs: 1, idempotency: 1 });
   });
 
   it("rolls back analysis and idempotency writes when the job insert fails", async () => {
     const seed = await seedScenario();
 
     await expect(
-      repository.submit(commandFor(seed, { maxJobAttempts: 0 })),
+      repository.submit(request(seed, { maxJobAttempts: 0 })),
     ).rejects.toThrow();
 
-    expect(await countRows(seed)).toEqual({ analyses: 0, jobs: 0, idempotency: 0 });
+    expect(await counts(seed)).toEqual({ analyses: 0, jobs: 0, idempotency: 0 });
   });
 
   it("converges concurrent submissions for the same key to CREATED and REPLAYED", async () => {
     const seed = await seedScenario();
-    const command = commandFor(seed, {
+    const command = request(seed, {
       keyHash: Uint8Array.from([51, 52, 53]),
       requestHash: Uint8Array.from([61, 62, 63]),
     });
@@ -380,6 +380,6 @@ describeDatabase("PostgreSQL submit-analysis repository", () => {
       )
       .map((result) => result.analysisId);
     expect(new Set(analysisIds).size).toBe(1);
-    expect(await countRows(seed)).toEqual({ analyses: 1, jobs: 1, idempotency: 1 });
+    expect(await counts(seed)).toEqual({ analyses: 1, jobs: 1, idempotency: 1 });
   });
 });

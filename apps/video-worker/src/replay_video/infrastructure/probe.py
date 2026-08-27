@@ -12,21 +12,21 @@ class MediaError(RuntimeError):
     """Raised when a source cannot be inspected as a supported video."""
 
 
-def _number(value: Any, default: float = 0.0) -> float:
+def number(value: Any, default: float = 0.0) -> float:
     try:
         return float(value)
     except (TypeError, ValueError):
         return default
 
 
-def _fps(value: Any) -> float:
+def fps(value: Any) -> float:
     if not isinstance(value, str) or not value:
         return 0.0
     if "/" not in value:
-        return _number(value)
+        return number(value)
     numerator, denominator = value.split("/", 1)
-    denominator_value = _number(denominator)
-    return _number(numerator) / denominator_value if denominator_value else 0.0
+    denominator_value = number(denominator)
+    return number(numerator) / denominator_value if denominator_value else 0.0
 
 
 def probe(source: Path | str) -> VideoMetadata:
@@ -65,14 +65,14 @@ def probe(source: Path | str) -> VideoMetadata:
     if not isinstance(stream, dict):
         raise MediaError("video-stream-missing")
 
-    width = int(_number(stream.get("width")))
-    height = int(_number(stream.get("height")))
-    fps = _fps(stream.get("avg_frame_rate") or stream.get("r_frame_rate"))
+    width = int(number(stream.get("width")))
+    height = int(number(stream.get("height")))
+    frame_rate = fps(stream.get("avg_frame_rate") or stream.get("r_frame_rate"))
     format_payload = payload.get("format") if isinstance(payload.get("format"), dict) else {}
-    duration = _number(stream.get("duration"), _number(format_payload.get("duration")))
-    frame_count = int(_number(stream.get("nb_frames"), duration * fps))
+    duration = number(stream.get("duration"), number(format_payload.get("duration")))
+    frame_count = int(number(stream.get("nb_frames"), duration * frame_rate))
     codec = str(stream.get("codec_name") or "unknown")
-    if width <= 0 or height <= 0 or fps <= 0 or duration <= 0 or frame_count <= 0:
+    if width <= 0 or height <= 0 or frame_rate <= 0 or duration <= 0 or frame_count <= 0:
         raise MediaError("video-metadata-invalid")
 
     return VideoMetadata(
@@ -80,7 +80,7 @@ def probe(source: Path | str) -> VideoMetadata:
         duration_ms=round(duration * 1000),
         width=width,
         height=height,
-        fps=fps,
+        fps=frame_rate,
         frame_count=frame_count,
         codec=codec,
     )

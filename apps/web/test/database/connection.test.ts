@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createDatabaseClient } from "@replay/database";
+import { client } from "@replay/database";
 
 describe("database client", () => {
   it("throws a clear error when DATABASE_URL is absent", () => {
@@ -7,7 +7,7 @@ describe("database client", () => {
     delete process.env.DATABASE_URL;
 
     try {
-      expect(() => createDatabaseClient()).toThrow("DATABASE_URL is required");
+      expect(() => client()).toThrow("DATABASE_URL is required");
     } finally {
       if (originalDatabaseUrl === undefined) {
         delete process.env.DATABASE_URL;

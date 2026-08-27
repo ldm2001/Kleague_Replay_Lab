@@ -1,12 +1,12 @@
-import { createHash } from "node:crypto";
+import { createHash as digest } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { KNOWN_RULE_VERSION_IDS, loadRuleSet } from "@replay/rule-data";
+import { KNOWN_RULE_VERSION_IDS, ruleSet } from "@replay/rule-data";
 
-const ruleSet2025 = loadRuleSet("ifab-2025-26");
+const ruleSet2025 = ruleSet("ifab-2025-26");
 
-describe("loadRuleSet", () => {
+describe("ruleSet", () => {
   it("알 수 없는 판본에는 null을 반환하고 던지지 않는다", () => {
-    expect(loadRuleSet("ifab-1998-99")).toBeNull();
+    expect(ruleSet("ifab-1998-99")).toBeNull();
     expect(KNOWN_RULE_VERSION_IDS).toContain("ifab-2025-26");
   });
 
@@ -27,7 +27,7 @@ describe("loadRuleSet", () => {
       expect(citation.ruleId).toMatch(/^ifab-2025-26-/);
       expect(citation.quoteSnapshot.length).toBeGreaterThan(0);
       expect(citation.ruleContentSha256).toBe(
-        createHash("sha256").update(citation.quoteSnapshot, "utf8").digest("hex"),
+        digest("sha256").update(citation.quoteSnapshot, "utf8").digest("hex"),
       );
     }
   });
@@ -58,7 +58,7 @@ describe("loadRuleSet", () => {
   });
 
   it("반환된 RuleSet은 동결되어 있고 호출마다 같은 값을 준다", () => {
-    const again = loadRuleSet("ifab-2025-26");
+    const again = ruleSet("ifab-2025-26");
     expect(again).toBe(ruleSet2025);
     expect(Object.isFrozen(ruleSet2025)).toBe(true);
     expect(Object.isFrozen(ruleSet2025!.varCategories())).toBe(true);
@@ -66,7 +66,7 @@ describe("loadRuleSet", () => {
 });
 
 describe("판본 차이", () => {
-  const ruleSet2026 = loadRuleSet("ifab-2026-27");
+  const ruleSet2026 = ruleSet("ifab-2026-27");
 
   it("2026/27은 다섯 범주이고 코너킥에 대회 채택 옵션이 붙어 있다", () => {
     const categories = ruleSet2026!.varCategories();

@@ -13,15 +13,15 @@ const ROOT = new URL("../../", import.meta.url).pathname;
 const TARGET = join(ROOT, "apps/web/src/rules/engine");
 const EDITION = /\b20\d{2}\s*[-/]\s*\d{2}\b/g;
 
-const walk = (dir) =>
+const tree = (dir) =>
   readdirSync(dir).flatMap((entry) => {
     const full = join(dir, entry);
-    return statSync(full).isDirectory() ? walk(full) : [full];
+    return statSync(full).isDirectory() ? tree(full) : [full];
   });
 
 const violations = [];
 
-for (const file of walk(TARGET).filter((f) => f.endsWith(".ts"))) {
+for (const file of tree(TARGET).filter((f) => f.endsWith(".ts"))) {
   const lines = readFileSync(file, "utf8").split("\n");
   lines.forEach((line, index) => {
     for (const match of line.matchAll(EDITION)) {

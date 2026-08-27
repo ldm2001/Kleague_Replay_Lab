@@ -30,7 +30,7 @@ type LockedVideoRow = {
 
 const duplicateVideoConstraint = "analyses_video_asset_id_key";
 
-const isDuplicateVideoError = (error: unknown): boolean => {
+const duplicateVideo = (error: unknown): boolean => {
   if (typeof error !== "object" || error === null) {
     return false;
   }
@@ -46,10 +46,10 @@ const isDuplicateVideoError = (error: unknown): boolean => {
     return true;
   }
 
-  return candidate.cause !== undefined && isDuplicateVideoError(candidate.cause);
+  return candidate.cause !== undefined && duplicateVideo(candidate.cause);
 };
 
-export class PostgresSubmitAnalysisRepository implements SubmitAnalysisRepository {
+export class AnalysisRepo implements SubmitAnalysisRepository {
   public constructor(private readonly client: DatabaseHandle) {}
 
   public async submit(command: SubmitAnalysisCommand): Promise<SubmitAnalysisRepositoryResult> {
@@ -191,7 +191,7 @@ export class PostgresSubmitAnalysisRepository implements SubmitAnalysisRepositor
         return { kind: "CREATED", analysisId: analysis.id };
       });
     } catch (error) {
-      if (isDuplicateVideoError(error)) {
+      if (duplicateVideo(error)) {
         return { kind: "VIDEO_ASSET_ALREADY_SUBMITTED" };
       }
 
@@ -200,9 +200,6 @@ export class PostgresSubmitAnalysisRepository implements SubmitAnalysisRepositor
   }
 }
 
-export const submitRepo = (
+export const analysisRepo = (
   client: DatabaseHandle,
-): PostgresSubmitAnalysisRepository => new PostgresSubmitAnalysisRepository(client);
-
-export const createPostgresSubmitAnalysisRepository = submitRepo;
-export const createSubmitAnalysisRepository = submitRepo;
+): AnalysisRepo => new AnalysisRepo(client);

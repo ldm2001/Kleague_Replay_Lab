@@ -10,7 +10,7 @@ export type SessionDependencies = Readonly<{
   repository: SessionRepository;
 }>;
 
-export type ResolveDependencies = Readonly<{
+export type RecordDependencies = Readonly<{
   clock: Clock;
   hasher: Hasher;
   repository: SessionRepository;
@@ -26,8 +26,8 @@ export const session =
     });
   };
 
-export const resolve =
-  ({ clock, hasher, repository }: ResolveDependencies) =>
+export const record =
+  ({ clock, hasher, repository }: RecordDependencies) =>
   async (token: string): Promise<SessionRecord | null> => {
     const value = token.trim();
     if (value.length === 0) {

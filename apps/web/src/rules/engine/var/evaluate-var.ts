@@ -14,7 +14,7 @@ import type {
   VarWindowException,
 } from "@replay/shared-types";
 import { VAR_WINDOW_EXCEPTIONS } from "@replay/shared-types";
-import { buildFactSignature } from "../signatures/fact-signature";
+import { factSignature } from "../signatures/fact-signature";
 
 /**
  * 두 어휘가 겹치는 값인지 확인한다.
@@ -24,7 +24,7 @@ import { buildFactSignature } from "../signatures/fact-signature";
  * 닫힌 검토 창을 다시 열지 않는다. 캐스팅으로 넘기면 판본 데이터가
  * 그런 값을 예외 목록에 넣었을 때 타입도 검사기도 잡지 못한다.
  */
-const isWindowException = (
+const exception = (
   value: SendOffCategory,
 ): value is SendOffCategory & VarWindowException =>
   (VAR_WINDOW_EXCEPTIONS as readonly string[]).includes(value);
@@ -94,7 +94,7 @@ const procedureGate = (facts: VarFacts, reviewable: boolean): VarReviewProcedure
   return facts.decisionNature === "SUBJECTIVE" ? "OFR" : "VAR_ONLY";
 };
 
-export const evaluateVar = (
+export const varResult = (
   facts: VarFacts,
   rules: RuleSet,
   competitionOptions: CompetitionOptions,
@@ -140,7 +140,7 @@ export const evaluateVar = (
     // 않는 값을 목록에 넣으면 엔진이 표현할 수 없는 예외를 요구하는 것이고,
     // 그건 사건의 사실값 문제가 아니라 데이터 오류다 — 인용 없는 결과와
     // 같은 부류이므로 같은 방식으로 던진다. enums.mjs가 먼저 잡는다.
-    if (!isWindowException(facts.sendOffCategory)) {
+    if (!exception(facts.sendOffCategory)) {
       throw new Error(
         `창을 다시 열지 않는 퇴장 사유가 판본의 예외 목록에 있음: ${facts.sendOffCategory} — 규칙 데이터를 확인할 것`,
       );
@@ -195,11 +195,11 @@ export const evaluateVar = (
   ];
 
   if (citations.length === 0) {
-    throw new Error("evaluateVar가 인용 없이 결과를 만들려 했음 — 규칙 데이터를 확인할 것");
+    throw new Error("varResult가 인용 없이 결과를 만들려 했음 — 규칙 데이터를 확인할 것");
   }
 
   // 대회 채택 옵션은 사건의 사실값이 아니므로 서명에 넣지 않는다.
-  const { signature, input } = buildFactSignature({
+  const { signature, input } = factSignature({
     reviewScenario: facts.reviewScenario,
     restartOccurred: facts.restartOccurred,
     sendOffCategory: facts.sendOffCategory,

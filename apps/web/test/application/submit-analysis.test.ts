@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  createSubmitAnalysis,
+  analysis,
   type Clock,
   type Hasher,
   type SubmitAnalysisCommand,
@@ -37,7 +37,7 @@ const VALID_INPUT = {
   sourcePlatform: "Example Sports",
 } satisfies SubmitAnalysisInput;
 
-class RecordingHasher implements Hasher {
+class HashFake implements Hasher {
   readonly inputs: string[] = [];
 
   constructor(private readonly outputs: readonly Uint8Array[] = [KEY_HASH, REQUEST_HASH]) {}
@@ -54,7 +54,7 @@ class RecordingHasher implements Hasher {
   }
 }
 
-class RecordingSubmitAnalysisRepository implements SubmitAnalysisRepository {
+class AnalysisRepoFake implements SubmitAnalysisRepository {
   readonly commands: SubmitAnalysisCommand[] = [];
 
   constructor(private readonly result: SubmitAnalysisRepositoryResult) {}
@@ -65,22 +65,22 @@ class RecordingSubmitAnalysisRepository implements SubmitAnalysisRepository {
   }
 }
 
-const createHarness = (
+const harness = (
   repositoryResult: SubmitAnalysisRepositoryResult = { kind: "CREATED", analysisId: ANALYSIS_ID },
 ) => {
-  const repository = new RecordingSubmitAnalysisRepository(repositoryResult);
-  const hasher = new RecordingHasher();
+  const repository = new AnalysisRepoFake(repositoryResult);
+  const hasher = new HashFake();
   const clock: Clock = { now: () => FIXED_NOW };
-  const submitAnalysis = createSubmitAnalysis({ repository, hasher, clock, policy: POLICY });
+  const analysisRun = analysis({ repository, hasher, clock, policy: POLICY });
 
-  return { hasher, repository, submitAnalysis };
+  return { hasher, repository, analysisRun };
 };
 
-describe("createSubmitAnalysis", () => {
+describe("analysis", () => {
   it("builds the complete repository command with the current time and retention expiry", async () => {
-    const { repository, submitAnalysis } = createHarness();
+    const { repository, analysisRun } = harness();
 
-    const result = await submitAnalysis(VALID_INPUT);
+    const result = await analysisRun(VALID_INPUT);
 
     expect(result).toEqual({ kind: "CREATED", analysisId: ANALYSIS_ID });
     expect(repository.commands).toEqual([
@@ -105,9 +105,9 @@ describe("createSubmitAnalysis", () => {
   });
 
   it("hashes the raw key and exact fixed-order normalized request JSON", async () => {
-    const { hasher, submitAnalysis } = createHarness();
+    const { hasher, analysisRun } = harness();
 
-    await submitAnalysis({
+    await analysisRun({
       ...VALID_INPUT,
       sourceUrl: "  https://example.com/source  ",
       sourcePlatform: "   ",
@@ -120,9 +120,9 @@ describe("createSubmitAnalysis", () => {
   });
 
   it("canonicalizes uppercase UUID inputs before hashing and repository submission", async () => {
-    const { hasher, repository, submitAnalysis } = createHarness();
+    const { hasher, repository, analysisRun } = harness();
 
-    await submitAnalysis({
+    await analysisRun({
       ...VALID_INPUT,
       anonymousSessionId: "ABCDEFAB-CDEF-4ABC-8DEF-ABCDEFABCDEF",
       videoAssetId: "ABCDEFAB-CDEF-4ABC-8DEF-ABCDEFABCDE0",
@@ -155,7 +155,7 @@ describe("createSubmitAnalysis", () => {
       jobPayloadVersion: number;
       maxJobAttempts: number;
     } = { ...POLICY };
-    const repository = new RecordingSubmitAnalysisRepository({
+    const repository = new AnalysisRepoFake({
       kind: "CREATED",
       analysisId: ANALYSIS_ID,
     });
@@ -184,14 +184,14 @@ describe("createSubmitAnalysis", () => {
         return hashCallCount === 1 ? KEY_HASH : REQUEST_HASH;
       },
     };
-    const submitAnalysis = createSubmitAnalysis({
+    const analysisRun = analysis({
       repository,
       hasher,
       clock: { now: () => FIXED_NOW },
       policy: mutablePolicy,
     });
 
-    await submitAnalysis(mutableInput);
+    await analysisRun(mutableInput);
 
     expect(hashInputs).toEqual([
       "raw-idempotency-key",
@@ -217,7 +217,7 @@ describe("createSubmitAnalysis", () => {
   });
 
   it("owns independent digest bytes when the hasher reuses its output buffer", async () => {
-    const repository = new RecordingSubmitAnalysisRepository({
+    const repository = new AnalysisRepoFake({
       kind: "CREATED",
       analysisId: ANALYSIS_ID,
     });
@@ -230,14 +230,14 @@ describe("createSubmitAnalysis", () => {
         return sharedDigest;
       },
     };
-    const submitAnalysis = createSubmitAnalysis({
+    const analysisRun = analysis({
       repository,
       hasher,
       clock: { now: () => FIXED_NOW },
       policy: POLICY,
     });
 
-    await submitAnalysis(VALID_INPUT);
+    await analysisRun(VALID_INPUT);
 
     const command = repository.commands[0];
     expect(command?.keyHash).toEqual(Uint8Array.from([1, 2, 3]));
@@ -250,9 +250,9 @@ describe("createSubmitAnalysis", () => {
   });
 
   it("trims optional strings and normalizes empty values to null", async () => {
-    const { repository, submitAnalysis } = createHarness();
+    const { repository, analysisRun } = harness();
 
-    await submitAnalysis({
+    await analysisRun({
       ...VALID_INPUT,
       sourceUrl: "  https://example.com/source  ",
       sourcePlatform: "   ",
@@ -265,7 +265,7 @@ describe("createSubmitAnalysis", () => {
   });
 
   it("normalizes omitted optional strings to null", async () => {
-    const { repository, submitAnalysis } = createHarness();
+    const { repository, analysisRun } = harness();
     const inputWithoutSource = {
       anonymousSessionId: ANONYMOUS_SESSION_ID,
       videoAssetId: VIDEO_ASSET_ID,
@@ -273,26 +273,26 @@ describe("createSubmitAnalysis", () => {
       idempotencyKey: "raw-idempotency-key",
     } satisfies SubmitAnalysisInput;
 
-    await submitAnalysis(inputWithoutSource);
+    await analysisRun(inputWithoutSource);
 
     expect(repository.commands[0]).toMatchObject({ sourceUrl: null, sourcePlatform: null });
   });
 
   it("rejects an empty idempotency key before calling the repository", async () => {
-    const { repository, submitAnalysis } = createHarness();
+    const { repository, analysisRun } = harness();
 
-    const result = await submitAnalysis({ ...VALID_INPUT, idempotencyKey: "" });
+    const result = await analysisRun({ ...VALID_INPUT, idempotencyKey: "" });
 
     expect(result).toEqual({ kind: "INVALID_INPUT", reason: "IDEMPOTENCY_KEY_REQUIRED" });
     expect(repository.commands).toHaveLength(0);
   });
 
   it("rejects an idempotency key longer than 200 UTF-8 bytes before calling the repository", async () => {
-    const { repository, submitAnalysis } = createHarness();
+    const { repository, analysisRun } = harness();
     const keyWith201Utf8Bytes = "가".repeat(67);
     expect(new TextEncoder().encode(keyWith201Utf8Bytes)).toHaveLength(201);
 
-    const result = await submitAnalysis({ ...VALID_INPUT, idempotencyKey: keyWith201Utf8Bytes });
+    const result = await analysisRun({ ...VALID_INPUT, idempotencyKey: keyWith201Utf8Bytes });
 
     expect(result).toEqual({ kind: "INVALID_INPUT", reason: "IDEMPOTENCY_KEY_TOO_LONG" });
     expect(repository.commands).toHaveLength(0);
@@ -301,10 +301,10 @@ describe("createSubmitAnalysis", () => {
   it.each(["anonymousSessionId", "videoAssetId", "matchId"] as const)(
     "rejects an invalid %s before calling the repository",
     async (field) => {
-      const { repository, submitAnalysis } = createHarness();
+      const { repository, analysisRun } = harness();
       const invalidInput = { ...VALID_INPUT, [field]: "not-a-uuid" } satisfies SubmitAnalysisInput;
 
-      const result = await submitAnalysis(invalidInput);
+      const result = await analysisRun(invalidInput);
 
       expect(result).toEqual({ kind: "INVALID_INPUT", reason: "INVALID_ID" });
       expect(repository.commands).toHaveLength(0);
@@ -322,9 +322,9 @@ describe("createSubmitAnalysis", () => {
   ] satisfies readonly SubmitAnalysisRepositoryResult[];
 
   it.each(repositoryResults)("returns the repository's $kind result unchanged", async (repositoryResult) => {
-    const { submitAnalysis } = createHarness(repositoryResult);
+    const { analysisRun } = harness(repositoryResult);
 
-    const result = await submitAnalysis(VALID_INPUT);
+    const result = await analysisRun(VALID_INPUT);
 
     expect(result).toBe(repositoryResult);
   });

@@ -4,7 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
-from .application.pipeline import run
+from .application.pipeline import pipeline
 
 
 def main() -> int:
@@ -12,7 +12,7 @@ def main() -> int:
     parser.add_argument("source", type=Path)
     parser.add_argument("output", type=Path)
     args = parser.parse_args()
-    result = run(args.source, args.output)
+    result = pipeline(args.source, args.output)
     print(json.dumps({"report": str(result.report_path), "candidates": len(result.candidates), "evidence": len(result.evidence)}, ensure_ascii=False))
     return 0
 

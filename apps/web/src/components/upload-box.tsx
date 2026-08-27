@@ -13,7 +13,7 @@ const message: Record<Phase, string> = {
   error: "업로드를 다시 시도해 주세요",
 };
 
-const put = (
+const transfer = (
   url: string,
   file: File,
   progress: (value: number) => void,
@@ -37,7 +37,7 @@ const put = (
   request.send(file);
 });
 
-const read = async (response: Response): Promise<Record<string, unknown>> => {
+const responseBody = async (response: Response): Promise<Record<string, unknown>> => {
   const value: unknown = await response.json();
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error("invalid-response");
@@ -87,18 +87,18 @@ export function UploadBox() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ expectedSizeBytes: file.size, declaredContentType: file.type, rightsConfirmed: true }),
       });
-      const created = await read(createdResponse);
+      const created = await responseBody(createdResponse);
       if (!createdResponse.ok || created.kind !== "CREATED" || typeof created.uploadUrl !== "string" || typeof created.uploadIntentId !== "string") {
         throw new Error("upload-grant-failed");
       }
 
-      await put(created.uploadUrl, file, (next) => { progress.current = next; }, (active) => { request.current = active; });
+      await transfer(created.uploadUrl, file, (next) => { progress.current = next; }, (active) => { request.current = active; });
       progress.current = 100;
       setValue(100);
       setPhase("completing");
 
       const completedResponse = await fetch(`/api/uploads/${created.uploadIntentId}/complete`, { method: "POST" });
-      const completed = await read(completedResponse);
+      const completed = await responseBody(completedResponse);
       if (!completedResponse.ok || completed.kind !== "COMPLETED") {
         throw new Error("upload-complete-failed");
       }

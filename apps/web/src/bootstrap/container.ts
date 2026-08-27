@@ -6,8 +6,8 @@ import {
   uploadRepo,
 } from "@replay/adapters";
 import {
-  complete,
-  resolve,
+  completion,
+  record,
   session,
   upload,
   type Clock,
@@ -20,7 +20,7 @@ const clock: Clock = { now: () => new Date() };
 
 let cached: UploadApiDependencies | undefined;
 
-const required = (name: string): string => {
+const env = (name: string): string => {
   const value = process.env[name];
   if (!value) throw new Error(`${name} is required`);
   return value;
@@ -29,33 +29,33 @@ const required = (name: string): string => {
 export const container = (): UploadApiDependencies => {
   if (cached) return cached;
 
-  const database = client(required("DATABASE_URL"));
-  const endpoint = required("STORAGE_ENDPOINT");
+  const database = client(env("DATABASE_URL"));
+  const endpoint = env("STORAGE_ENDPOINT");
   const storage = s3({
     client: new S3Client({
       endpoint,
       region: process.env.STORAGE_REGION ?? "us-east-1",
       forcePathStyle: endpoint.includes("localhost") || endpoint.includes("127.0.0.1"),
       credentials: {
-        accessKeyId: required("STORAGE_ACCESS_KEY_ID"),
-        secretAccessKey: required("STORAGE_SECRET_ACCESS_KEY"),
+        accessKeyId: env("STORAGE_ACCESS_KEY_ID"),
+        secretAccessKey: env("STORAGE_SECRET_ACCESS_KEY"),
       },
     }),
-    bucket: required("STORAGE_BUCKET"),
+    bucket: env("STORAGE_BUCKET"),
   });
   const sessions = sessionRepo(database);
   const uploads = uploadRepo(database);
   const hasher = hash();
   const issue = session({ clock, policy: sessionPolicy, repository: sessions });
-  const resolveSession = resolve({ clock, hasher, repository: sessions });
-  const create = upload({ clock, policy: mediaPolicy, storage, repository: uploads });
-  const finish = complete({ clock, policy: mediaPolicy, storage, repository: uploads });
+  const sessionRecord = record({ clock, hasher, repository: sessions });
+  const uploadCase = upload({ clock, policy: mediaPolicy, storage, repository: uploads });
+  const completionCase = completion({ clock, policy: mediaPolicy, storage, repository: uploads });
 
   cached = {
     issue,
-    resolve: resolveSession,
-    upload: create,
-    complete: finish,
+    resolve: sessionRecord,
+    upload: uploadCase,
+    complete: completionCase,
   };
   return cached;
 };

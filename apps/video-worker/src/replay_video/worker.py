@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
 
-from .application.pipeline import run
+from .application.pipeline import pipeline
 from .infrastructure.probe import probe
 
 
@@ -20,16 +20,16 @@ class JobResult:
     payload: dict[str, object]
 
 
-def _text(value: object) -> str:
+def text(value: object) -> str:
     if not isinstance(value, str) or not value.strip():
         raise JobError("job-field-invalid")
     return value
 
 
 def job(value: Mapping[str, object]) -> JobResult:
-    job_id = _text(value.get("job_id"))
-    job_type = _text(value.get("job_type"))
-    source = Path(_text(value.get("source_path"))).expanduser()
+    job_id = text(value.get("job_id"))
+    job_type = text(value.get("job_type"))
+    source = Path(text(value.get("source_path"))).expanduser()
 
     if job_type == "VALIDATE_VIDEO":
         metadata = probe(source)
@@ -49,8 +49,8 @@ def job(value: Mapping[str, object]) -> JobResult:
         )
 
     if job_type == "ANALYZE_VIDEO":
-        output = Path(_text(value.get("output_path"))).expanduser()
-        result = run(source, output)
+        output = Path(text(value.get("output_path"))).expanduser()
+        result = pipeline(source, output)
         return JobResult(
             job_id=job_id,
             job_type=job_type,

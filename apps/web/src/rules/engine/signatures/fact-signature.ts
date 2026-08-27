@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash as digest } from "node:crypto";
 
 export type FactSignature = {
   signature: string;
@@ -16,33 +16,33 @@ export const FORBIDDEN_SIGNATURE_KEY_PATTERN =
 /** 증거 포인터일 뿐 사실값이 아니므로 서명에서 제외한다. */
 const EXCLUDED_KEYS = new Set(["shotIds"]);
 
-const normalize = (value: unknown, path: string): unknown => {
+const normal = (value: unknown, path: string): unknown => {
   if (Array.isArray(value)) {
-    return value.map((entry, index) => normalize(entry, `${path}[${index}]`));
+    return value.map((entry, index) => normal(entry, `${path}[${index}]`));
   }
   if (value !== null && typeof value === "object") {
     const entries = Object.entries(value as Record<string, unknown>)
       .filter(([key]) => !EXCLUDED_KEYS.has(key))
       .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0));
 
-    const normalized: Record<string, unknown> = {};
+    const output: Record<string, unknown> = {};
     for (const [key, entryValue] of entries) {
       if (FORBIDDEN_SIGNATURE_KEY_PATTERN.test(key)) {
         throw new Error(
           `fact_signature에 식별자로 보이는 키를 넣을 수 없음: ${path ? `${path}.` : ""}${key}`,
         );
       }
-      normalized[key] = normalize(entryValue, path ? `${path}.${key}` : key);
+      output[key] = normal(entryValue, path ? `${path}.${key}` : key);
     }
-    return normalized;
+    return output;
   }
   return value;
 };
 
-export const buildFactSignature = (facts: Record<string, unknown>): FactSignature => {
-  const input = JSON.stringify(normalize(facts, ""));
+export const factSignature = (facts: Record<string, unknown>): FactSignature => {
+  const input = JSON.stringify(normal(facts, ""));
   return {
-    signature: createHash("sha256").update(input, "utf8").digest("hex"),
+    signature: digest("sha256").update(input, "utf8").digest("hex"),
     input,
   };
 };

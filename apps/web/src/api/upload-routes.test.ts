@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { completeApi, uploadApi, type UploadApiDependencies } from "./upload-routes.js";
+import { completion, upload, type UploadApiDependencies } from "./upload-routes.js";
 
 const SESSION_ID = "11111111-1111-4111-8111-111111111111";
 const INTENT_ID = "22222222-2222-4222-8222-222222222222";
@@ -20,7 +20,7 @@ const dependencies = (): UploadApiDependencies => ({
 
 describe("upload API", () => {
   it("issues an HttpOnly session cookie only when a new session is needed", async () => {
-    const response = await uploadApi(
+    const response = await upload(
       new Request("http://localhost/api/uploads", {
         method: "POST",
         body: JSON.stringify({ expectedSizeBytes: 128, declaredContentType: "video/mp4", rightsConfirmed: true }),
@@ -39,7 +39,7 @@ describe("upload API", () => {
     let called = false;
     const deps = { ...dependencies(), upload: async () => { called = true; return { kind: "SESSION_UNAVAILABLE" as const }; } };
 
-    const response = await uploadApi(
+    const response = await upload(
       new Request("http://localhost/api/uploads", { method: "POST", body: "not-json" }),
       deps,
     );
@@ -54,7 +54,7 @@ describe("complete API", () => {
   it("returns unauthorized without a valid session", async () => {
     const deps = { ...dependencies(), resolve: async () => null };
 
-    const response = await completeApi(
+    const response = await completion(
       new Request("http://localhost/api/uploads/intent/complete", { method: "POST" }),
       { intentId: INTENT_ID },
       deps,
@@ -65,7 +65,7 @@ describe("complete API", () => {
   });
 
   it("returns an accepted completion response without adding layout concerns to the API", async () => {
-    const response = await completeApi(
+    const response = await completion(
       new Request("http://localhost/api/uploads/intent/complete", {
         method: "POST",
         headers: { cookie: "replay_session=session-token" },

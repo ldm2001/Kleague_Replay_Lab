@@ -12,7 +12,7 @@ from ..infrastructure.probe import MediaError, probe
 from ..infrastructure.shots import shots
 
 
-def _video(metadata: VideoMetadata) -> dict[str, Any]:
+def video(metadata: VideoMetadata) -> dict[str, Any]:
     return {
         "source_name": metadata.source.name,
         "duration_ms": metadata.duration_ms,
@@ -24,24 +24,24 @@ def _video(metadata: VideoMetadata) -> dict[str, Any]:
     }
 
 
-def _shot(item: Shot) -> dict[str, Any]:
+def shot(item: Shot) -> dict[str, Any]:
     return asdict(item)
 
 
-def _candidate(item: Candidate) -> dict[str, Any]:
+def candidate(item: Candidate) -> dict[str, Any]:
     value = asdict(item)
     value["reasons"] = list(item.reasons)
     value["shot_indices"] = list(item.shot_indices)
     return value
 
 
-def _evidence(item: Evidence, output: Path) -> dict[str, Any]:
+def entry(item: Evidence, output: Path) -> dict[str, Any]:
     value = asdict(item)
     value["path"] = str(item.path.relative_to(output))
     return value
 
 
-def run(source: Path | str, output: Path | str, *, pipeline_version: str = "video-baseline-v1") -> PipelineResult:
+def pipeline(source: Path | str, output: Path | str, *, pipeline_version: str = "video-baseline-v1") -> PipelineResult:
     metadata = probe(source)
     root = Path(output).resolve()
     root.mkdir(parents=True, exist_ok=True)
@@ -57,10 +57,10 @@ def run(source: Path | str, output: Path | str, *, pipeline_version: str = "vide
             "incident_category_classification_pending",
             "pose_tracking_pending",
         ],
-        "video": _video(metadata),
-        "shots": [_shot(item) for item in shot_list],
-        "candidates": [_candidate(item) for item in candidate_list],
-        "evidence": [_evidence(item, root) for item in evidence_list],
+        "video": video(metadata),
+        "shots": [shot(item) for item in shot_list],
+        "candidates": [candidate(item) for item in candidate_list],
+        "evidence": [entry(item, root) for item in evidence_list],
     }
     result.report_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return result

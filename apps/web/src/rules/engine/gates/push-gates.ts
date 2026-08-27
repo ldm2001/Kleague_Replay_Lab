@@ -20,7 +20,7 @@ export type PushVerdict = {
   citations: RuleCitation[];
 };
 
-export const disciplinaryFor = (severity: Severity): DisciplinaryAction => {
+export const discipline = (severity: Severity): DisciplinaryAction => {
   switch (severity) {
     case "CARELESS":
       return "NONE";
@@ -31,7 +31,7 @@ export const disciplinaryFor = (severity: Severity): DisciplinaryAction => {
   }
 };
 
-const confidenceFor = (facts: PushFacts): ConfidenceLevel =>
+const confidence = (facts: PushFacts): ConfidenceLevel =>
   facts.cameraSufficiency === "HIGH" ? "HIGH" : "MEDIUM";
 
 const inconclusive = (
@@ -49,11 +49,11 @@ const inconclusive = (
 
 /**
  * 게이트는 decision 계열 필드만 정한다.
- * accounts와 narrowedTo는 buildPushAccounts가 이미 만들어 두었고 여기서 지우지 않는다.
+ * accounts와 narrowedTo는 pushAccounts가 이미 만들어 두었고 여기서 지우지 않는다.
  */
-export const applyPushGates = (facts: PushFacts, rules: RuleSet): PushVerdict => {
+export const pushGates = (facts: PushFacts, rules: RuleSet): PushVerdict => {
   const offence = rules.cite("LAW_12_DIRECT_FREE_KICK");
-  const discipline = rules.cite("LAW_12_DISCIPLINE");
+  const disciplineCitations = rules.cite("LAW_12_DISCIPLINE");
   const reviewProcess = rules.cite("VAR_REVIEW_PROCESS");
 
   // 1 각도 게이트 — 근거가 부족하면 판정하지 않는다
@@ -68,7 +68,7 @@ export const applyPushGates = (facts: PushFacts, rules: RuleSet): PushVerdict =>
       severity: null,
       restart: "PLAY_CONTINUED",
       disciplinary: null,
-      confidence: confidenceFor(facts),
+      confidence: confidence(facts),
       inconclusiveReason: null,
       citations: offence,
     };
@@ -85,7 +85,7 @@ export const applyPushGates = (facts: PushFacts, rules: RuleSet): PushVerdict =>
     facts.opponentDisplacement.value === "uncertain" ||
     facts.opponentDisplacement.value === "possible"
   ) {
-    return inconclusive("SEVERITY_UNDETERMINED", [...offence, ...discipline]);
+    return inconclusive("SEVERITY_UNDETERMINED", [...offence, ...disciplineCitations]);
   }
 
   const severity = facts.severity.value;
@@ -97,9 +97,9 @@ export const applyPushGates = (facts: PushFacts, rules: RuleSet): PushVerdict =>
       severity: null,
       restart: "PLAY_CONTINUED",
       disciplinary: "NONE",
-      confidence: confidenceFor(facts),
+      confidence: confidence(facts),
       inconclusiveReason: null,
-      citations: [...offence, ...discipline],
+      citations: [...offence, ...disciplineCitations],
     };
   }
 
@@ -108,9 +108,9 @@ export const applyPushGates = (facts: PushFacts, rules: RuleSet): PushVerdict =>
     decision: "FOUL",
     severity,
     restart: facts.insidePenaltyArea.value ? "PENALTY_KICK" : "DIRECT_FREE_KICK",
-    disciplinary: disciplinaryFor(severity),
-    confidence: confidenceFor(facts),
+    disciplinary: discipline(severity),
+    confidence: confidence(facts),
     inconclusiveReason: null,
-    citations: [...offence, ...discipline],
+    citations: [...offence, ...disciplineCitations],
   };
 };

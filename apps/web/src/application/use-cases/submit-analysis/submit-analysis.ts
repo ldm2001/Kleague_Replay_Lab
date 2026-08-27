@@ -4,7 +4,7 @@ import type {
   SubmitAnalysisCommand,
   SubmitAnalysisRepository,
   SubmitAnalysisRepositoryResult,
-} from "../../ports/repositories/submit-analysis-repository";
+} from "../../ports/repositories/analysis-repo";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_IDEMPOTENCY_KEY_BYTES = 200;
@@ -45,7 +45,7 @@ export type SubmitAnalysisDependencies = Readonly<{
   policy: SubmitAnalysisPolicy;
 }>;
 
-const normalizeOptionalString = (value: string | undefined): string | null => {
+const optionalText = (value: string | undefined): string | null => {
   if (value === undefined) {
     return null;
   }
@@ -54,14 +54,14 @@ const normalizeOptionalString = (value: string | undefined): string | null => {
   return normalized.length === 0 ? null : normalized;
 };
 
-const hasValidIds = (
+const validIds = (
   input: Pick<SubmitAnalysisInput, "anonymousSessionId" | "videoAssetId" | "matchId">,
 ): boolean =>
   UUID_PATTERN.test(input.anonymousSessionId) &&
   UUID_PATTERN.test(input.videoAssetId) &&
   UUID_PATTERN.test(input.matchId);
 
-const validateIdempotencyKey = (
+const idempotencyKey = (
   idempotencyKey: string,
 ): SubmitAnalysisInvalidInputReason | null => {
   const byteLength = new TextEncoder().encode(idempotencyKey).byteLength;
@@ -77,7 +77,7 @@ const validateIdempotencyKey = (
   return null;
 };
 
-export const submit =
+export const analysis =
   ({ clock, hasher, repository, policy }: SubmitAnalysisDependencies) =>
   async (input: SubmitAnalysisInput): Promise<SubmitAnalysisResult> => {
     const snapshot = {
@@ -94,11 +94,11 @@ export const submit =
       maxJobAttempts: policy.maxJobAttempts,
     };
 
-    if (!hasValidIds(snapshot)) {
+    if (!validIds(snapshot)) {
       return { kind: "INVALID_INPUT", reason: "INVALID_ID" };
     }
 
-    const idempotencyKeyError = validateIdempotencyKey(snapshot.idempotencyKey);
+    const idempotencyKeyError = idempotencyKey(snapshot.idempotencyKey);
     if (idempotencyKeyError !== null) {
       return { kind: "INVALID_INPUT", reason: idempotencyKeyError };
     }
@@ -106,8 +106,8 @@ export const submit =
     const anonymousSessionId = snapshot.anonymousSessionId.toLowerCase();
     const videoAssetId = snapshot.videoAssetId.toLowerCase();
     const matchId = snapshot.matchId.toLowerCase();
-    const sourceUrl = normalizeOptionalString(snapshot.sourceUrl);
-    const sourcePlatform = normalizeOptionalString(snapshot.sourcePlatform);
+    const sourceUrl = optionalText(snapshot.sourceUrl);
+    const sourcePlatform = optionalText(snapshot.sourcePlatform);
     const requestHashInput = JSON.stringify({
       anonymousSessionId,
       videoAssetId,
@@ -139,5 +139,3 @@ export const submit =
 
     return repository.submit(command);
   };
-
-export const createSubmitAnalysis = submit;

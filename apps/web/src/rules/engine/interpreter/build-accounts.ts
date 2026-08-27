@@ -67,7 +67,7 @@ const requirement = (
  * 규정이 이 상황에 대해 말하는 것을 먼저 만든다.
  * 게이트는 이 결과를 지우지 않고 decision 계열 필드만 정한다.
  */
-export const buildPushAccounts = (facts: PushFacts, rules: RuleSet): PushAccountView => {
+export const pushAccounts = (facts: PushFacts, rules: RuleSet): PushAccountView => {
   const offenceCitations = rules.cite("LAW_12_DIRECT_FREE_KICK");
   const disciplineCitations = rules.cite("LAW_12_DISCIPLINE");
   const speedCitations = rules.cite("VAR_REVIEW_PROCESS");

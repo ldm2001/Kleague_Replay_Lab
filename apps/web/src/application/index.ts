@@ -3,8 +3,8 @@ export type {
   SubmitAnalysisCommand,
   SubmitAnalysisRepository,
   SubmitAnalysisRepositoryResult,
-} from "./ports/repositories/submit-analysis-repository";
-export { createSubmitAnalysis, submit } from "./use-cases/submit-analysis/submit-analysis";
+} from "./ports/repositories/analysis-repo";
+export { analysis } from "./use-cases/submit-analysis/submit-analysis";
 export type {
   SubmitAnalysisDependencies,
   SubmitAnalysisInput,
@@ -30,14 +30,14 @@ export type {
   SessionRepository,
 } from "./ports/repositories/session-repository";
 export type { CompleteUploadStorage, CreateUploadStorage, UploadGrant, UploadedObjectHead } from "./ports/storage/upload-storage";
-export { complete, createCompleteUpload } from "./use-cases/upload/complete-upload";
+export { completion } from "./use-cases/upload/complete-upload";
 export type { CompleteUploadDependencies, CompleteUploadInput, CompleteUploadResult } from "./use-cases/upload/complete-upload";
-export { upload, createUpload } from "./use-cases/upload/create-upload";
+export { upload } from "./use-cases/upload/create-upload";
 export type { CreateUploadDependencies, CreateUploadInput, CreateUploadResult } from "./use-cases/upload/create-upload";
 export type { UploadPolicy } from "./use-cases/upload/upload-policy";
-export { resolve, session } from "./use-cases/session/session";
+export { record, session } from "./use-cases/session/session";
 export type {
-  ResolveDependencies,
+  RecordDependencies,
   SessionDependencies,
   SessionPolicy,
 } from "./use-cases/session/session";

@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash as digest, randomUUID } from "node:crypto";
 import { DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, PutObjectCommand, type S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import type { CompleteUploadStorage, CreateUploadStorage, UploadGrant, UploadedObjectHead } from "@replay/application";
@@ -25,7 +25,7 @@ type HeadResult = Readonly<{
 type Body = AsyncIterable<Uint8Array>;
 
 const checksum = async (body: Body): Promise<Uint8Array> => {
-  const hash = createHash("sha256");
+  const hash = digest("sha256");
   for await (const chunk of body) hash.update(chunk);
   return Uint8Array.from(hash.digest());
 };
@@ -40,7 +40,7 @@ const prefix = (value: string | undefined): string => {
 
 const bytes = (value: string): Uint8Array => Uint8Array.from(Buffer.from(value, "base64"));
 
-export class S3UploadStorage implements CreateUploadStorage, CompleteUploadStorage {
+export class S3Storage implements CreateUploadStorage, CompleteUploadStorage {
   private readonly root: string;
   private readonly expiresIn: number;
   private readonly sign: Sign;
@@ -97,4 +97,4 @@ export class S3UploadStorage implements CreateUploadStorage, CompleteUploadStora
   }
 }
 
-export const s3 = (options: S3UploadStorageOptions): S3UploadStorage => new S3UploadStorage(options);
+export const s3 = (options: S3UploadStorageOptions): S3Storage => new S3Storage(options);

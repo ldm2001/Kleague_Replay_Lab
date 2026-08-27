@@ -25,5 +25,3 @@ export const client = (databaseUrl = process.env.DATABASE_URL): DatabaseClient =
     close: () => sql.end({ timeout: 5 }),
   };
 };
-
-export const createDatabaseClient = client;

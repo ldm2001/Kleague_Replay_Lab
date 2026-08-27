@@ -16,7 +16,7 @@ export type Observed<T> = {
   shotIds: string[];
 };
 
-export const observed = <T>(
+export const observation = <T>(
   value: T,
   observedAtSpeed: ObservationSpeed,
   shotIds: string[] = [],
