@@ -10,6 +10,7 @@
   },
   "scripts": {
     "test": "vitest run",
+    "test:video": "python3 -m pytest -c workers/video/pyproject.toml workers/video/tests -q",
     "typecheck": "tsc -p tsconfig.base.json --noEmit",
     "check:enums": "node scripts/check/enums.mjs",
     "check:edition": "node scripts/check/no-edition-literal.mjs",

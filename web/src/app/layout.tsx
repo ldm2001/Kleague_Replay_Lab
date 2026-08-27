@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import * as React from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -7,5 +8,9 @@ export const metadata: Metadata = {
 };
 
 export default function Layout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <>{children}</>;
+  return (
+    <html lang="ko">
+      <body>{children}</body>
+    </html>
+  );
 }

@@ -39,6 +39,18 @@
 
 ## 3 주요 기능 정의
 
+### 화면 디자인 기준
+
+NHN Cloud형 랜딩 구조를 참고해 짙은 코발트 영웅 영역과 밝은 정보 섹션과 얇은 선형 구분과 빨간 강조색을 사용
+
+- 첫 화면은 짧은 설명과 `영상 분석 시작하기` 한 개의 주 행동만 제공
+- 주요 솔루션과 분석 기능과 검토 범위와 판정 근거 순서로 내용을 배치
+- 메인과 각 검토 범위의 분석 진입점은 `/analyze` 독립 페이지로 연결
+- 업로드 화면은 별도 Client Component로 분리하고 랜딩과 분석 페이지의 서버 영역은 Server Component로 유지
+- 업로드 진행률은 120ms 단위로 묶고 막대 폭 대신 `transform`만 변경
+- 영상과 증거 영역은 고정된 비율과 최소 높이를 사용해 레이아웃 이동을 줄임
+- 브랜드 로고와 메인 영웅 이미지와 검토 범위 이미지는 `web/src/assets`에서 정적 import하고 문구와 버튼은 코드로 렌더링
+
 | 기능 | 설명 |
 |---|---|
 | 업로드 분석 | 약 30분 하이라이트 전체를 비동기로 처리 |
@@ -2022,11 +2034,11 @@ FC 안양 → ANY
 
 ### 13 프로젝트 구조
 
-### 문서는 이 파일 하나임
+### 문서 역할
 
-프로젝트의 전체 설계 설명은 이 README에 작성
-같은 설명을 여러 문서에 복제하면 내용이 달라질 수 있으므로 한 파일로 유지
-구현 계획 파일을 만들 때는 수명이 다른 작업 기록이므로 `docs/01-plan`에 저장
+프로젝트의 제품과 아키텍처 기준은 이 README에 작성
+구현 계획과 DBML과 갭 분석은 목적별로 나눠 `docs/README.md`에서 찾아볼 수 있게 관리
+`docs/`는 로컬 작업 문서로 커밋하지 않음
 
 ### 디렉터리
 
@@ -2046,6 +2058,7 @@ Replay_Lab/
 │   │   ├── database/                   # Drizzle 스키마와 마이그레이션
 │   │   ├── rules/                      # 규정 데이터와 Rule Engine
 │   │   ├── shared/                     # 공통 어휘와 계약 타입
+│   │   ├── assets/                     # 브랜드와 화면 이미지
 │   │   └── bootstrap/                  # 의존성 조립과 환경변수 검증
 │   ├── test/                           # 서버 계층 회귀 테스트
 │   ├── package.json
@@ -2061,12 +2074,17 @@ Replay_Lab/
 │
 ├── scripts/
 │   ├── check/                          # 구조 검사기
-│   ├── rules/                          # parse-ifab · parse-kfa · parse-kleague
 │   ├── database/
-│   └── datasets/
+│   └── datasets/                       # 데이터 점검 스크립트
 │
-├── docs/
-│   └── 01-plan/features/
+├── docs/                              # 로컬 문서 지도와 설계·계획 기록 (커밋 제외)
+│   ├── plans/
+│   ├── design/database/
+│   ├── analysis/
+│   └── _internal/                      # 도구 상태와 작업 기록
+│
+├── workers/
+│   └── video/                         # Python 영상 파이프라인과 테스트
 │
 ├── infra/
 │   └── local/docker-compose.yml        # PostgreSQL과 S3 호환 스토리지

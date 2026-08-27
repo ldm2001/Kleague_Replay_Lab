@@ -1,5 +1,5 @@
-import { UploadBox } from "../components/upload-box";
+import { LandingPage } from "../components/landing-page";
 
 export default function Page() {
-  return <main className="page-shell"><UploadBox /></main>;
+  return <LandingPage />;
 }

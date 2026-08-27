@@ -24,5 +24,5 @@
       "@replay/rule-engine": ["web/src/rules/engine/index.ts"]
     }
   },
-  "include": ["web/src/**/*.ts", "web/src/**/*.tsx", "web/test/**/*.ts", "web/test/**/*.tsx", "vitest.config.ts"]
+  "include": ["web/next-env.d.ts", "web/src/**/*.ts", "web/src/**/*.tsx", "web/test/**/*.ts", "web/test/**/*.tsx", "vitest.config.ts"]
 }

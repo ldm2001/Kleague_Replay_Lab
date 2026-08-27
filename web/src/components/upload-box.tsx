@@ -18,25 +18,24 @@ const put = (
   file: File,
   progress: (value: number) => void,
   attach: (request: XMLHttpRequest) => void,
-): Promise<void> =>
-  new Promise((resolve, reject) => {
-    const request = new XMLHttpRequest();
-    attach(request);
-    request.open("PUT", url);
-    request.setRequestHeader("Content-Type", file.type);
-    request.upload.onprogress = (event) => {
-      if (event.lengthComputable && event.total > 0) {
-        progress(Math.min(100, Math.round((event.loaded / event.total) * 100)));
-      }
-    };
-    request.onload = () => {
-      if (request.status >= 200 && request.status < 300) resolve();
-      else reject(new Error("upload-failed"));
-    };
-    request.onerror = () => reject(new Error("upload-failed"));
-    request.onabort = () => reject(new Error("upload-aborted"));
-    request.send(file);
-  });
+): Promise<void> => new Promise((resolve, reject) => {
+  const request = new XMLHttpRequest();
+  attach(request);
+  request.open("PUT", url);
+  request.setRequestHeader("Content-Type", file.type);
+  request.upload.onprogress = (event) => {
+    if (event.lengthComputable && event.total > 0) {
+      progress(Math.min(100, Math.round((event.loaded / event.total) * 100)));
+    }
+  };
+  request.onload = () => {
+    if (request.status >= 200 && request.status < 300) resolve();
+    else reject(new Error("upload-failed"));
+  };
+  request.onerror = () => reject(new Error("upload-failed"));
+  request.onabort = () => reject(new Error("upload-aborted"));
+  request.send(file);
+});
 
 const read = async (response: Response): Promise<Record<string, unknown>> => {
   const value: unknown = await response.json();
@@ -86,27 +85,14 @@ export function UploadBox() {
       const createdResponse = await fetch("/api/uploads", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          expectedSizeBytes: file.size,
-          declaredContentType: file.type,
-          rightsConfirmed: true,
-        }),
+        body: JSON.stringify({ expectedSizeBytes: file.size, declaredContentType: file.type, rightsConfirmed: true }),
       });
       const created = await read(createdResponse);
       if (!createdResponse.ok || created.kind !== "CREATED" || typeof created.uploadUrl !== "string" || typeof created.uploadIntentId !== "string") {
         throw new Error("upload-grant-failed");
       }
 
-      await put(
-        created.uploadUrl,
-        file,
-        (next) => {
-          progress.current = next;
-        },
-        (active) => {
-          request.current = active;
-        },
-      );
+      await put(created.uploadUrl, file, (next) => { progress.current = next; }, (active) => { request.current = active; });
       progress.current = 100;
       setValue(100);
       setPhase("completing");
@@ -126,37 +112,31 @@ export function UploadBox() {
   };
 
   return (
-    <section className="upload-box" aria-busy={phase === "uploading" || phase === "completing"}>
-      <div className="upload-copy">
-        <p className="eyebrow">K리그 판정 보조</p>
-        <h1>하이라이트에서 확인할 장면 찾기</h1>
-        <p>영상 전체를 검수하고 근거 프레임과 규정 대조 결과를 준비합니다.</p>
+    <section className="upload-module" id="upload" aria-busy={phase === "uploading" || phase === "completing"}>
+      <div className="module-heading">
+        <div><p className="module-kicker">영상 준비</p><h2>경기 영상 업로드</h2></div>
+        <span className="module-index" aria-hidden="true">01</span>
       </div>
-      <label className="file-picker" htmlFor="video-file">
-        <span>영상 파일 선택</span>
-        <input
-          ref={input}
-          id="video-file"
-          aria-label="영상 파일"
-          type="file"
-          accept="video/mp4,video/quicktime,video/webm"
-          onChange={(event) => {
-            const file = event.currentTarget.files?.[0];
-            event.currentTarget.value = "";
-            if (file) void upload(file);
-          }}
-        />
-      </label>
+      <div className="select-row">
+        <label>대회<select aria-label="대회" defaultValue="K리그1"><option value="K리그1">K리그1</option><option value="K리그2">K리그2</option></select></label>
+        <label>시즌<select aria-label="시즌" defaultValue="2026"><option value="2026">2026</option><option value="2025">2025</option></select></label>
+      </div>
+      <div className="file-picker">
+        <span className="file-icon" aria-hidden="true">▷</span>
+        <strong>영상 파일 선택</strong>
+        <small>파일을 드래그하거나 버튼을 클릭하세요</small>
+        <small>지원 형식: MP4, MOV, WEBM</small>
+        <input ref={input} id="video-file" aria-label="영상 파일" type="file" accept="video/mp4,video/quicktime,video/webm" onChange={(event) => {
+          const file = event.currentTarget.files?.[0];
+          event.currentTarget.value = "";
+          if (file) void upload(file);
+        }} />
+        <label className="file-button" htmlFor="video-file">영상 파일 선택</label>
+      </div>
+      <label className="confidence-toggle"><input type="checkbox" defaultChecked /> <span>낮은 확신도 장면도 표시</span></label>
       <div className="upload-status" aria-live="polite">{message[phase]}</div>
-      <div
-        className="progress-track"
-        role="progressbar"
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={value}
-      >
-        <span className="progress-fill" style={{ transform: `scaleX(${value / 100})` }} />
-      </div>
+      <div className="progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={value}><span className="progress-fill" style={{ transform: `scaleX(${value / 100})` }} /></div>
+      <button className="primary-action" type="button" onClick={() => input.current?.click()} disabled={phase === "uploading" || phase === "completing"}><span aria-hidden="true">▷</span> 분석 시작</button>
     </section>
   );
 }
