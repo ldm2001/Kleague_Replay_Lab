@@ -4,4 +4,4 @@ export type Migration = {
   checksum: string;
 };
 
-export const loadMigrations: () => Promise<Migration[]>;
+export const migrations: () => Promise<Migration[]>;

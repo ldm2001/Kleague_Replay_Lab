@@ -95,5 +95,3 @@ export const upload =
       expiresAt: grant.expiresAt,
     };
   };
-
-export const createUpload = upload;

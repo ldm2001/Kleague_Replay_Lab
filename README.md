@@ -1818,7 +1818,7 @@ type RuleSet = {
   cite(conceptKey: string): RuleCitation[];
 };
 
-export function evaluatePush(facts: PushFacts, rules: RuleSet): EvaluationResult {
+export function pushResult(facts: PushFacts, rules: RuleSet): EvaluationResult {
   // 각도 게이트: 근거가 부족하면 판정하지 않는다
   if (facts.cameraSufficiency === "low") {
     return inconclusive(rules, "CAMERA_INSUFFICIENT");
@@ -1852,7 +1852,7 @@ export function evaluatePush(facts: PushFacts, rules: RuleSet): EvaluationResult
       severity: facts.severity.value,
       restart: facts.insidePenaltyArea.value ? "PENALTY_KICK" : "DIRECT_FREE_KICK",
       // CARELESS → 반칙만 · RECKLESS → 경고 · EXCESSIVE_FORCE → 퇴장
-      disciplinary: disciplinaryFor(facts.severity.value),
+      disciplinary: discipline(facts.severity.value),
     },
     rules.cite("LAW_12")
   );

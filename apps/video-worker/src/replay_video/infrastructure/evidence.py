@@ -8,7 +8,7 @@ import cv2
 from ..domain.models import Candidate, Evidence, VideoMetadata
 
 
-def _frame(source: Path, destination: Path, timestamp_ms: int) -> None:
+def frame(source: Path, destination: Path, timestamp_ms: int) -> None:
     capture = cv2.VideoCapture(str(source))
     if not capture.isOpened():
         raise RuntimeError("video-open-failed")
@@ -23,7 +23,7 @@ def _frame(source: Path, destination: Path, timestamp_ms: int) -> None:
         capture.release()
 
 
-def _clip(source: Path, destination: Path, start_ms: int, end_ms: int) -> None:
+def clip(source: Path, destination: Path, start_ms: int, end_ms: int) -> None:
     duration = max(0.2, (end_ms - start_ms) / 1000)
     command = [
         "ffmpeg",
@@ -78,10 +78,10 @@ def evidence(
         points = (candidate.start_ms, candidate.anchor_ms, min(candidate.end_ms, max(0, metadata.duration_ms - 1)))
         for frame_index, timestamp_ms in enumerate(dict.fromkeys(points), start=1):
             destination = frame_root / f"candidate-{candidate.index:04d}-frame-{frame_index:02d}.jpg"
-            _frame(source_path, destination, timestamp_ms)
+            frame(source_path, destination, timestamp_ms)
             result.append(Evidence(candidate.index, "FRAME", destination, timestamp_ms, candidate.start_ms, candidate.end_ms))
 
         clip_destination = clip_root / f"candidate-{candidate.index:04d}.mp4"
-        _clip(source_path, clip_destination, candidate.start_ms, candidate.end_ms)
+        clip(source_path, clip_destination, candidate.start_ms, candidate.end_ms)
         result.append(Evidence(candidate.index, "CLIP", clip_destination, candidate.anchor_ms, candidate.start_ms, candidate.end_ms))
     return tuple(result)

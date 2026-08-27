@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { CompleteUploadCommand, CreateUploadCommand } from "@replay/application";
-import { createDatabaseClient } from "@replay/database";
-import { createPostgresUploadRepository } from "@replay/adapters";
+import { client } from "@replay/database";
+import { uploadRepo } from "@replay/adapters";
 
 const databaseUrl = process.env.DATABASE_URL;
 const describeDatabase = databaseUrl ? describe : describe.skip;
@@ -12,43 +12,43 @@ const uploadExpiresAt = "2030-01-01T13:00:00.000Z";
 const sourceExpiresAt = "2030-01-01T14:00:00.000Z";
 
 describeDatabase("PostgreSQL upload repository", () => {
-  const client = databaseUrl ? createDatabaseClient(databaseUrl) : null;
-  if (!client) return;
+  const database = databaseUrl ? client(databaseUrl) : null;
+  if (!database) return;
 
-  const repository = createPostgresUploadRepository(client);
+  const repository = uploadRepo(database);
   const sessions: string[] = [];
   const intents: string[] = [];
 
   beforeAll(async () => {
-    await client.sql`select 1`;
+    await database.sql`select 1`;
   });
 
   afterEach(async () => {
     for (const intentId of intents.splice(0)) {
-      await client.sql`delete from processing_jobs where video_asset_id in (select id from video_assets where object_key in (select object_key from upload_intents where id = ${intentId}))`;
-      await client.sql`delete from video_assets where object_key in (select object_key from upload_intents where id = ${intentId})`;
-      await client.sql`delete from upload_intents where id = ${intentId}`;
+      await database.sql`delete from processing_jobs where video_asset_id in (select id from video_assets where object_key in (select object_key from upload_intents where id = ${intentId}))`;
+      await database.sql`delete from video_assets where object_key in (select object_key from upload_intents where id = ${intentId})`;
+      await database.sql`delete from upload_intents where id = ${intentId}`;
     }
     for (const sessionId of sessions.splice(0)) {
-      await client.sql`delete from anonymous_sessions where id = ${sessionId}`;
+      await database.sql`delete from anonymous_sessions where id = ${sessionId}`;
     }
   });
 
   afterAll(async () => {
-    await client.close();
+    await database.close();
   });
 
   const seedSession = async (overrides: { expiresAt?: string; revokedAt?: string | null } = {}) => {
     const sessionId = randomUUID();
     sessions.push(sessionId);
-    await client.sql`
+    await database.sql`
       insert into anonymous_sessions (id, token_hash, created_at, expires_at, revoked_at)
       values (${sessionId}, ${Buffer.from(randomUUID())}, '2029-01-01T00:00:00.000Z', ${overrides.expiresAt ?? uploadExpiresAt}, ${overrides.revokedAt ?? null})
     `;
     return sessionId;
   };
 
-  const commandFor = (sessionId: string, overrides: Partial<CreateUploadCommand> = {}): CreateUploadCommand => ({
+  const request = (sessionId: string, overrides: Partial<CreateUploadCommand> = {}): CreateUploadCommand => ({
     anonymousSessionId: sessionId,
     objectKey: `temporary/${randomUUID()}.mp4`,
     expectedSizeBytes: 100,
@@ -59,7 +59,7 @@ describeDatabase("PostgreSQL upload repository", () => {
     ...overrides,
   });
 
-  const completeFor = (sessionId: string, intentId: string, objectKey: string, overrides: Partial<CompleteUploadCommand> = {}): CompleteUploadCommand => ({
+  const completion = (sessionId: string, intentId: string, objectKey: string, overrides: Partial<CompleteUploadCommand> = {}): CompleteUploadCommand => ({
     uploadIntentId: intentId,
     anonymousSessionId: sessionId,
     objectKey,
@@ -76,7 +76,7 @@ describeDatabase("PostgreSQL upload repository", () => {
 
   it("persists an intent only for an active session", async () => {
     const sessionId = await seedSession();
-    const command = commandFor(sessionId);
+    const command = request(sessionId);
 
     const result = await repository.intent(command);
 
@@ -84,7 +84,7 @@ describeDatabase("PostgreSQL upload repository", () => {
     if (result.kind !== "CREATED") return;
     intents.push(result.uploadIntentId);
 
-    const [row] = await client.sql<{
+    const [row] = await database.sql<{
       anonymous_session_id: string;
       object_key: string;
       expected_size_bytes: string;
@@ -107,23 +107,23 @@ describeDatabase("PostgreSQL upload repository", () => {
   it("rejects expired or revoked sessions without writing an intent", async () => {
     for (const overrides of [{ expiresAt: "2030-01-01T11:59:59.000Z" }, { revokedAt: "2030-01-01T11:00:00.000Z" }]) {
       const sessionId = await seedSession(overrides);
-      await expect(repository.intent(commandFor(sessionId))).resolves.toEqual({ kind: "SESSION_UNAVAILABLE" });
+      await expect(repository.intent(request(sessionId))).resolves.toEqual({ kind: "SESSION_UNAVAILABLE" });
     }
   });
 
   it("completes an owned intent and queues validation atomically", async () => {
     const sessionId = await seedSession();
-    const created = await repository.intent(commandFor(sessionId));
+    const created = await repository.intent(request(sessionId));
     expect(created.kind).toBe("CREATED");
     if (created.kind !== "CREATED") return;
     intents.push(created.uploadIntentId);
-    const [intent] = await client.sql<{ object_key: string }[]>`select object_key from upload_intents where id = ${created.uploadIntentId}`;
+    const [intent] = await database.sql<{ object_key: string }[]>`select object_key from upload_intents where id = ${created.uploadIntentId}`;
 
-    const result = await repository.complete(completeFor(sessionId, created.uploadIntentId, intent!.object_key));
+    const result = await repository.complete(completion(sessionId, created.uploadIntentId, intent!.object_key));
 
     expect(result.kind).toBe("COMPLETED");
     if (result.kind !== "COMPLETED") return;
-    const [asset] = await client.sql<{
+    const [asset] = await database.sql<{
       id: string;
       anonymous_session_id: string;
       object_key: string;
@@ -134,13 +134,13 @@ describeDatabase("PostgreSQL upload repository", () => {
       rights_confirmed_at: string;
       expires_at: string;
     }[]>`select * from video_assets where id = ${result.videoAssetId}`;
-    const [job] = await client.sql<{
+    const [job] = await database.sql<{
       job_type: string;
       status: string;
       payload_version: number;
       max_attempts: number;
     }[]>`select job_type, status, payload_version, max_attempts from processing_jobs where video_asset_id = ${result.videoAssetId}`;
-    const [updatedIntent] = await client.sql<{ status: string; completed_at: string }[]>`select status, completed_at from upload_intents where id = ${created.uploadIntentId}`;
+    const [updatedIntent] = await database.sql<{ status: string; completed_at: string }[]>`select status, completed_at from upload_intents where id = ${created.uploadIntentId}`;
 
     expect(asset).toMatchObject({
       id: result.videoAssetId,
@@ -161,12 +161,12 @@ describeDatabase("PostgreSQL upload repository", () => {
   it("returns the active owned intent and hides another session's intent", async () => {
     const owner = await seedSession();
     const other = await seedSession();
-    const created = await repository.intent(commandFor(owner));
+    const created = await repository.intent(request(owner));
     expect(created.kind).toBe("CREATED");
     if (created.kind !== "CREATED") return;
     intents.push(created.uploadIntentId);
 
-    const [row] = await client.sql<{ object_key: string }[]>`select object_key from upload_intents where id = ${created.uploadIntentId}`;
+    const [row] = await database.sql<{ object_key: string }[]>`select object_key from upload_intents where id = ${created.uploadIntentId}`;
     await expect(repository.owned({ anonymousSessionId: owner, uploadIntentId: created.uploadIntentId })).resolves.toMatchObject({
       uploadIntentId: created.uploadIntentId,
       anonymousSessionId: owner,
@@ -178,31 +178,31 @@ describeDatabase("PostgreSQL upload repository", () => {
 
   it("rejects a completion command with a stale policy or size", async () => {
     const sessionId = await seedSession();
-    const created = await repository.intent(commandFor(sessionId));
+    const created = await repository.intent(request(sessionId));
     expect(created.kind).toBe("CREATED");
     if (created.kind !== "CREATED") return;
     intents.push(created.uploadIntentId);
-    const [intent] = await client.sql<{ object_key: string }[]>`select object_key from upload_intents where id = ${created.uploadIntentId}`;
+    const [intent] = await database.sql<{ object_key: string }[]>`select object_key from upload_intents where id = ${created.uploadIntentId}`;
 
     await expect(
-      repository.complete(completeFor(sessionId, created.uploadIntentId, intent!.object_key, { mediaPolicyVersion: "media-v2" })),
+      repository.complete(completion(sessionId, created.uploadIntentId, intent!.object_key, { mediaPolicyVersion: "media-v2" })),
     ).resolves.toEqual({ kind: "UPLOAD_INVALID" });
     await expect(
-      repository.complete(completeFor(sessionId, created.uploadIntentId, intent!.object_key, { sizeBytes: 99 })),
+      repository.complete(completion(sessionId, created.uploadIntentId, intent!.object_key, { sizeBytes: 99 })),
     ).resolves.toEqual({ kind: "UPLOAD_INVALID" });
   });
 
   it("rolls back the asset and intent state when validation job creation fails", async () => {
     const sessionId = await seedSession();
-    const created = await repository.intent(commandFor(sessionId));
+    const created = await repository.intent(request(sessionId));
     expect(created.kind).toBe("CREATED");
     if (created.kind !== "CREATED") return;
     intents.push(created.uploadIntentId);
-    const [intent] = await client.sql<{ object_key: string }[]>`select object_key from upload_intents where id = ${created.uploadIntentId}`;
+    const [intent] = await database.sql<{ object_key: string }[]>`select object_key from upload_intents where id = ${created.uploadIntentId}`;
 
-    await expect(repository.complete(completeFor(sessionId, created.uploadIntentId, intent!.object_key, { validationMaxAttempts: 0 }))).rejects.toThrow();
-    const [intentAfter] = await client.sql<{ status: string }[]>`select status from upload_intents where id = ${created.uploadIntentId}`;
-    const [assetCount] = await client.sql<{ count: string }[]>`select count(*)::text as count from video_assets where object_key = ${intent!.object_key}`;
+    await expect(repository.complete(completion(sessionId, created.uploadIntentId, intent!.object_key, { validationMaxAttempts: 0 }))).rejects.toThrow();
+    const [intentAfter] = await database.sql<{ status: string }[]>`select status from upload_intents where id = ${created.uploadIntentId}`;
+    const [assetCount] = await database.sql<{ count: string }[]>`select count(*)::text as count from video_assets where object_key = ${intent!.object_key}`;
     expect(intentAfter?.status).toBe("CREATED");
     expect(assetCount?.count).toBe("0");
   });

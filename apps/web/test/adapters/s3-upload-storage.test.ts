@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createHash } from "node:crypto";
+import { createHash as digest } from "node:crypto";
 import { s3, type S3ObjectClient } from "@replay/adapters";
 
 class FakeS3 implements S3ObjectClient {
@@ -72,7 +72,7 @@ describe("s3 upload storage", () => {
     await expect(storage.head("uploads/missing.upload")).resolves.toBeNull();
 
     client.headResult = { ContentLength: 128 };
-    const expected = Uint8Array.from(createHash("sha256").update(Buffer.from([4, 5, 6])).digest());
+    const expected = Uint8Array.from(digest("sha256").update(Buffer.from([4, 5, 6])).digest());
     await expect(storage.head("uploads/no-checksum.upload")).resolves.toEqual({ sizeBytes: 128, contentSha256: expected });
   });
 });

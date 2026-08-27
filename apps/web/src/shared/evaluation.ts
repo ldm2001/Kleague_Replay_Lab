@@ -87,5 +87,5 @@ export type VarOutcome =
     }
   | EvaluationFailure;
 
-export const isEvaluationFailure = (outcome: VarOutcome): outcome is EvaluationFailure =>
+export const failure = (outcome: VarOutcome): outcome is EvaluationFailure =>
   outcome.ok === false;

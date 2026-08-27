@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash as digest, randomBytes } from "node:crypto";
 import { sql } from "drizzle-orm";
 import type {
   SessionGrant,
@@ -15,16 +15,16 @@ type SessionRow = Readonly<{ id: string }>;
 
 const token = (): string => randomBytes(32).toString("base64url");
 
-const digest = (value: string): Buffer => createHash("sha256").update(value, "utf8").digest();
+const tokenHash = (value: string): Buffer => digest("sha256").update(value, "utf8").digest();
 
-export class PostgresSessionRepository implements SessionRepository {
+export class SessionRepo implements SessionRepository {
   public constructor(private readonly client: DatabaseHandle) {}
 
   public async issue(input: SessionIssue): Promise<SessionGrant> {
     const value = token();
     const rows = await this.client.db.execute(sql`
       insert into anonymous_sessions (token_hash, created_at, expires_at)
-      values (${digest(value)}, ${input.createdAt}, ${input.expiresAt})
+      values (${tokenHash(value)}, ${input.createdAt}, ${input.expiresAt})
       returning id
     `);
     const [row] = rows as unknown as SessionRow[];
@@ -50,7 +50,5 @@ export class PostgresSessionRepository implements SessionRepository {
   }
 }
 
-export const sessionRepo = (client: DatabaseHandle): PostgresSessionRepository =>
-  new PostgresSessionRepository(client);
-
-export const createPostgresSessionRepository = sessionRepo;
+export const sessionRepo = (client: DatabaseHandle): SessionRepo =>
+  new SessionRepo(client);

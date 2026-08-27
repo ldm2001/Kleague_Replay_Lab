@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  complete,
+  completion,
   upload,
   type Clock,
   type CompleteUploadRepository,
@@ -27,7 +27,7 @@ const POLICY: UploadPolicy = {
 
 const clock: Clock = { now: () => NOW };
 
-class RecordingCreateUploadStorage implements CreateUploadStorage {
+class UploadStorageFake implements CreateUploadStorage {
   readonly requests: Array<Parameters<CreateUploadStorage["grant"]>[0]> = [];
   readonly cleaned: string[] = [];
 
@@ -45,7 +45,7 @@ class RecordingCreateUploadStorage implements CreateUploadStorage {
   }
 }
 
-class RecordingCreateUploadRepository implements CreateUploadRepository {
+class UploadRepoFake implements CreateUploadRepository {
   readonly commands: Array<Parameters<CreateUploadRepository["intent"]>[0]> = [];
   result: Awaited<ReturnType<CreateUploadRepository["intent"]>> = { kind: "CREATED" as const, uploadIntentId: INTENT_ID };
 
@@ -55,7 +55,7 @@ class RecordingCreateUploadRepository implements CreateUploadRepository {
   }
 }
 
-class RecordingCompleteUploadStorage implements CompleteUploadStorage {
+class CompletionStorageFake implements CompleteUploadStorage {
   readonly objectKeys: string[] = [];
   headResult: Awaited<ReturnType<CompleteUploadStorage["head"]>> = {
     sizeBytes: 50,
@@ -68,7 +68,7 @@ class RecordingCompleteUploadStorage implements CompleteUploadStorage {
   }
 }
 
-class RecordingCompleteUploadRepository implements CompleteUploadRepository {
+class CompletionRepoFake implements CompleteUploadRepository {
   intent: Awaited<ReturnType<CompleteUploadRepository["owned"]>> = {
     uploadIntentId: INTENT_ID,
     anonymousSessionId: SESSION_ID,
@@ -91,11 +91,11 @@ class RecordingCompleteUploadRepository implements CompleteUploadRepository {
 
 describe("upload", () => {
   it("creates a short-lived private upload grant and intent command", async () => {
-    const storage = new RecordingCreateUploadStorage();
-    const repository = new RecordingCreateUploadRepository();
-    const run = upload({ clock, policy: POLICY, storage, repository });
+    const storage = new UploadStorageFake();
+    const repository = new UploadRepoFake();
+    const operation = upload({ clock, policy: POLICY, storage, repository });
 
-    const result = await run({
+    const result = await operation({
       anonymousSessionId: SESSION_ID,
       expectedSizeBytes: 50,
       declaredContentType: "video/mp4",
@@ -122,8 +122,8 @@ describe("upload", () => {
   });
 
   it("cleans up the grant when the session cannot be persisted", async () => {
-    const storage = new RecordingCreateUploadStorage();
-    const repository = new RecordingCreateUploadRepository();
+    const storage = new UploadStorageFake();
+    const repository = new UploadRepoFake();
     repository.result = { kind: "SESSION_UNAVAILABLE" };
 
     const result = await upload({ clock, policy: POLICY, storage, repository })({
@@ -138,15 +138,15 @@ describe("upload", () => {
   });
 
   it("rejects invalid size, content type, rights, and session before external ports", async () => {
-    const storage = new RecordingCreateUploadStorage();
-    const repository = new RecordingCreateUploadRepository();
-    const run = upload({ clock, policy: POLICY, storage, repository });
+    const storage = new UploadStorageFake();
+    const repository = new UploadRepoFake();
+    const operation = upload({ clock, policy: POLICY, storage, repository });
 
-    await expect(run({ anonymousSessionId: "bad", expectedSizeBytes: 50, declaredContentType: "video/mp4", rightsConfirmed: true })).resolves.toEqual({ kind: "INVALID_INPUT", reason: "INVALID_ID" });
-    await expect(run({ anonymousSessionId: SESSION_ID, expectedSizeBytes: 0, declaredContentType: "video/mp4", rightsConfirmed: true })).resolves.toEqual({ kind: "INVALID_INPUT", reason: "INVALID_SIZE" });
-    await expect(run({ anonymousSessionId: SESSION_ID, expectedSizeBytes: POLICY.maxBytes + 1, declaredContentType: "video/mp4", rightsConfirmed: true })).resolves.toEqual({ kind: "INVALID_SIZE" });
-    await expect(run({ anonymousSessionId: SESSION_ID, expectedSizeBytes: 50, declaredContentType: "video/webm", rightsConfirmed: true })).resolves.toEqual({ kind: "UNSUPPORTED_CONTENT_TYPE" });
-    await expect(run({ anonymousSessionId: SESSION_ID, expectedSizeBytes: 50, declaredContentType: "video/mp4", rightsConfirmed: false })).resolves.toEqual({ kind: "RIGHTS_NOT_CONFIRMED" });
+    await expect(operation({ anonymousSessionId: "bad", expectedSizeBytes: 50, declaredContentType: "video/mp4", rightsConfirmed: true })).resolves.toEqual({ kind: "INVALID_INPUT", reason: "INVALID_ID" });
+    await expect(operation({ anonymousSessionId: SESSION_ID, expectedSizeBytes: 0, declaredContentType: "video/mp4", rightsConfirmed: true })).resolves.toEqual({ kind: "INVALID_INPUT", reason: "INVALID_SIZE" });
+    await expect(operation({ anonymousSessionId: SESSION_ID, expectedSizeBytes: POLICY.maxBytes + 1, declaredContentType: "video/mp4", rightsConfirmed: true })).resolves.toEqual({ kind: "INVALID_SIZE" });
+    await expect(operation({ anonymousSessionId: SESSION_ID, expectedSizeBytes: 50, declaredContentType: "video/webm", rightsConfirmed: true })).resolves.toEqual({ kind: "UNSUPPORTED_CONTENT_TYPE" });
+    await expect(operation({ anonymousSessionId: SESSION_ID, expectedSizeBytes: 50, declaredContentType: "video/mp4", rightsConfirmed: false })).resolves.toEqual({ kind: "RIGHTS_NOT_CONFIRMED" });
     expect(storage.requests).toHaveLength(0);
     expect(repository.commands).toHaveLength(0);
   });
@@ -154,11 +154,11 @@ describe("upload", () => {
 
 describe("completeUpload", () => {
   it("heads the private object and creates a validating video asset command", async () => {
-    const storage = new RecordingCompleteUploadStorage();
-    const repository = new RecordingCompleteUploadRepository();
-    const run = complete({ clock, policy: POLICY, storage, repository });
+    const storage = new CompletionStorageFake();
+    const repository = new CompletionRepoFake();
+    const operation = completion({ clock, policy: POLICY, storage, repository });
 
-    const result = await run({ anonymousSessionId: SESSION_ID, uploadIntentId: INTENT_ID });
+    const result = await operation({ anonymousSessionId: SESSION_ID, uploadIntentId: INTENT_ID });
 
     expect(result).toEqual({ kind: "COMPLETED", videoAssetId: VIDEO_ID });
     expect(storage.objectKeys).toEqual(["temporary/session/video.mp4"]);
@@ -175,12 +175,12 @@ describe("completeUpload", () => {
   });
 
   it("rejects missing intent, missing object, and size mismatch without completing", async () => {
-    const storage = new RecordingCompleteUploadStorage();
-    const repository = new RecordingCompleteUploadRepository();
-    const run = complete({ clock, policy: POLICY, storage, repository });
+    const storage = new CompletionStorageFake();
+    const repository = new CompletionRepoFake();
+    const operation = completion({ clock, policy: POLICY, storage, repository });
 
     repository.intent = null;
-    await expect(run({ anonymousSessionId: SESSION_ID, uploadIntentId: INTENT_ID })).resolves.toEqual({ kind: "UPLOAD_NOT_FOUND" });
+    await expect(operation({ anonymousSessionId: SESSION_ID, uploadIntentId: INTENT_ID })).resolves.toEqual({ kind: "UPLOAD_NOT_FOUND" });
 
     repository.intent = {
       uploadIntentId: INTENT_ID,
@@ -191,10 +191,10 @@ describe("completeUpload", () => {
       expiresAt: "2026-08-24T00:15:00.000Z",
     };
     storage.headResult = null;
-    await expect(run({ anonymousSessionId: SESSION_ID, uploadIntentId: INTENT_ID })).resolves.toEqual({ kind: "UPLOAD_NOT_READY" });
+    await expect(operation({ anonymousSessionId: SESSION_ID, uploadIntentId: INTENT_ID })).resolves.toEqual({ kind: "UPLOAD_NOT_READY" });
 
     storage.headResult = { sizeBytes: 49, contentSha256: Uint8Array.from([1, 2, 3]) };
-    await expect(run({ anonymousSessionId: SESSION_ID, uploadIntentId: INTENT_ID })).resolves.toEqual({ kind: "UPLOAD_INVALID" });
+    await expect(operation({ anonymousSessionId: SESSION_ID, uploadIntentId: INTENT_ID })).resolves.toEqual({ kind: "UPLOAD_INVALID" });
     expect(repository.commands).toHaveLength(0);
   });
 });

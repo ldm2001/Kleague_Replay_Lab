@@ -6,7 +6,7 @@ import type {
   VarAssessment,
   VarOutcome,
 } from "@replay/shared-types";
-import { isEvaluationFailure, observed } from "@replay/shared-types";
+import { failure, observation } from "@replay/shared-types";
 
 const citation: RuleCitation = {
   ruleId: "ifab-2025-26-law-12-1",
@@ -23,7 +23,7 @@ const citation: RuleCitation = {
 
 describe("타입 계약", () => {
   it("Observed는 값과 관측 조건을 함께 갖는다", () => {
-    const fact: Observed<boolean> = observed(true, "NORMAL", ["shot-1"]);
+    const fact: Observed<boolean> = observation(true, "NORMAL", ["shot-1"]);
     expect(fact).toEqual({ value: true, observedAtSpeed: "NORMAL", shotIds: ["shot-1"] });
   });
 
@@ -79,6 +79,6 @@ describe("타입 계약", () => {
       error: "UNKNOWN_COMPETITION_OPTION",
       message: "corner_kick_review 채택 여부가 주어지지 않음",
     };
-    expect(isEvaluationFailure(outcome)).toBe(true);
+    expect(failure(outcome)).toBe(true);
   });
 });

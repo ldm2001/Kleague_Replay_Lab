@@ -40,7 +40,7 @@ const intentRecord = (row: IntentRow): UploadIntentRecord => ({
   expiresAt: new Date(row.expires_at).toISOString(),
 });
 
-export class PostgresUploadRepository implements CreateUploadRepository, CompleteUploadRepository {
+export class UploadRepo implements CreateUploadRepository, CompleteUploadRepository {
   public constructor(private readonly client: DatabaseHandle) {}
 
   public async intent(command: CreateUploadCommand): Promise<CreateUploadRepositoryResult> {
@@ -184,7 +184,5 @@ export class PostgresUploadRepository implements CreateUploadRepository, Complet
   }
 }
 
-export const uploadRepo = (client: DatabaseHandle): PostgresUploadRepository =>
-  new PostgresUploadRepository(client);
-
-export const createPostgresUploadRepository = uploadRepo;
+export const uploadRepo = (client: DatabaseHandle): UploadRepo =>
+  new UploadRepo(client);

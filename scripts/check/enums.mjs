@@ -6,7 +6,7 @@
  * 이 검사가 없으면 오타 하나가 "타입에 없는 값을 기대하는 케이스"로 남고,
  * 그 케이스는 통과하는 동안 아무것도 지키지 않는다 (README 13절).
  *
- * 판본 데이터도 같은 이유로 tsc 밖에 있다 — loadRuleSet이 `as RuleSetFile`로
+ * 판본 데이터도 같은 이유로 tsc 밖에 있다 — ruleSet이 `as RuleSetFile`로
  * 받으므로 값은 아무도 보지 않는다. 그래서 필드별 제약을 따로 검사한다.
  */
 import { readdirSync, readFileSync } from "node:fs";
@@ -26,14 +26,14 @@ for (const value of Object.values(vocabulary)) {
 }
 
 /** data/ 아래는 권한별 디렉터리로 나뉘므로 재귀로 훑는다. */
-const jsonFiles = (dir) =>
+const tree = (dir) =>
   readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const full = join(dir, entry.name);
-    if (entry.isDirectory()) return jsonFiles(full);
+    if (entry.isDirectory()) return tree(full);
     return entry.name.endsWith(".json") ? [full] : [];
   });
 
-const ruleDataFiles = jsonFiles(RULE_DATA);
+const ruleDataFiles = tree(RULE_DATA);
 const knownVersions = new Set(
   ruleDataFiles.map((file) => JSON.parse(readFileSync(file, "utf8")).versionId),
 );
@@ -68,19 +68,19 @@ for (const file of ruleDataFiles) {
 }
 
 /** 사실값과 기대값 안의 문자열만 본다. id·note·concern·gate는 사람이 읽는 메모다. */
-const collect = (node, path, into) => {
+const strings = (node, path, into) => {
   if (typeof node === "string") {
     into.push([path, node]);
     return;
   }
   if (Array.isArray(node)) {
-    node.forEach((entry, index) => collect(entry, `${path}[${index}]`, into));
+    node.forEach((entry, index) => strings(entry, `${path}[${index}]`, into));
     return;
   }
   if (node !== null && typeof node === "object") {
     for (const [key, value] of Object.entries(node)) {
       if (key === "shotIds") continue; // 자유 문자열 — 어휘가 아니다
-      collect(value, `${path}.${key}`, into);
+      strings(value, `${path}.${key}`, into);
     }
   }
 };
@@ -89,10 +89,10 @@ for (const file of readdirSync(FIXTURES).filter((f) => f.endsWith(".json"))) {
   const suite = JSON.parse(readFileSync(join(FIXTURES, file), "utf8"));
   const found = [];
 
-  collect(suite.baseline, `${file}:baseline`, found);
+  strings(suite.baseline, `${file}:baseline`, found);
   for (const testCase of suite.cases) {
-    collect(testCase.given.facts, `${file}:${testCase.id}.given.facts`, found);
-    collect(testCase.expect, `${file}:${testCase.id}.expect`, found);
+    strings(testCase.given.facts, `${file}:${testCase.id}.given.facts`, found);
+    strings(testCase.expect, `${file}:${testCase.id}.expect`, found);
 
     const version = testCase.given.ruleVersion ?? suite.defaults?.ruleVersion;
     if (version !== undefined && !knownVersions.has(version)) {

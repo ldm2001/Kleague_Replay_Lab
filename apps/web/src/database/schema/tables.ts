@@ -64,13 +64,13 @@ const bytea = customType<{ data: Buffer; driverData: Buffer }>({
   dataType: () => "bytea",
 });
 
-const createdAt = () => timestamp({ withTimezone: true, mode: "string" }).notNull().defaultNow();
+const stamp = () => timestamp({ withTimezone: true, mode: "string" }).notNull().defaultNow();
 const id = () => uuid().primaryKey().default(sql`gen_random_uuid()`);
 
 export const anonymousSessions = pgTable("anonymous_sessions", {
   id: id(),
   tokenHash: bytea("token_hash").notNull().unique(),
-  createdAt: createdAt(),
+  createdAt: stamp(),
   lastSeenAt: timestamp("last_seen_at", { withTimezone: true, mode: "string" }),
   expiresAt: timestamp("expires_at", { withTimezone: true, mode: "string" }).notNull(),
   revokedAt: timestamp("revoked_at", { withTimezone: true, mode: "string" }),
@@ -80,7 +80,7 @@ export const clubs = pgTable("clubs", {
   id: id(),
   canonicalName: text("canonical_name").notNull(),
   shortCode: varchar("short_code", { length: 8 }).notNull().unique(),
-  createdAt: createdAt(),
+  createdAt: stamp(),
 });
 
 export const matches = pgTable("matches", {
@@ -119,7 +119,7 @@ export const videoAssets = pgTable("video_assets", {
   stateVersion: integer("state_version").notNull().default(0),
   validationErrorCode: varchar("validation_error_code", { length: 64 }),
   rightsConfirmedAt: timestamp("rights_confirmed_at", { withTimezone: true, mode: "string" }),
-  createdAt: createdAt(),
+  createdAt: stamp(),
   expiresAt: timestamp("expires_at", { withTimezone: true, mode: "string" }),
   objectDeletedAt: timestamp("object_deleted_at", { withTimezone: true, mode: "string" }),
 });
@@ -135,7 +135,7 @@ export const uploadIntents = pgTable(
     rightsConfirmedAt: timestamp("rights_confirmed_at", { withTimezone: true, mode: "string" }).notNull(),
     status: uploadIntentStatus().notNull(),
     mediaPolicyVersion: varchar("media_policy_version", { length: 64 }).notNull(),
-    createdAt: createdAt(),
+    createdAt: stamp(),
     expiresAt: timestamp("expires_at", { withTimezone: true, mode: "string" }).notNull(),
     completedAt: timestamp("completed_at", { withTimezone: true, mode: "string" }),
   },
@@ -165,7 +165,7 @@ export const analyses = pgTable(
     mediaPolicyVersion: varchar("media_policy_version", { length: 64 }),
     stateVersion: integer("state_version").notNull().default(0),
     failureCode: varchar("failure_code", { length: 64 }),
-    createdAt: createdAt(),
+    createdAt: stamp(),
     completedAt: timestamp("completed_at", { withTimezone: true, mode: "string" }),
     expiresAt: timestamp("expires_at", { withTimezone: true, mode: "string" }),
   },
@@ -188,8 +188,8 @@ export const processingJobs = pgTable("processing_jobs", {
   nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true, mode: "string" }),
   failureCode: varchar("failure_code", { length: 64 }),
   retryable: boolean(),
-  createdAt: createdAt(),
-  updatedAt: createdAt(),
+  createdAt: stamp(),
+  updatedAt: stamp(),
 });
 
 export const incidentCandidates = pgTable(
@@ -206,7 +206,7 @@ export const incidentCandidates = pgTable(
     cameraSufficiency: cameraSufficiency("camera_sufficiency").notNull(),
     currentFactRevisionId: uuid("current_fact_revision_id"),
     reviewStatus: candidateReviewStatus("review_status").notNull(),
-    createdAt: createdAt(),
+    createdAt: stamp(),
   },
   (table) => [
     uniqueIndex("incident_candidates_analysis_index_unique").on(table.analysisId, table.candidateIndex),
@@ -244,7 +244,7 @@ export const factRevisions = pgTable(
     source: factSource().notNull(),
     extractionConfidence: real("extraction_confidence"),
     modelVersion: varchar("model_version", { length: 64 }),
-    createdAt: createdAt(),
+    createdAt: stamp(),
   },
   (table) => [
     uniqueIndex("fact_revisions_candidate_revision_unique").on(table.incidentCandidateId, table.revision),
@@ -281,7 +281,7 @@ export const evidenceAssets = pgTable(
     endMs: integer("end_ms"),
     width: integer(),
     height: integer(),
-    createdAt: createdAt(),
+    createdAt: stamp(),
     expiresAt: timestamp("expires_at", { withTimezone: true, mode: "string" }),
     objectDeletedAt: timestamp("object_deleted_at", { withTimezone: true, mode: "string" }),
   },
@@ -348,7 +348,7 @@ export const decisionResults = pgTable(
     evaluationSnapshot: jsonb("evaluation_snapshot").$type<Record<string, unknown>>().notNull(),
     citations: jsonb().$type<unknown[]>().notNull(),
     citedLaws: text("cited_laws").array(),
-    createdAt: createdAt(),
+    createdAt: stamp(),
   },
   (table) => [
     uniqueIndex("decision_results_input_unique").on(
@@ -394,7 +394,7 @@ export const idempotencyRecords = pgTable(
     analysisId: uuid("analysis_id").notNull().references(() => analyses.id),
     incidentCandidateId: uuid("incident_candidate_id").references(() => incidentCandidates.id),
     factRevisionId: uuid("fact_revision_id").references(() => factRevisions.id),
-    createdAt: createdAt(),
+    createdAt: stamp(),
     expiresAt: timestamp("expires_at", { withTimezone: true, mode: "string" }).notNull(),
   },
   (table) => [

@@ -37,7 +37,7 @@ const cookie = (request: Request): string | null => {
   return null;
 };
 
-const sessionCookie = (token: string): string =>
+const headerCookie = (token: string): string =>
   `${COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${COOKIE_MAX_AGE}`;
 
 const body = async (request: Request): Promise<Record<string, unknown> | null> => {
@@ -51,7 +51,7 @@ const body = async (request: Request): Promise<Record<string, unknown> | null> =
   }
 };
 
-const uploadInput = (value: Record<string, unknown>): Omit<CreateUploadInput, "anonymousSessionId"> | null => {
+const payload = (value: Record<string, unknown>): Omit<CreateUploadInput, "anonymousSessionId"> | null => {
   if (
     typeof value.expectedSizeBytes !== "number" ||
     !Number.isSafeInteger(value.expectedSizeBytes) ||
@@ -67,7 +67,7 @@ const uploadInput = (value: Record<string, unknown>): Omit<CreateUploadInput, "a
   };
 };
 
-const uploadStatus = (result: CreateUploadResult): number => {
+const uploadCode = (result: CreateUploadResult): number => {
   switch (result.kind) {
     case "CREATED": return 201;
     case "SESSION_UNAVAILABLE": return 401;
@@ -75,7 +75,7 @@ const uploadStatus = (result: CreateUploadResult): number => {
   }
 };
 
-const completeStatus = (result: CompleteUploadResult): number => {
+const completionCode = (result: CompleteUploadResult): number => {
   switch (result.kind) {
     case "COMPLETED": return 202;
     case "UPLOAD_NOT_FOUND": return 404;
@@ -86,12 +86,12 @@ const completeStatus = (result: CompleteUploadResult): number => {
   }
 };
 
-export const uploadApi = async (
+export const upload = async (
   request: Request,
   dependencies: UploadApiDependencies,
 ): Promise<Response> => {
   const value = await body(request);
-  const input = value ? uploadInput(value) : null;
+  const input = value ? payload(value) : null;
   if (!input) {
     return json({ kind: "INVALID_REQUEST" }, 400);
   }
@@ -104,10 +104,10 @@ export const uploadApi = async (
   }
 
   const result = await dependencies.upload({ ...input, anonymousSessionId: record.sessionId });
-  return json(result, uploadStatus(result), issued ? { "set-cookie": sessionCookie(issued.token) } : undefined);
+  return json(result, uploadCode(result), issued ? { "set-cookie": headerCookie(issued.token) } : undefined);
 };
 
-export const completeApi = async (
+export const completion = async (
   request: Request,
   params: Readonly<{ intentId: string }>,
   dependencies: UploadApiDependencies,
@@ -121,8 +121,5 @@ export const completeApi = async (
     anonymousSessionId: record.sessionId,
     uploadIntentId: params.intentId,
   });
-  return json(result, completeStatus(result));
+  return json(result, completionCode(result));
 };
-
-export const postUpload = uploadApi;
-export const postComplete = completeApi;

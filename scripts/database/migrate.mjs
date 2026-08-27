@@ -1,5 +1,5 @@
 import postgres from "postgres";
-import { loadMigrations } from "./migrations.mjs";
+import { migrations } from "./migrations.mjs";
 
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -28,7 +28,7 @@ try {
   const appliedRows = await sql`select name, checksum from schema_migrations`;
   const appliedChecksums = new Map(appliedRows.map((row) => [row.name, row.checksum]));
 
-  for (const migration of await loadMigrations()) {
+  for (const migration of await migrations()) {
     const appliedChecksum = appliedChecksums.get(migration.name);
 
     if (appliedChecksum) {

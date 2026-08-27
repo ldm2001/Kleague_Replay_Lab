@@ -5,31 +5,31 @@ import type {
   VarAssessment,
   VarFacts,
 } from "@replay/shared-types";
-import { loadRuleSet } from "@replay/rule-data";
+import { ruleSet } from "@replay/rule-data";
 import { beforeAll, describe, expect, it } from "vitest";
 import pushSuite from "../../src/rules/engine/fixtures/push-decision.fixtures.json" with { type: "json" };
 import varSuite from "../../src/rules/engine/fixtures/var-assessment.fixtures.json" with { type: "json" };
-import { evaluatePush, evaluateVar, FORBIDDEN_SIGNATURE_KEY_PATTERN } from "@replay/rule-engine";
+import { pushResult, varResult, FORBIDDEN_SIGNATURE_KEY_PATTERN } from "@replay/rule-engine";
 
 type Json = Record<string, unknown>;
 
 /** baseline 위에 케이스가 덮어쓴 값을 얹는다. 얕은 병합이면 충분하다 — 사실값은 한 겹이다. */
-const mergeFacts = (baseline: Json, overrides: Json): Json => ({ ...baseline, ...overrides });
+const input = (baseline: Json, overrides: Json): Json => ({ ...baseline, ...overrides });
 
 /** { value, observedAtSpeed } 형태에는 shotIds 기본값을 채운다. */
-const hydrate = (facts: Json): Json => {
-  const hydrated: Json = {};
+const shape = (facts: Json): Json => {
+  const output: Json = {};
   for (const [key, value] of Object.entries(facts)) {
-    hydrated[key] =
+    output[key] =
       value !== null && typeof value === "object" && "value" in (value as Json)
         ? { shotIds: [], ...(value as Json) }
         : value;
   }
-  return hydrated;
+  return output;
 };
 
 /** expect에 적힌 필드만 비교한다. 적지 않은 필드는 이 케이스의 주장이 아니다. */
-const expectSubset = (actual: Json, expected: Json, caseId: string) => {
+const subset = (actual: Json, expected: Json, caseId: string) => {
   for (const [key, value] of Object.entries(expected)) {
     expect(actual[key], `${caseId}: ${key}`).toEqual(value);
   }
@@ -45,19 +45,19 @@ describe("push-decision 픽스처", () => {
       // 픽스처가 지금 무엇을 담고 있는지에 매이게 하지 않는다.
       const ruleVersion =
         (testCase.given as { ruleVersion?: string }).ruleVersion ?? pushSuite.defaults.ruleVersion;
-      const rules = loadRuleSet(ruleVersion);
+      const rules = ruleSet(ruleVersion);
       expect(rules, `${testCase.id}: 알 수 없는 판본 ${ruleVersion}`).not.toBeNull();
-      const facts = hydrate(
-        mergeFacts(pushSuite.baseline as Json, testCase.given.facts as Json),
+      const facts = shape(
+        input(pushSuite.baseline as Json, testCase.given.facts as Json),
       ) as unknown as PushFacts;
-      pushResults.set(testCase.id, evaluatePush(facts, rules!));
+      pushResults.set(testCase.id, pushResult(facts, rules!));
     }
   });
 
   it.each(pushSuite.cases.map((testCase) => [testCase.id, testCase] as const))(
     "%s",
     (id, testCase) => {
-      expectSubset(pushResults.get(id)! as unknown as Json, testCase.expect as Json, id);
+      subset(pushResults.get(id)! as unknown as Json, testCase.expect as Json, id);
     },
   );
 
@@ -103,19 +103,19 @@ type VarRun =
 
 const varResults = new Map<string, VarRun>();
 
-const runVarCase = (testCase: (typeof varSuite.cases)[number]): VarRun => {
+const varCase = (testCase: (typeof varSuite.cases)[number]): VarRun => {
   const ruleVersion =
     (testCase.given as { ruleVersion?: string }).ruleVersion ?? varSuite.defaults.ruleVersion;
-  const rules = loadRuleSet(ruleVersion);
+  const rules = ruleSet(ruleVersion);
   expect(rules, `${testCase.id}: 알 수 없는 판본 ${ruleVersion}`).not.toBeNull();
   const options = ((testCase.given as { competitionOptions?: unknown }).competitionOptions ??
     varSuite.defaults.competitionOptions) as CompetitionOptions;
-  const facts = mergeFacts(
+  const facts = input(
     varSuite.baseline as Json,
     testCase.given.facts as Json,
   ) as unknown as VarFacts;
 
-  const outcome = evaluateVar(facts, rules!, options);
+  const outcome = varResult(facts, rules!, options);
   return outcome.ok
     ? {
         ok: true,
@@ -129,7 +129,7 @@ const runVarCase = (testCase: (typeof varSuite.cases)[number]): VarRun => {
 describe("var-assessment 픽스처", () => {
   beforeAll(() => {
     for (const testCase of varSuite.cases) {
-      varResults.set(testCase.id, runVarCase(testCase));
+      varResults.set(testCase.id, varCase(testCase));
     }
   });
 
@@ -146,7 +146,7 @@ describe("var-assessment 픽스처", () => {
       }
 
       expect(run.ok, `${id}: 결과를 기대했는데 오류가 났다`).toBe(true);
-      expectSubset((run as { assessment: VarAssessment }).assessment as unknown as Json, expected, id);
+      subset((run as { assessment: VarAssessment }).assessment as unknown as Json, expected, id);
     },
   );
 
@@ -189,7 +189,7 @@ describe("var-assessment 픽스처", () => {
 
       expect(first.signature, `${testCase.id}: 서명 형식`).toMatch(/^[0-9a-f]{64}$/);
 
-      const rerun = runVarCase(testCase);
+      const rerun = varCase(testCase);
       expect(rerun.ok).toBe(true);
       expect(
         (rerun as Extract<VarRun, { ok: true }>).signature,

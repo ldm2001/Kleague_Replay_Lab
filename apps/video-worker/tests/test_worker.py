@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from test_pipeline import video
+from test_pipeline import fixture
 
 from replay_video.worker import job
 
 
 def test_validate_video_job_returns_verified_metadata(tmp_path: Path) -> None:
     source = tmp_path / "sample.mp4"
-    video(source)
+    fixture(source)
 
     result = job(
         {

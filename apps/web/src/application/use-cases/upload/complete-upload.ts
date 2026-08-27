@@ -25,7 +25,7 @@ export type CompleteUploadDependencies = Readonly<{
   repository: CompleteUploadRepository;
 }>;
 
-export const complete =
+export const completion =
   ({ clock, policy, storage, repository }: CompleteUploadDependencies) =>
   async (input: CompleteUploadInput): Promise<CompleteUploadResult> => {
     const anonymousSessionId = input.anonymousSessionId.toLowerCase();
@@ -66,5 +66,3 @@ export const complete =
       validationMaxAttempts: policy.validationMaxAttempts,
     });
   };
-
-export const createCompleteUpload = complete;

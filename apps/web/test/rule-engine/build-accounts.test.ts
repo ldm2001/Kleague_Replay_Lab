@@ -1,25 +1,25 @@
 import type { PushFacts } from "@replay/shared-types";
-import { observed } from "@replay/shared-types";
-import { loadRuleSet } from "@replay/rule-data";
+import { observation } from "@replay/shared-types";
+import { ruleSet } from "@replay/rule-data";
 import { describe, expect, it } from "vitest";
-import { buildPushAccounts } from "@replay/rule-engine";
+import { pushAccounts } from "@replay/rule-engine";
 
-const rules = loadRuleSet("ifab-2025-26")!;
+const rules = ruleSet("ifab-2025-26")!;
 
 const establishedFacts: PushFacts = {
-  contactDetected: observed(true, "NORMAL", ["shot-1"]),
-  severity: observed("RECKLESS", "NORMAL", ["shot-1"]),
-  opponentDisplacement: observed("clear", "NORMAL", ["shot-1"]),
-  insidePenaltyArea: observed(false, "NORMAL", ["shot-1"]),
+  contactDetected: observation(true, "NORMAL", ["shot-1"]),
+  severity: observation("RECKLESS", "NORMAL", ["shot-1"]),
+  opponentDisplacement: observation("clear", "NORMAL", ["shot-1"]),
+  insidePenaltyArea: observation(false, "NORMAL", ["shot-1"]),
   cameraSufficiency: "HIGH",
 };
 
-const requirementFor = (facts: PushFacts, name: string) =>
-  buildPushAccounts(facts, rules).accounts[0]!.requires.find((entry) => entry.fact === name)!;
+const requirement = (facts: PushFacts, name: string) =>
+  pushAccounts(facts, rules).accounts[0]!.requires.find((entry) => entry.fact === name)!;
 
-describe("buildPushAccounts", () => {
+describe("pushAccounts", () => {
   it("사실값이 전부 서면 blockedFrom이 비고 징계 조항까지 내려간다", () => {
-    const view = buildPushAccounts(establishedFacts, rules);
+    const view = pushAccounts(establishedFacts, rules);
     expect(view.accounts).toHaveLength(1);
     expect(view.accounts[0]!.authority).toBe("IFAB");
     expect(view.blockedFrom).toEqual([]);
@@ -28,7 +28,7 @@ describe("buildPushAccounts", () => {
   });
 
   it("각도가 부족해도 accounts는 비지 않고 요구 사실이 그대로 나열된다", () => {
-    const view = buildPushAccounts({ ...establishedFacts, cameraSufficiency: "LOW" }, rules);
+    const view = pushAccounts({ ...establishedFacts, cameraSufficiency: "LOW" }, rules);
     expect(view.accounts).toHaveLength(1);
     expect(view.accounts[0]!.citations.length).toBeGreaterThan(0);
     expect(view.accounts[0]!.requires.map((entry) => entry.fact)).toEqual([
@@ -44,20 +44,20 @@ describe("buildPushAccounts", () => {
   it("슬로우모션에서만 본 강도는 SPEED로 막힌다", () => {
     const facts: PushFacts = {
       ...establishedFacts,
-      severity: observed("EXCESSIVE_FORCE", "SLOW", ["shot-2"]),
+      severity: observation("EXCESSIVE_FORCE", "SLOW", ["shot-2"]),
     };
-    const severity = requirementFor(facts, "severity");
+    const severity = requirement(facts, "severity");
     expect(severity.status).toBe("UNMET");
     expect(severity.blockedBy).toBe("SPEED");
-    expect(requirementFor(facts, "contactDetected").status).toBe("ESTABLISHED");
+    expect(requirement(facts, "contactDetected").status).toBe("ESTABLISHED");
   });
 
   it("정상 속도로 봤지만 값을 특정 못한 경우는 blockedBy가 null이다", () => {
     const facts: PushFacts = {
       ...establishedFacts,
-      severity: observed("uncertain", "NORMAL", ["shot-1"]),
+      severity: observation("uncertain", "NORMAL", ["shot-1"]),
     };
-    const severity = requirementFor(facts, "severity");
+    const severity = requirement(facts, "severity");
     expect(severity.status).toBe("UNMET");
     expect(severity.blockedBy).toBeNull();
   });
@@ -65,22 +65,22 @@ describe("buildPushAccounts", () => {
   it("밀림이 possible이면 관측은 됐어도 요구 사실은 서지 않는다", () => {
     const facts: PushFacts = {
       ...establishedFacts,
-      opponentDisplacement: observed("possible", "NORMAL", ["shot-1"]),
+      opponentDisplacement: observation("possible", "NORMAL", ["shot-1"]),
     };
-    const displacement = requirementFor(facts, "opponentDisplacement");
+    const displacement = requirement(facts, "opponentDisplacement");
     // 게이트가 possible에서 보류하는데 요구 사실만 서면 blockedFrom이 빈 채로
     // INCONCLUSIVE가 나간다. 게이트와 요구사항이 같은 값을 같게 봐야 한다.
     expect(displacement.status).toBe("UNMET");
     expect(displacement.blockedBy).toBeNull();
-    expect(buildPushAccounts(facts, rules).blockedFrom).toHaveLength(1);
+    expect(pushAccounts(facts, rules).blockedFrom).toHaveLength(1);
   });
 
   it("강도가 막히면 징계 조항으로 내려가지 못하고 narrowsTo가 그 조항을 가리킨다", () => {
     const facts: PushFacts = {
       ...establishedFacts,
-      severity: observed("RECKLESS", "SLOW", ["shot-2"]),
+      severity: observation("RECKLESS", "SLOW", ["shot-2"]),
     };
-    const view = buildPushAccounts(facts, rules);
+    const view = pushAccounts(facts, rules);
     const severity = view.accounts[0]!.requires.find((entry) => entry.fact === "severity")!;
     expect(severity.narrowsTo?.ruleId).toBe("ifab-2025-26-law-12-1-discipline");
     expect(view.narrowedTo.map((citation) => citation.ruleId)).not.toContain(
@@ -89,6 +89,6 @@ describe("buildPushAccounts", () => {
   });
 
   it("확인되지 않은 계층 충돌을 만들어내지 않는다", () => {
-    expect(buildPushAccounts(establishedFacts, rules).conflicts).toEqual([]);
+    expect(pushAccounts(establishedFacts, rules).conflicts).toEqual([]);
   });
 });

@@ -1,18 +1,14 @@
 export {
-  PostgresSubmitAnalysisRepository,
-  createPostgresSubmitAnalysisRepository,
-  createSubmitAnalysisRepository,
-  submitRepo,
-} from "./postgres-submit-analysis-repository";
+  AnalysisRepo,
+  analysisRepo,
+} from "./analysis-repo";
 export {
-  PostgresUploadRepository,
-  createPostgresUploadRepository,
+  UploadRepo,
   uploadRepo,
-} from "./postgres-upload-repository";
+} from "./upload-repo";
 export {
-  PostgresSessionRepository,
-  createPostgresSessionRepository,
+  SessionRepo,
   sessionRepo,
-} from "./postgres-session-repository";
-export { S3UploadStorage, s3, type S3ObjectClient, type S3UploadStorageOptions } from "./s3-upload-storage";
-export { NodeSha256Hasher, createNodeSha256Hasher, hash } from "./hashing/node-sha256-hasher";
+} from "./session-repo";
+export { S3Storage, s3, type S3ObjectClient, type S3UploadStorageOptions } from "./s3-upload-storage";
+export { Sha256Hasher, hash } from "./hashing/node-sha256-hasher";
