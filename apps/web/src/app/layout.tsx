@@ -1,6 +1,11 @@
 import type { Metadata } from "next";
 import * as React from "react";
-import "./globals.css";
+import "../styles/index.css";
+import "../components/Header/style.css";
+import "../components/Footer/style.css";
+import "../components/UploadBox/style.css";
+import "../views/Landing/style.css";
+import "../views/Analysis/style.css";
 
 export const metadata: Metadata = {
   title: "K리그 판정 보조",

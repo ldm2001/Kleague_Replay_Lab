@@ -1,0 +1,26 @@
+:root {
+  color-scheme: light;
+  background: #f6f8fc;
+  color: #15203d;
+  font-family: Inter, "Noto Sans KR", ui-sans-serif, system-ui, sans-serif;
+  --navy: #15203d;
+  --blue: #0c36d7;
+  --muted: #7a879d;
+  --line: #e2e7ef;
+  --surface: #ffffff;
+  --accent: #e64957;
+  --soft-blue: #eef4ff;
+  --green: #48aa68;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; min-width: 320px; background: #f6f8fc; color: var(--navy); }
+body, button, input, select { font: inherit; }
+a { color: inherit; text-decoration: none; }
+a, button, label, select { -webkit-tap-highlight-color: transparent; }
+button { cursor: pointer; }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+}

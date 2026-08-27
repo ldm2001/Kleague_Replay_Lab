@@ -13,8 +13,8 @@ import {
   type Clock,
 } from "@replay/application";
 import { client } from "@replay/database";
-import type { UploadApiDependencies } from "../api/upload-routes";
-import { mediaPolicy, sessionPolicy } from "../config/media-policy";
+import type { UploadApiDependencies } from "../apis/upload";
+import { mediaPolicy, sessionPolicy } from "../constant/media-policy";
 
 const clock: Clock = { now: () => new Date() };
 

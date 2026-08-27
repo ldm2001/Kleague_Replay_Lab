@@ -49,7 +49,7 @@ NHN Cloud형 랜딩 구조를 참고해 짙은 코발트 영웅 영역과 밝은
 - 업로드 화면은 별도 Client Component로 분리하고 랜딩과 분석 페이지의 서버 영역은 Server Component로 유지
 - 업로드 진행률은 120ms 단위로 묶고 막대 폭 대신 `transform`만 변경
 - 영상과 증거 영역은 고정된 비율과 최소 높이를 사용해 레이아웃 이동을 줄임
-- 브랜드 로고와 메인 영웅 이미지와 검토 범위 이미지는 `apps/web/src/assets`에서 정적 import하고 문구와 버튼은 코드로 렌더링
+- 브랜드 로고와 메인 영웅 이미지와 검토 범위 이미지는 `apps/web/src/assets/image`에서 정적 import하고 문구와 버튼은 코드로 렌더링
 
 | 기능 | 설명 |
 |---|---|
@@ -549,7 +549,7 @@ apps/web/src/rules/data
 apps/web/src/shared
   공통 상태값과 결과 타입
 
-apps/web/src/config
+apps/web/src/constant
   업로드 제한과 TTL과 Queue 상한의 버전 정책
 
 apps/video-worker
@@ -694,7 +694,7 @@ Worker가 중단되어도 재시도 가능한 체크포인트와 시도 이력�
 |---|---|---|---|
 | 공통 상태값과 결과 타입 | `apps/web/src/shared` | 검토된 코드 변경과 계약 테스트 | Nextjs와 Rule Engine과 Python 계약의 값 이름을 일치시키기 위함 |
 | 판본별 규칙과 K리그 채택 옵션 | `apps/web/src/rules/data` | 규정 적재 CLI와 검토된 데이터 변경 | 시즌 변경을 판정 코드의 조건문 추가 없이 처리하기 위함 |
-| 업로드 제한과 보존 기간과 Queue 상한 | `apps/web/src/config` | 정책 버전 변경과 배포 | Web과 Worker가 같은 제한값을 사용하게 하기 위함 |
+| 업로드 제한과 보존 기간과 Queue 상한 | `apps/web/src/constant` | 정책 버전 변경과 배포 | Web과 Worker가 같은 제한값을 사용하게 하기 위함 |
 | 분석 상태 | PostgreSQL `analyses.status` | Analysis State Machine을 호출하는 유스케이스 | 재시작과 중복 Worker 상황에서도 현재 단계를 복구하기 위함 |
 | 현재 사실 Revision | PostgreSQL `incident_candidates.current_fact_revision_id` | 사실값 보정과 Worker 결과 수신 유스케이스 | 과거 Revision을 보존하면서 현재 적용 대상을 한 값으로 선택하기 위함 |
 | 판정 결과와 적용 규정 버전 | PostgreSQL 불변 행 | `EvaluateIncident` 유스케이스 | 과거 분석 결과를 같은 입력과 버전으로 재현하기 위함 |
@@ -747,7 +747,7 @@ Worker가 중단되어도 재시도 가능한 체크포인트와 시도 이력�
 
 ### 설정과 성능 원칙
 
-- 업로드 최대 크기와 최대 길이와 해상도와 FPS와 허용 코덱은 `apps/web/src/config` 한 곳에서 버전 관리
+- 업로드 최대 크기와 최대 길이와 해상도와 FPS와 허용 코덱은 `apps/web/src/constant` 한 곳에서 버전 관리
 - Nextjs와 Python Worker는 같은 `media_policy_version`을 검사
 - 정확한 제한값은 30분 하이라이트 표본과 k6 부하 테스트와 Worker 처리 시간 측정으로 결정
 - PostgreSQL Connection Pool은 서버리스 인스턴스 수와 DB 최대 연결 수를 함께 계산해 설정
@@ -1485,7 +1485,7 @@ status                 EXTERNAL_OPINION
 | 필수 관계와 저장 조건 | PostgreSQL 제약 | 외래키와 `NOT NULL`과 인용 최소 한 건을 검사 | 부분 저장과 연결이 끊긴 결과를 막기 위함 |
 
 공통 타입과 규정 데이터는 `apps/web/src/shared`와 `apps/web/src/rules/data`가 소유
-업로드 제한과 TTL 정책은 `apps/web/src/config`에서 버전 관리
+업로드 제한과 TTL 정책은 `apps/web/src/constant`에서 버전 관리
 
 ---
 
@@ -2052,14 +2052,27 @@ Replay_Lab/
 │   ├── web/                            # Nextjs 화면과 공개 API와 서버 조립
 │   │   ├── src/
 │   │   │   ├── app/                    # App Router와 Route Handler
-│   │   │   ├── components/             # 상태가 필요한 최소 Client Component
-│   │   │   ├── api/                    # Route Handler가 호출하는 API 조립
+│   │   │   ├── components/             # 화면 컴포넌트와 컴포넌트별 style.css
+│   │   │   │   ├── Header/index.tsx
+│   │   │   │   ├── Header/style.css
+│   │   │   │   ├── Footer/index.tsx
+│   │   │   │   ├── Footer/style.css
+│   │   │   │   ├── UploadBox/index.tsx
+│   │   │   │   └── UploadBox/style.css
+│   │   │   ├── apis/                   # Route Handler가 호출하는 API 조립
 │   │   │   ├── application/            # Use Case와 Port
 │   │   │   ├── adapters/               # PostgreSQL과 Object Storage 구현
 │   │   │   ├── database/               # Drizzle 스키마와 마이그레이션
 │   │   │   ├── rules/                  # 규정 데이터와 Rule Engine
 │   │   │   ├── shared/                 # 공통 어휘와 계약 타입
-│   │   │   ├── assets/                 # 브랜드와 화면 이미지
+│   │   │   ├── assets/image/           # 브랜드와 화면 이미지
+│   │   │   ├── views/                  # 화면 단위 구성과 view별 style.css
+│   │   │   │   ├── Landing/index.tsx
+│   │   │   │   ├── Landing/style.css
+│   │   │   │   ├── Analysis/index.tsx
+│   │   │   │   └── Analysis/style.css
+│   │   │   ├── styles/index.css        # 전역 토큰과 리셋
+│   │   │   ├── constant/               # 화면과 업로드 정책 상수
 │   │   │   └── bootstrap/              # 의존성 조립과 환경변수 검증
 │   │   ├── test/                       # 서버 계층 회귀 테스트
 │   │   ├── package.json
