@@ -11,11 +11,11 @@
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import * as vocabulary from "../../web/src/shared/vocabulary.ts";
+import * as vocabulary from "../../apps/web/src/shared/vocabulary.ts";
 
 const ROOT = new URL("../../", import.meta.url).pathname;
-const FIXTURES = join(ROOT, "web/src/rules/engine/fixtures");
-const RULE_DATA = join(ROOT, "web/src/rules/data");
+const FIXTURES = join(ROOT, "apps/web/src/rules/engine/fixtures");
+const RULE_DATA = join(ROOT, "apps/web/src/rules/data");
 
 /** 어휘 = vocabulary.ts가 내보내는 모든 문자열 배열의 합집합 */
 const allowed = new Set();

@@ -6,7 +6,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from .models import VideoMetadata
+from ..domain.models import VideoMetadata
 
 
 @dataclass(frozen=True, slots=True)

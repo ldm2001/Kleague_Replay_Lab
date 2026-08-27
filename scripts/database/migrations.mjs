@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
-const migrationDirectoryUrl = new URL("../../web/src/database/migrations/", import.meta.url);
+const migrationDirectoryUrl = new URL("../../apps/web/src/database/migrations/", import.meta.url);
 
 export const loadMigrations = async () => {
   const entries = await readdir(fileURLToPath(migrationDirectoryUrl), { withFileTypes: true });

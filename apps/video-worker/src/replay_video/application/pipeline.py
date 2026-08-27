@@ -5,11 +5,11 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from .candidates import candidates
-from .evidence import evidence
-from .models import Candidate, Evidence, PipelineResult, Shot, VideoMetadata
-from .probe import MediaError, probe
-from .shots import shots
+from ..domain.models import Candidate, Evidence, PipelineResult, Shot, VideoMetadata
+from ..infrastructure.candidates import candidates
+from ..infrastructure.evidence import evidence
+from ..infrastructure.probe import MediaError, probe
+from ..infrastructure.shots import shots
 
 
 def _video(metadata: VideoMetadata) -> dict[str, Any]:

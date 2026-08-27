@@ -4,7 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
-from .pipeline import run
+from .application.pipeline import run
 
 
 def main() -> int:

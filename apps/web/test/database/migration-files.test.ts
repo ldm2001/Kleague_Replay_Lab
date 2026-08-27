@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { loadMigrations } from "../../../scripts/database/migrations.mjs";
+import { loadMigrations } from "../../../../scripts/database/migrations.mjs";
 
 describe("migration discovery", () => {
   it("loads every SQL migration in filename order with a checksum", async () => {
