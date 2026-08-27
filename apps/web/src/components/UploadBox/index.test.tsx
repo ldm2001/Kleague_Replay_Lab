@@ -3,7 +3,7 @@ import "@testing-library/jest-dom/vitest";
 import * as React from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { UploadBox } from "./upload-box.js";
+import { UploadBox } from "./index.js";
 
 class FakeUploadRequest {
   onprogress: ((event: { loaded: number; total: number }) => void) | null = null;

@@ -1,5 +1,7 @@
 import * as React from "react";
-import { images, path } from "../assets";
+import { Footer } from "../../components/Footer";
+import { Header } from "../../components/Header";
+import { images, path } from "../../assets/image";
 
 const services = [
   { title: "판정 후보 탐지", text: "파울과 핸드볼과 차징과 득점 취소 장면을 후보로 모읍니다." },
@@ -26,17 +28,7 @@ const help = [
 export function LandingPage() {
   return (
     <div className="site-shell">
-      <header className="site-header">
-        <a className="site-brand" href="#top" aria-label="K리그 판정 보조 홈">
-          <span className="site-logo-lockup"><img className="site-logo" data-testid="site-logo" src={path(images.brandLight)} alt="K LEAGUE" decoding="async" /><small>Replay Lab</small></span>
-        </a>
-        <nav className="site-nav" aria-label="주요 메뉴">
-          <a href="#solutions">솔루션</a>
-          <a href="#services">분석 기능</a>
-          <a href="#rules">규정</a>
-          <a href="#cases">검토 범위</a>
-        </nav>
-      </header>
+      <Header mode="landing" />
 
       <main>
         <section className="hero" id="top" aria-labelledby="hero-title">
@@ -81,7 +73,7 @@ export function LandingPage() {
 
       </main>
 
-      <footer className="site-footer"><div className="footer-brand"><span className="site-mark" aria-hidden="true"><span /></span><strong>K LEAGUE Replay Lab</strong></div><p>영상 근거와 공개 규정을 비교하는 판정 보조 시스템</p><small>공식 판정이 아닌 기술적 보조 의견입니다.</small></footer>
+      <Footer />
     </div>
   );
 }

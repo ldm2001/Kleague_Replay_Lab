@@ -135,7 +135,7 @@ export function UploadBox() {
       </div>
       <label className="confidence-toggle"><input type="checkbox" defaultChecked /> <span>낮은 확신도 장면도 표시</span></label>
       <div className="upload-status" aria-live="polite">{message[phase]}</div>
-      <div className="progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={value}><span className="progress-fill" style={{ transform: `scaleX(${value / 100})` }} /></div>
+      <div className="progress-track"><progress className="progress-fill" value={value} max={100} aria-valuemin={0} aria-valuemax={100} aria-valuenow={value} /></div>
       <button className="primary-action" type="button" onClick={() => input.current?.click()} disabled={phase === "uploading" || phase === "completing"}><span aria-hidden="true">▷</span> 분석 시작</button>
     </section>
   );

@@ -1,0 +1,16 @@
+.site-mark { position: relative; display: block; width: 31px; height: 28px; overflow: hidden; }
+.site-mark::before, .site-mark::after, .site-mark span { content: ""; position: absolute; display: block; transform: skewX(-27deg); }
+.site-mark::before { width: 8px; height: 22px; left: 4px; top: 0; background: #eb4c59; }
+.site-mark::after { width: 8px; height: 25px; left: 13px; top: 3px; background: #fff; }
+.site-mark span { width: 8px; height: 15px; left: 22px; top: 10px; background: #93a9d2; }
+.site-footer { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; padding: 58px max(20px, calc((100% - 1180px) / 2)); background: #11131b; color: rgba(255, 255, 255, .72); }
+.footer-brand { display: flex; align-items: center; gap: 10px; color: #fff; }
+.footer-brand strong { font-size: 13px; }
+.site-footer p, .site-footer small { margin: 0; font-size: 11px; }
+.site-footer small { color: rgba(255, 255, 255, .45); }
+
+@media (max-width: 700px) {
+  .site-footer { display: block; padding: 44px 20px; }
+  .site-footer p { margin-top: 20px; }
+  .site-footer small { display: block; margin-top: 8px; }
+}

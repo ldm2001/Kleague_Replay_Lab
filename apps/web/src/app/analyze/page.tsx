@@ -1,4 +1,4 @@
-import { AnalysisPage } from "../../components/analysis-page";
+import { AnalysisPage } from "../../views/Analysis";
 
 export default function Page() {
   return <AnalysisPage />;

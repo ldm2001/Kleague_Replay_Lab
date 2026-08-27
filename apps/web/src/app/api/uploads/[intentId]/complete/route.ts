@@ -1,5 +1,5 @@
 import { container } from "../../../../../bootstrap/container";
-import { completion } from "../../../../../api/upload-routes";
+import { completion } from "../../../../../apis/upload";
 
 export const runtime = "nodejs";
 
