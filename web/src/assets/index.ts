@@ -1,0 +1,23 @@
+import brand from "./brand/kleague-logo.png";
+import brandLight from "./brand/kleague-logo-light.png";
+import charging from "./review/charging.webp";
+import foul from "./review/foul.jpg";
+import goal from "./review/goal.jpg";
+import handball from "./review/handball.jpg";
+import hero from "./hero/kleague-ball.jpg";
+
+export type Asset = string | { src: string };
+
+export const path = (asset: Asset) => typeof asset === "string" ? asset : asset.src;
+
+export const images = {
+  brand,
+  brandLight,
+  hero,
+  review: {
+    foul,
+    handball,
+    charging,
+    goal,
+  },
+} as const;

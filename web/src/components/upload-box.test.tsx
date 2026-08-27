@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import * as React from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { UploadBox } from "./upload-box.js";
 
@@ -26,6 +26,7 @@ class FakeUploadRequest {
 
 describe("UploadBox", () => {
   afterEach(() => {
+    cleanup();
     vi.restoreAllMocks();
   });
 
@@ -46,8 +47,18 @@ describe("UploadBox", () => {
     const file = new File([new Uint8Array(128)], "highlight.mp4", { type: "video/mp4" });
     fireEvent.change(screen.getByLabelText("영상 파일"), { target: { files: [file] } });
 
-    await waitFor(() => expect(screen.getByText("검증 대기")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText("검증 대기").length).toBeGreaterThan(0));
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "100");
+  });
+
+  it("renders the upload controls used by the landing page", () => {
+    render(<UploadBox />);
+
+    expect(screen.getByRole("heading", { name: "경기 영상 업로드" })).toBeInTheDocument();
+    expect(screen.getByLabelText("대회")).toBeInTheDocument();
+    expect(screen.getByLabelText("시즌")).toBeInTheDocument();
+    expect(screen.getByText("낮은 확신도 장면도 표시")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "분석 시작" })).toBeInTheDocument();
   });
 });

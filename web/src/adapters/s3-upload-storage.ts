@@ -1,5 +1,5 @@
-import { randomUUID } from "node:crypto";
-import { DeleteObjectCommand, HeadObjectCommand, PutObjectCommand, type S3Client } from "@aws-sdk/client-s3";
+import { createHash, randomUUID } from "node:crypto";
+import { DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, PutObjectCommand, type S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import type { CompleteUploadStorage, CreateUploadStorage, UploadGrant, UploadedObjectHead } from "@replay/application";
 
@@ -21,6 +21,14 @@ type HeadResult = Readonly<{
   ContentLength?: number;
   ChecksumSHA256?: string;
 }>;
+
+type Body = AsyncIterable<Uint8Array>;
+
+const checksum = async (body: Body): Promise<Uint8Array> => {
+  const hash = createHash("sha256");
+  for await (const chunk of body) hash.update(chunk);
+  return Uint8Array.from(hash.digest());
+};
 
 const signer: Sign = (client, command, expiresIn) =>
   getSignedUrl(client as S3Client, command as PutObjectCommand, { expiresIn });
@@ -60,10 +68,20 @@ export class S3UploadStorage implements CreateUploadStorage, CompleteUploadStora
       const result = (await this.options.client.send(
         new HeadObjectCommand({ Bucket: this.options.bucket, Key: objectKey }),
       )) as HeadResult;
-      if (result.ContentLength === undefined || result.ChecksumSHA256 === undefined) {
-        throw new Error("Object checksum is unavailable");
+      if (result.ContentLength === undefined) {
+        throw new Error("Object size is unavailable");
       }
-      return { sizeBytes: result.ContentLength, contentSha256: bytes(result.ChecksumSHA256) };
+      if (result.ChecksumSHA256 !== undefined) {
+        return { sizeBytes: result.ContentLength, contentSha256: bytes(result.ChecksumSHA256) };
+      }
+
+      // Some S3-compatible servers omit checksum headers. Stream the object instead
+      // of buffering it so completion remains bounded by the hash state and chunk size.
+      const downloaded = (await this.options.client.send(
+        new GetObjectCommand({ Bucket: this.options.bucket, Key: objectKey }),
+      )) as Readonly<{ Body?: Body }>;
+      if (!downloaded.Body) throw new Error("Object checksum is unavailable");
+      return { sizeBytes: result.ContentLength, contentSha256: await checksum(downloaded.Body) };
     } catch (error) {
       if (error instanceof Error && "name" in error && (error as Error & { name?: string }).name === "NotFound") {
         return null;

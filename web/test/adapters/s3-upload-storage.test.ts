@@ -1,15 +1,27 @@
 import { describe, expect, it } from "vitest";
+import { createHash } from "node:crypto";
 import { s3, type S3ObjectClient } from "@replay/adapters";
 
 class FakeS3 implements S3ObjectClient {
   readonly commands: unknown[] = [];
   headResult: unknown = { ContentLength: 128, ChecksumSHA256: "AQID" };
+  objectBody: Uint8Array[] = [Uint8Array.from([4, 5, 6])];
 
   async send(command: unknown) {
     this.commands.push(command);
     const name = command?.constructor?.name;
     if (name === "HeadObjectCommand") {
       return this.headResult;
+    }
+    if (name === "GetObjectCommand") {
+      return {
+        Body: {
+          async *[Symbol.asyncIterator]() {
+            yield* this.body;
+          },
+          body: this.objectBody,
+        },
+      };
     }
     return {};
   }
@@ -52,7 +64,7 @@ describe("s3 upload storage", () => {
     expect(client.commands[0]?.constructor?.name).toBe("DeleteObjectCommand");
   });
 
-  it("returns no head for a missing object and rejects a head without checksum", async () => {
+  it("returns no head for a missing object and hashes a head without checksum", async () => {
     const client = new FakeS3();
     const storage = s3({ client, bucket: "replay-local", sign: async () => "unused" });
 
@@ -60,6 +72,7 @@ describe("s3 upload storage", () => {
     await expect(storage.head("uploads/missing.upload")).resolves.toBeNull();
 
     client.headResult = { ContentLength: 128 };
-    await expect(storage.head("uploads/no-checksum.upload")).rejects.toThrow("Object checksum is unavailable");
+    const expected = Uint8Array.from(createHash("sha256").update(Buffer.from([4, 5, 6])).digest());
+    await expect(storage.head("uploads/no-checksum.upload")).resolves.toEqual({ sizeBytes: 128, contentSha256: expected });
   });
 });
