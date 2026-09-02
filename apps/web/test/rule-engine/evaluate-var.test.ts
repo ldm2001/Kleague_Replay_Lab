@@ -45,7 +45,7 @@ describe("varResult", () => {
     expect(assessment.notReviewableReason).toBe("OUTSIDE_REVIEWABLE_CATEGORIES");
     expect(assessment.noInterventionReason).toBe("NOT_REVIEWABLE");
     expect(assessment.reviewProcedure).toBe("NONE");
-    // 문턱은 여전히 별도로 계산된다
+    // 문턱 결과 독립 확인
     expect(assessment.thresholdMet).toBe("MET");
   });
 

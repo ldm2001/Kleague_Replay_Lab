@@ -67,17 +67,52 @@ NHN Cloud형 랜딩 구조를 참고해 짙은 코발트 영웅 영역과 밝은
 
 | 영역 | 활용 기술과 데이터 |
 |---|---|
-| 웹과 API | Next.js App Router와 TypeScript와 Zod |
+| 웹과 API | Nextjs App Router와 TypeScript와 Zod |
 | 상태와 관계 데이터 | PostgreSQL과 Drizzle ORM과 명시적 SQL 마이그레이션 |
 | 영상 파일 | Private Object Storage와 객체 키와 체크섬과 TTL 메타데이터 |
 | 영상 처리 | Python Worker와 FFmpeg와 ffprobe와 OpenCV와 PyTorch |
 | 규정 데이터 | IFAB 판본 JSON과 K리그 대회 적용 옵션과 조항 단위 인용 |
 | 핵심 저장 모델 | 익명 세션과 업로드와 분석과 Job과 후보와 사실 Revision과 Evidence와 DecisionResult |
-| 아키텍처 | Next.js 제어 영역과 Python 영상 Worker를 분리한 모듈형 모놀리스 |
+| 아키텍처 | Nextjs 제어 영역과 Python 영상 Worker를 분리한 모듈형 모놀리스 |
 | 일관성 | Analysis와 Job과 IdempotencyRecord를 한 트랜잭션에서 생성 |
 
 영상 바이트는 PostgreSQL에 저장하지 않음
 규정 원문 전문도 저장하지 않고 조항과 판본과 출처와 체크섬을 저장
+
+### 로컬 실행
+
+PostgreSQL과 MinIO 실행
+
+```bash
+npm run dev:infra
+```
+
+마이그레이션 실행
+
+```bash
+DATABASE_URL=postgresql://replay:replay@127.0.0.1:5432/replay_lab npm run db:migrate
+```
+
+웹 실행
+
+```bash
+npm run dev:web
+```
+
+다른 터미널에서 Worker 실행
+
+```bash
+set -a
+source apps/web/.env.local
+set +a
+npm run dev:worker
+```
+
+브라우저 주소
+
+```text
+http://localhost:3100/analyze
+```
 
 ## 5 시나리오
 
@@ -115,8 +150,8 @@ NHN Cloud형 랜딩 구조를 참고해 짙은 코발트 영웅 영역과 밝은
 
 추후 확장
 
-- `CompleteUpload` API와 업로드 화면 연결
-- Object Storage Adapter와 Cleanup Worker 연결
+- 증거 미디어 TTL Cleanup Worker 연결
+- Worker 재시도 지연과 운영 지표 추가
 - 핸드볼과 차징과 오프사이드 규칙 유형 확대
 - 전체 영상 샷 탐지와 선수와 공 추적 자동화
 - PostgreSQL Job Table에서 Redis Queue로 단계적 전환
@@ -753,11 +788,16 @@ Worker가 중단되어도 재시도 가능한 체크포인트와 시도 이력�
 - PostgreSQL Connection Pool은 서버리스 인스턴스 수와 DB 최대 연결 수를 함께 계산해 설정
 - 외부 호출은 연결 시간과 응답 시간과 전체 시간 제한을 분리
 - HTTP Connection Pool과 Keep Alive와 Route별 최대 연결 수를 명시
+- Worker Lease 시간은 `WORKER_LEASE_MS`로 관리하고 진행 보고 주기보다 길게 설정
 - 네트워크 I O는 비동기로 처리하고 FFmpeg와 추론 같은 CPU GPU 작업은 Worker 동시성으로 제한
 - 로컬 캐시는 불변 RuleSet과 파싱 결과에만 사용
 - Redis는 Rate Limit과 다중 인스턴스 공유 캐시와 Queue가 실제로 필요할 때 도입
 - Redis와 로컬 캐시를 삭제해도 PostgreSQL과 규정 데이터만으로 같은 결과를 다시 생성할 수 있어야 함
 - 쿼리는 PostgreSQL `EXPLAIN ANALYZE`와 `BUFFERS`로 실제 실행 계획을 확인한 뒤 개선
+- `npm run db:explain`으로 작업 선점과 세션과 업로드와 분석 조회 계획 확인
+- `EXPLAIN_ANALYZE=1 npm run db:explain`으로 SELECT 실측과 BUFFERS 확인
+- `npm run db:stats`로 운영 PostgreSQL에 `pg_stat_statements` 설치
+- 운영 PostgreSQL은 `pg_stat_statements`로 SQL 실행 시간과 호출량과 버퍼 사용량 확인
 - tcpdump는 연결 장애와 재전송과 Timeout 원인 분석이 필요할 때 운영 진단 도구로 사용
 - MCP와 LLM은 규정 원문 수집과 설명 초안 같은 외부 어댑터로만 연결하고 Rule Engine의 판정 경로에는 넣지 않음
 
@@ -1090,6 +1130,11 @@ lease_until
 next_attempt_at
 failure_code
 retryable
+stage                    QUEUED | VALIDATING | SEGMENTING | DETECTING
+                         | EXTRACTING_FACTS | BUILDING_EVIDENCE
+                         | APPLYING_RULES | SUCCEEDED | FAILED
+progress_percent        0 to 100
+heartbeat_at
 created_at
 updated_at
 ```
@@ -1100,6 +1145,12 @@ updated_at
 `target id + job_type + payload_version` 유일 제약으로 중복 Job 생성을 차단
 Lease가 만료된 `PROCESSING` 작업은 다른 Worker가 재선점 가능
 선점할 때 `job_revision`을 올리고 결과와 진행 보고는 같은 Revision과 Lease Token을 가진 Worker 한 개만 승인
+
+### processing_job_events
+
+작업 선점과 진행과 heartbeat와 성공과 실패 이력을 append only로 저장
+현재 진행률은 `processing_jobs`에서 조회하고 변경 이력은 `processing_job_events`에서 조회
+작업 삭제 시 이벤트도 외래키 Cascade로 함께 정리
 
 #### ANALYZE_VIDEO 결과 계약
 

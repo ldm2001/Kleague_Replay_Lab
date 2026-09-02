@@ -18,59 +18,62 @@ import type {
   VarWindowException,
 } from "./vocabulary";
 
-/**
- * 네 게이트를 각각 별도 필드로 둔다.
- * 합치면 정답을 내면서 이유를 틀린다 (README 11절, var-19).
- */
+// VAR 네 게이트의 독립 결과
 export type VarAssessment = {
-  reviewable: boolean; // 게이트 1 결과
-  category: VarCategory; // 게이트 1
-  withinTimeWindow: boolean; // 게이트 2
-  thresholdMet: VarThresholdResult; // 게이트 3
-  reviewProcedure: VarReviewProcedure; // 게이트 4 — 문턱과 무관
+  // 게이트 1 결과
+  reviewable: boolean;
+  // 게이트 1 범주
+  category: VarCategory;
+  // 게이트 2 결과
+  withinTimeWindow: boolean;
+  // 게이트 3 결과
+  thresholdMet: VarThresholdResult;
+  // 게이트 4 결과
+  reviewProcedure: VarReviewProcedure;
   intervention: VarIntervention;
-  /** 어느 게이트가 막았는가. */
+  // 게이트 차단 사유
   noInterventionReason: VarNoInterventionReason | null;
-  /** 범주 게이트가 왜 막았는가. */
+  // 범주 차단 사유
   notReviewableReason: VarNotReviewableReason | null;
-  /** 시한 게이트가 왜 막았는가. */
+  // 시한 차단 사유
   windowClosedReason: VarWindowClosedReason | null;
-  /** NONE이 아니면 재개 여부와 무관하게 withinTimeWindow는 참이다. */
+  // 예외가 있으면 재개 후에도 검토 창 유지
   windowException: VarWindowException;
   explanation: string;
 };
 
 export type EvaluationResult = {
-  // 1. 규정이 이 상황에 대해 말하는 것
+  // 규정이 말하는 내용
   accounts: AuthorityAccount[];
   conflicts: LayerConflict[];
 
-  // 2. 조항 트리에서 도달한 깊이
+  // 조항 트리 도달 범위
   narrowedTo: RuleCitation[];
   blockedFrom: FactRequirement[];
 
-  // 3. VAR 네 게이트 — 밀기 경로에서는 계산하지 않으므로 null
+  // VAR 네 게이트 결과
   varAssessment: VarAssessment | null;
 
-  // 4. 참고 — 규정을 적용하면 나오는 판정
+  // 규정 적용 참고 판정
   decision: Decision;
   severity: Severity | null;
   restart: RestartType | null;
   disciplinary: DisciplinaryAction | null;
   decisionMatch: DecisionMatch;
 
-  // 5. 한계
+  // 영상과 관측 한계
   confidence: ConfidenceLevel;
   inconclusiveReason: InconclusiveReason | null;
 
-  // 6. 재현
+  // 결과 재현 정보
   factSignature: string;
   factSignatureInput: string;
 
-  citations: RuleCitation[]; // 비어 있을 수 없음
+  // 최소 한 개의 인용
+  citations: RuleCitation[];
 };
 
-/** 입력이 부족하다는 신호. 판정 결과와 형태가 다르다. */
+// 입력 부족 오류 결과
 export type EvaluationFailure = {
   ok: false;
   error: EvaluationErrorCode;

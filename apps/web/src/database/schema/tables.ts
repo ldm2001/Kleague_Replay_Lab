@@ -4,6 +4,7 @@ import {
   boolean,
   customType,
   date,
+  index,
   integer,
   jsonb,
   pgTable,
@@ -27,6 +28,8 @@ import {
   foulDecision,
   idempotencyOperation,
   inconclusiveReason,
+  jobEventType,
+  jobStage,
   jobStatus,
   jobType,
   observedGoalDecision,
@@ -51,20 +54,15 @@ import {
   videoAssetStatus,
 } from "./enums";
 
-/**
- * Drizzle query schema.
- *
- * PostgreSQL DDL is intentionally maintained in `database/migrations`.
- * Composite foreign keys, exclusion constraints, generated columns, partial indexes,
- * and append-only triggers are PostgreSQL contracts that this type model cannot fully express.
- * Every table change therefore requires a paired SQL migration and integration test.
- */
+// Drizzle 조회 스키마와 마이그레이션 계약
 
 const bytea = customType<{ data: Buffer; driverData: Buffer }>({
   dataType: () => "bytea",
 });
 
+// 시간 기본값
 const stamp = () => timestamp({ withTimezone: true, mode: "string" }).notNull().defaultNow();
+// UUID 식별자 기본값
 const id = () => uuid().primaryKey().default(sql`gen_random_uuid()`);
 
 export const anonymousSessions = pgTable("anonymous_sessions", {
@@ -165,6 +163,7 @@ export const analyses = pgTable(
     mediaPolicyVersion: varchar("media_policy_version", { length: 64 }),
     stateVersion: integer("state_version").notNull().default(0),
     failureCode: varchar("failure_code", { length: 64 }),
+    limitations: jsonb().$type<string[]>().notNull().default(sql`'[]'::jsonb`),
     createdAt: stamp(),
     completedAt: timestamp("completed_at", { withTimezone: true, mode: "string" }),
     expiresAt: timestamp("expires_at", { withTimezone: true, mode: "string" }),
@@ -179,6 +178,9 @@ export const processingJobs = pgTable("processing_jobs", {
   jobType: jobType("job_type").notNull(),
   status: jobStatus().notNull(),
   payloadVersion: integer("payload_version").notNull(),
+  stage: jobStage().notNull().default("QUEUED"),
+  progressPercent: smallint("progress_percent").notNull().default(0),
+  heartbeatAt: timestamp("heartbeat_at", { withTimezone: true, mode: "string" }),
   jobRevision: integer("job_revision").notNull().default(0),
   attempt: smallint().notNull().default(0),
   maxAttempts: smallint("max_attempts").notNull(),
@@ -192,6 +194,22 @@ export const processingJobs = pgTable("processing_jobs", {
   updatedAt: stamp(),
 });
 
+export const processingJobEvents = pgTable(
+  "processing_job_events",
+  {
+    id: id(),
+    jobId: uuid("job_id").notNull().references(() => processingJobs.id),
+    jobRevision: integer("job_revision").notNull(),
+    attempt: smallint().notNull(),
+    eventType: jobEventType("event_type").notNull(),
+    stage: jobStage().notNull(),
+    progressPercent: smallint("progress_percent").notNull(),
+    message: text(),
+    createdAt: stamp(),
+  },
+  (table) => [index("processing_job_events_job_time_idx").on(table.jobId, table.createdAt, table.id)],
+);
+
 export const incidentCandidates = pgTable(
   "incident_candidates",
   {
@@ -201,9 +219,12 @@ export const incidentCandidates = pgTable(
     reviewScenario: reviewScenario("review_scenario").notNull(),
     startMs: integer("start_ms").notNull(),
     endMs: integer("end_ms").notNull(),
+    anchorMs: integer("anchor_ms"),
     broadcastClock: varchar("broadcast_clock", { length: 16 }),
     detectionConfidence: real("detection_confidence"),
     cameraSufficiency: cameraSufficiency("camera_sufficiency").notNull(),
+    reasons: jsonb().$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    shotIndices: jsonb("shot_indices").$type<number[]>().notNull().default(sql`'[]'::jsonb`),
     currentFactRevisionId: uuid("current_fact_revision_id"),
     reviewStatus: candidateReviewStatus("review_status").notNull(),
     createdAt: stamp(),

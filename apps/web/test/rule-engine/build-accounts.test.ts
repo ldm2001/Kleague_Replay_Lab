@@ -68,8 +68,7 @@ describe("pushAccounts", () => {
       opponentDisplacement: observation("possible", "NORMAL", ["shot-1"]),
     };
     const displacement = requirement(facts, "opponentDisplacement");
-    // 게이트가 possible에서 보류하는데 요구 사실만 서면 blockedFrom이 빈 채로
-    // INCONCLUSIVE가 나간다. 게이트와 요구사항이 같은 값을 같게 봐야 한다.
+    // possible 값의 차단 상태 확인
     expect(displacement.status).toBe("UNMET");
     expect(displacement.blockedBy).toBeNull();
     expect(pushAccounts(facts, rules).blockedFrom).toHaveLength(1);

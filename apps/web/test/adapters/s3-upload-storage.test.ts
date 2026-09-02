@@ -64,6 +64,47 @@ describe("s3 upload storage", () => {
     expect(client.commands[0]?.constructor?.name).toBe("DeleteObjectCommand");
   });
 
+  it("grants a private read URL for a claimed worker job", async () => {
+    const client = new FakeS3();
+    const commands: string[] = [];
+    const storage = s3({
+      client,
+      bucket: "replay-local",
+      sign: async (_client, command) => {
+        commands.push(command?.constructor?.name ?? "unknown");
+        return "http://minio.test/read-token";
+      },
+    });
+
+    await expect(storage.read("uploads/session/object.upload")).resolves.toBe("http://minio.test/read-token");
+    expect(commands).toEqual(["GetObjectCommand"]);
+  });
+
+  it("grants a scoped evidence put URL", async () => {
+    const client = new FakeS3();
+    const commands: string[] = [];
+    const storage = s3({
+      client,
+      bucket: "replay-local",
+      sign: async (_client, command) => {
+        commands.push(command?.constructor?.name ?? "unknown");
+        return "http://minio.test/evidence-token";
+      },
+    });
+
+    await expect(storage.evidence({
+      analysisId: "22222222-2222-4222-8222-222222222222",
+      jobId: "11111111-1111-4111-8111-111111111111",
+      name: "candidate-0001.jpg",
+      contentType: "image/jpeg",
+      sizeBytes: 128,
+    })).resolves.toEqual({
+      objectKey: "evidence/22222222-2222-4222-8222-222222222222/11111111-1111-4111-8111-111111111111/candidate-0001.jpg",
+      uploadUrl: "http://minio.test/evidence-token",
+    });
+    expect(commands).toEqual(["PutObjectCommand"]);
+  });
+
   it("returns no head for a missing object and hashes a head without checksum", async () => {
     const client = new FakeS3();
     const storage = s3({ client, bucket: "replay-local", sign: async () => "unused" });
@@ -74,5 +115,17 @@ describe("s3 upload storage", () => {
     client.headResult = { ContentLength: 128 };
     const expected = Uint8Array.from(digest("sha256").update(Buffer.from([4, 5, 6])).digest());
     await expect(storage.head("uploads/no-checksum.upload")).resolves.toEqual({ sizeBytes: 128, contentSha256: expected });
+  });
+
+  it("returns a private evidence body", async () => {
+    const client = new FakeS3();
+    const storage = s3({ client, bucket: "replay-local", sign: async () => "unused" });
+
+    const object = await storage.body("evidence/analysis/job/candidate.jpg");
+    const chunks: number[] = [];
+    for await (const chunk of object.body) chunks.push(...chunk);
+
+    expect(chunks).toEqual([4, 5, 6]);
+    expect(client.commands[0]?.constructor?.name).toBe("GetObjectCommand");
   });
 });

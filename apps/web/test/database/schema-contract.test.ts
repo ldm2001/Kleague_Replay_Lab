@@ -16,6 +16,7 @@ describe("database schema public contract", () => {
       "incidentCandidates",
       "matches",
       "officialVerdicts",
+      "processingJobEvents",
       "processingJobs",
       "rules",
       "shots",

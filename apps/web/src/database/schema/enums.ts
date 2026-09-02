@@ -1,5 +1,6 @@
 import { pgEnum } from "drizzle-orm/pg-core";
 
+// 열거값 타입 고정
 const values = <T extends readonly [string, ...string[]]>(items: T): T => items;
 
 export const videoAssetStatus = pgEnum(
@@ -16,6 +17,11 @@ export const jobType = pgEnum(
   values(["VALIDATE_VIDEO", "ANALYZE_VIDEO", "DELETE_VIDEO_ASSET", "PURGE_ANALYSIS"]),
 );
 export const jobStatus = pgEnum("job_status", values(["QUEUED", "PROCESSING", "SUCCEEDED", "FAILED"]));
+export const jobStage = pgEnum(
+  "job_stage",
+  values(["QUEUED", "VALIDATING", "SEGMENTING", "DETECTING", "EXTRACTING_FACTS", "BUILDING_EVIDENCE", "APPLYING_RULES", "SUCCEEDED", "FAILED"]),
+);
+export const jobEventType = pgEnum("job_event_type", values(["CLAIMED", "PROGRESS", "HEARTBEAT", "SUCCEEDED", "FAILED"]));
 export const idempotencyOperation = pgEnum("idempotency_operation", values(["CREATE_ANALYSIS", "PATCH_FACTS"]));
 export const reviewScenario = pgEnum(
   "review_scenario",

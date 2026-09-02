@@ -1,11 +1,5 @@
 #!/usr/bin/env node
-/**
- * 룰 엔진 소스에 판본 문자열이 있으면 실패한다.
- *
- * 판본별 차이는 apps/web/src/rules/data의 JSON이 소유한다 (README 3절·11절).
- * 엔진이 판본을 알면 규정 개정이 코드 배포와 묶이고, 개정 시점에
- * 고쳐야 할 곳이 데이터 한 곳이 아니라 데이터와 분기 양쪽이 된다.
- */
+// 룰 엔진의 판본 문자열 검증
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 

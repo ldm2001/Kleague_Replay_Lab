@@ -1,14 +1,5 @@
 #!/usr/bin/env node
-/**
- * 픽스처에 쓰인 값이 shared-types의 어휘에 있는지 검사한다.
- *
- * 픽스처는 JSON이고 러너가 이중 단언으로 넘기므로 tsc가 값을 보지 않는다.
- * 이 검사가 없으면 오타 하나가 "타입에 없는 값을 기대하는 케이스"로 남고,
- * 그 케이스는 통과하는 동안 아무것도 지키지 않는다 (README 13절).
- *
- * 판본 데이터도 같은 이유로 tsc 밖에 있다 — ruleSet이 `as RuleSetFile`로
- * 받으므로 값은 아무도 보지 않는다. 그래서 필드별 제약을 따로 검사한다.
- */
+// 픽스처와 규정 데이터의 어휘 검증
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import * as vocabulary from "../../apps/web/src/shared/vocabulary.ts";
@@ -17,7 +8,7 @@ const ROOT = new URL("../../", import.meta.url).pathname;
 const FIXTURES = join(ROOT, "apps/web/src/rules/engine/fixtures");
 const RULE_DATA = join(ROOT, "apps/web/src/rules/data");
 
-/** 어휘 = vocabulary.ts가 내보내는 모든 문자열 배열의 합집합 */
+// 공유 어휘 수집
 const allowed = new Set();
 for (const value of Object.values(vocabulary)) {
   if (Array.isArray(value) && value.every((entry) => typeof entry === "string")) {
@@ -25,7 +16,7 @@ for (const value of Object.values(vocabulary)) {
   }
 }
 
-/** data/ 아래는 권한별 디렉터리로 나뉘므로 재귀로 훑는다. */
+// 규정 데이터 파일 수집
 const tree = (dir) =>
   readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const full = join(dir, entry.name);
@@ -40,15 +31,7 @@ const knownVersions = new Set(
 
 const problems = [];
 
-/**
- * 판본 데이터의 필드별 어휘 제약.
- *
- * 합집합 검사로는 잡히지 않는 것을 잡는다. DOGSO는 SEND_OFF_CATEGORIES에
- * 있으므로 합집합에는 들어 있지만 창을 다시 여는 사유는 아니다. 엔진은 이
- * 목록의 값을 변환표 없이 그대로 windowException으로 쓰므로, 목록이
- * VAR_WINDOW_EXCEPTIONS를 벗어나면 데이터가 엔진에 표현 불가능한 값을
- * 요구하게 된다. 지금 데이터가 맞는 건 우연이지 검사된 결과가 아니었다.
- */
+// 판본 데이터 필드별 제약
 const RULE_DATA_FIELDS = [
   { path: ["timeWindowExceptions", "sendOffCategories"], vocabulary: "VAR_WINDOW_EXCEPTIONS" },
 ];
@@ -57,7 +40,8 @@ for (const file of ruleDataFiles) {
   const data = JSON.parse(readFileSync(file, "utf8"));
   for (const { path, vocabulary: name } of RULE_DATA_FIELDS) {
     const values = path.reduce((node, key) => node?.[key], data);
-    if (!Array.isArray(values)) continue; // 없는 필드는 스키마의 일이다
+    // 필드 없음
+    if (!Array.isArray(values)) continue;
     const permitted = new Set(vocabulary[name]);
     for (const value of values) {
       if (!permitted.has(value)) {
@@ -67,7 +51,7 @@ for (const file of ruleDataFiles) {
   }
 }
 
-/** 사실값과 기대값 안의 문자열만 본다. id·note·concern·gate는 사람이 읽는 메모다. */
+// 픽스처 문자열 값 수집
 const strings = (node, path, into) => {
   if (typeof node === "string") {
     into.push([path, node]);
@@ -79,7 +63,8 @@ const strings = (node, path, into) => {
   }
   if (node !== null && typeof node === "object") {
     for (const [key, value] of Object.entries(node)) {
-      if (key === "shotIds") continue; // 자유 문자열 — 어휘가 아니다
+      // 자유 문자열
+      if (key === "shotIds") continue;
       strings(value, `${path}.${key}`, into);
     }
   }

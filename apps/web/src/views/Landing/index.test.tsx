@@ -31,6 +31,10 @@ describe("LandingPage", () => {
     expect(screen.getByText("판정 후보 탐지")).toBeInTheDocument();
     expect(screen.getByText("IFAB와 K리그 요강 대조")).toBeInTheDocument();
     expect(screen.getByText("근거 프레임과 클립")).toBeInTheDocument();
+    expect(screen.getByText("판정 결과 읽기")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "영상 속 판정 근거를 확인하세요" })).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "푸터 메뉴" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "맨 위로" })).toHaveAttribute("href", "#top");
     expect(screen.getByRole("img", { name: "파울 판정 예시" })).toHaveAttribute("src", "/apps/web/src/assets/image/review/foul.jpg");
     expect(screen.getByRole("img", { name: "핸드볼 판정 예시" })).toHaveAttribute("src", "/apps/web/src/assets/image/review/handball.jpg");
     expect(screen.getByRole("img", { name: "차징과 터치 판정 예시" })).toHaveAttribute("src", "/apps/web/src/assets/image/review/charging.webp");

@@ -3,7 +3,9 @@ import { Footer } from "../../components/Footer";
 import { Header } from "../../components/Header";
 import { UploadBox } from "../../components/UploadBox";
 
+// 분석 화면 구성
 export function AnalysisPage() {
+  // 분석 전체 화면 반환
   return (
     <div className="analysis-page">
       <Header mode="analysis" />

@@ -13,10 +13,10 @@ import { pushResult, varResult, FORBIDDEN_SIGNATURE_KEY_PATTERN } from "@replay/
 
 type Json = Record<string, unknown>;
 
-/** baseline 위에 케이스가 덮어쓴 값을 얹는다. 얕은 병합이면 충분하다 — 사실값은 한 겹이다. */
+// 기준 사실 위에 케이스 값을 병합
 const input = (baseline: Json, overrides: Json): Json => ({ ...baseline, ...overrides });
 
-/** { value, observedAtSpeed } 형태에는 shotIds 기본값을 채운다. */
+// 관측값에 shotIds 기본값 추가
 const shape = (facts: Json): Json => {
   const output: Json = {};
   for (const [key, value] of Object.entries(facts)) {
@@ -28,7 +28,7 @@ const shape = (facts: Json): Json => {
   return output;
 };
 
-/** expect에 적힌 필드만 비교한다. 적지 않은 필드는 이 케이스의 주장이 아니다. */
+// 기대값에 지정된 필드만 비교
 const subset = (actual: Json, expected: Json, caseId: string) => {
   for (const [key, value] of Object.entries(expected)) {
     expect(actual[key], `${caseId}: ${key}`).toEqual(value);
@@ -40,9 +40,7 @@ const pushResults = new Map<string, EvaluationResult>();
 describe("push-decision 픽스처", () => {
   beforeAll(() => {
     for (const testCase of pushSuite.cases) {
-      // 케이스가 판본을 덮어쓸 수 있게 둔다. 지금 push 스위트에는 그런 케이스가
-      // 없어서 JSON 추론 타입에 이 필드가 아예 없다 — 러너가 할 수 있는 일을
-      // 픽스처가 지금 무엇을 담고 있는지에 매이게 하지 않는다.
+      // 케이스별 판본 덮어쓰기 지원
       const ruleVersion =
         (testCase.given as { ruleVersion?: string }).ruleVersion ?? pushSuite.defaults.ruleVersion;
       const rules = ruleSet(ruleVersion);
@@ -86,7 +84,7 @@ describe("push-decision 픽스처", () => {
       }
     }
 
-    // 막히지 않은 케이스가 목록에 섞이면 검사가 무의미해진다
+    // 차단 목록 외 케이스 확인
     for (const testCase of pushSuite.cases) {
       if (ids.includes(testCase.id)) continue;
       expect(
@@ -154,7 +152,8 @@ describe("var-assessment 픽스처", () => {
     const successful = [...varResults.entries()].filter(
       (entry): entry is [string, Extract<VarRun, { ok: true }>] => entry[1].ok,
     );
-    expect(successful.length).toBe(varSuite.cases.length - 1); // var-21은 오류 케이스
+    // var-21은 오류 케이스
+    expect(successful.length).toBe(varSuite.cases.length - 1);
 
     for (const [id, run] of successful) {
       const gates = run.assessment as unknown as Json;
@@ -164,7 +163,7 @@ describe("var-assessment 픽스처", () => {
       }
     }
 
-    // 네 값이 하나로 접혔는지를 보는 두 증거
+    // 게이트 독립성 증거
     const reviewableButNoIntervention = successful.some(
       ([, run]) => run.assessment.reviewable && run.assessment.intervention === "NO_INTERVENTION",
     );
@@ -205,7 +204,7 @@ describe("var-assessment 픽스처", () => {
 
       const seen = bySignature.get(first.signature);
       if (seen !== undefined) {
-        // 같은 서명은 같은 사실 조합에서만 나와야 한다
+        // 같은 서명은 같은 사실 조합
         expect(seen, `${testCase.id}: 다른 입력이 같은 서명을 냈다`).toBe(first.signatureInput);
       }
       bySignature.set(first.signature, first.signatureInput);

@@ -16,26 +16,10 @@ export type PushAccountView = {
   blockedFrom: FactRequirement[];
 };
 
-/**
- * 규정 질문에 답하지 못하는 표시값.
- *   uncertain — 관측했으나 값을 특정하지 못함
- *   possible  — 값은 정해졌으나 "밀렸는가"라는 규정 질문에는 답하지 않음
- *
- * 게이트 4가 둘을 같이 보류로 다룬다. 요구사항 판정이 여기서 갈라지면
- * decision은 INCONCLUSIVE인데 blockedFrom은 빈 상태가 만들어지고,
- * 사용자는 이유가 붙지 않은 '판정 불가'만 보게 된다 (push-10이 검사한다).
- */
+// 규정 질문에 답하지 못하는 값
 const UNRESOLVED_VALUES: ReadonlySet<unknown> = new Set(["uncertain", "possible"]);
 
-/**
- * 사실값 하나가 선 상태인지 판정한다.
- *
- * 세 가지를 구분한다.
- *   CAMERA — 각도가 부족해 관측 자체를 신뢰할 수 없음
- *   SPEED  — 정상 속도 관측이 없어 강도값을 입력으로 승인할 수 없음
- *   null   — 관측은 됐으나 그 값이 규정 질문에 답하지 못함
- * 셋을 합치면 사용자가 다음에 무엇을 해야 하는지가 사라진다.
- */
+// 사실값별 차단 사유
 const requirement = (
   fact: string,
   observation: Observed<unknown>,
@@ -63,10 +47,7 @@ const requirement = (
   };
 };
 
-/**
- * 규정이 이 상황에 대해 말하는 것을 먼저 만든다.
- * 게이트는 이 결과를 지우지 않고 decision 계열 필드만 정한다.
- */
+// 규정 요구사항과 차단 사실
 export const pushAccounts = (facts: PushFacts, rules: RuleSet): PushAccountView => {
   const offenceCitations = rules.cite("LAW_12_DIRECT_FREE_KICK");
   const disciplineCitations = rules.cite("LAW_12_DISCIPLINE");
@@ -78,7 +59,7 @@ export const pushAccounts = (facts: PushFacts, rules: RuleSet): PushAccountView 
 
   const requires: FactRequirement[] = [
     requirement("contactDetected", facts.contactDetected, camera, offenceCitations[0] ?? null),
-    // 강도만 정상 속도를 요구한다 — VAR 프로토콜이 'intensity'에 normal speed를 요구하기 때문
+    // 강도는 정상 속도 관측 필요
     requirement("severity", facts.severity, cameraAndSpeed, disciplineEntry),
     requirement("opponentDisplacement", facts.opponentDisplacement, camera, disciplineEntry),
     requirement("insidePenaltyArea", facts.insidePenaltyArea, camera, offenceCitations[0] ?? null),
@@ -92,7 +73,7 @@ export const pushAccounts = (facts: PushFacts, rules: RuleSet): PushAccountView 
   if (severityEstablished) {
     narrowedTo.push(...disciplineCitations);
   } else if (facts.severity.observedAtSpeed !== "NORMAL" && facts.cameraSufficiency !== "LOW") {
-    // 속도 게이트에 걸렸다는 사실 자체의 근거를 남긴다
+    // 속도 차단 근거 추가
     narrowedTo.push(...speedCitations.filter((citation) => citation.relevance === "PRIMARY"));
   }
 

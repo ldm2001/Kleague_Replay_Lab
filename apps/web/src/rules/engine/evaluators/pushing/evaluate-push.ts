@@ -15,7 +15,7 @@ const uniqueCitations = (citations: RuleCitation[]): RuleCitation[] => {
 };
 
 export const pushResult = (facts: PushFacts, rules: RuleSet): EvaluationResult => {
-  // 규정이 무엇을 요구하는지가 먼저다. 게이트는 이 결과를 지우지 않는다.
+  // 규정 요구사항 우선 생성
   const view = pushAccounts(facts, rules);
   const verdict = pushGates(facts, rules);
 
@@ -34,7 +34,7 @@ export const pushResult = (facts: PushFacts, rules: RuleSet): EvaluationResult =
   ]);
 
   if (citations.length === 0) {
-    // 조항 없이 결론만 나가는 경로를 만들지 않는다 (README 11절).
+    // 인용 없는 결과 차단
     throw new Error("pushResult가 인용 없이 결과를 만들려 했음 — 규칙 데이터를 확인할 것");
   }
 
@@ -48,7 +48,7 @@ export const pushResult = (facts: PushFacts, rules: RuleSet): EvaluationResult =
     severity: verdict.severity,
     restart: verdict.restart,
     disciplinary: verdict.disciplinary,
-    // 비교할 관측 판정이 아직 입력에 없다. 없는 비교를 MATCH로 채우지 않는다.
+    // 관측 판정 비교값 보류
     decisionMatch: "UNDETERMINED",
     confidence: verdict.confidence,
     inconclusiveReason: verdict.inconclusiveReason,

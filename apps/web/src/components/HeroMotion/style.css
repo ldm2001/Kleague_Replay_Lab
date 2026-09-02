@@ -1,0 +1,6 @@
+.hero { transition: transform 300ms ease-out, border-radius 300ms ease-out; transform-origin: top center; }
+.hero[data-scrolled="true"] { transform: scale(.88); border-radius: 12px; }
+
+@media (max-width: 700px), (prefers-reduced-motion: reduce) {
+  .hero[data-scrolled="true"] { transform: none; border-radius: 0; }
+}
