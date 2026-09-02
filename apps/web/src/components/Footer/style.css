@@ -3,14 +3,28 @@
 .site-mark::before { width: 8px; height: 22px; left: 4px; top: 0; background: #eb4c59; }
 .site-mark::after { width: 8px; height: 25px; left: 13px; top: 3px; background: #fff; }
 .site-mark span { width: 8px; height: 15px; left: 22px; top: 10px; background: #93a9d2; }
-.site-footer { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; padding: 58px max(20px, calc((100% - 1180px) / 2)); background: #11131b; color: rgba(255, 255, 255, .72); }
-.footer-brand { display: flex; align-items: center; gap: 10px; color: #fff; }
-.footer-brand strong { font-size: 13px; }
-.site-footer p, .site-footer small { margin: 0; font-size: 11px; }
-.site-footer small { color: rgba(255, 255, 255, .45); }
+.site-footer { padding: 56px max(20px, calc((100% - 1180px) / 2)) 24px; background: #11131b; color: rgba(255, 255, 255, .72); }
+.footer-inner { display: flex; justify-content: space-between; gap: 52px; max-width: 1180px; margin: 0 auto; }
+.footer-brand { min-width: 260px; color: #fff; }
+.footer-brand > .site-mark { margin-bottom: 14px; }
+.footer-brand strong { display: block; font-size: 13px; }
+.footer-brand p { max-width: 220px; margin: 14px 0 0; color: rgba(255, 255, 255, .5); font-size: 11px; line-height: 1.6; }
+.footer-nav { display: grid; grid-template-columns: repeat(3, minmax(120px, 1fr)); gap: 46px; min-width: 560px; }
+.footer-nav h2 { margin: 0 0 14px; color: #fff; font-size: 12px; }
+.footer-nav ul { display: grid; gap: 9px; margin: 0; padding: 0; list-style: none; }
+.footer-nav a { color: rgba(255, 255, 255, .46); font-size: 11px; transition: color 160ms ease; }
+.footer-nav a:hover, .footer-nav a:focus-visible { color: #fff; outline: none; }
+.footer-bottom { display: flex; justify-content: space-between; gap: 18px; max-width: 1180px; margin: 40px auto 0; padding-top: 16px; border-top: 1px solid rgba(255, 255, 255, .12); }
+.footer-bottom small { color: rgba(255, 255, 255, .38); font-size: 10px; }
 
 @media (max-width: 700px) {
-  .site-footer { display: block; padding: 44px 20px; }
-  .site-footer p { margin-top: 20px; }
-  .site-footer small { display: block; margin-top: 8px; }
+  .site-footer { padding: 44px 20px 20px; }
+  .footer-inner { display: block; }
+  .footer-nav { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px 20px; min-width: 0; margin-top: 34px; }
+  .footer-bottom { display: block; margin-top: 32px; }
+  .footer-bottom small { display: block; margin-top: 8px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .footer-nav a { transition: none; }
 }

@@ -1,0 +1,15 @@
+.case-slider { position: relative; }
+.case-slider-controls { display: flex; justify-content: flex-end; gap: 14px; margin: -12px 0 16px; }
+.case-slider-controls button { display: grid; place-items: center; width: 36px; height: 36px; border: 0; background: transparent; color: var(--navy); font-size: 24px; line-height: 1; cursor: pointer; }
+.case-slider-controls button:disabled { color: #c5cfdd; cursor: default; }
+.case-slider-controls button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+@media (min-width: 701px) {
+  .case-grid { display: flex; gap: 20px; overflow-x: auto; padding: 0 0 10px; scroll-behavior: smooth; scroll-snap-type: x mandatory; scrollbar-width: none; }
+  .case-grid::-webkit-scrollbar { display: none; }
+  .case-card { flex: 0 0 320px; scroll-snap-align: start; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .case-grid { scroll-behavior: auto; }
+}

@@ -1,0 +1,6 @@
+.reveal { opacity: 0; transform: translateY(5px); transition: opacity 700ms ease-out var(--reveal-delay), transform 700ms ease-out var(--reveal-delay); }
+.reveal.is-visible { opacity: 1; transform: translateY(0); }
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal, .reveal.is-visible { opacity: 1; transform: none; transition: none; }
+}

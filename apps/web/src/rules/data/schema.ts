@@ -8,7 +8,7 @@ import type {
   ReviewScenario,
 } from "@replay/shared-types";
 
-/** JSON 파일에 저장되는 인용. authority와 edition은 파일 머리에서 온다. */
+// 규정 JSON의 인용 구조
 export type StoredCitation = {
   key: string;
   revision: number;

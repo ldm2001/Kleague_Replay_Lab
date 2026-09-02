@@ -2,18 +2,15 @@ import { createHash as digest } from "node:crypto";
 
 export type FactSignature = {
   signature: string;
-  /** 해시의 원문. 서명에 무엇이 들어갔는지 검사할 수 있게 함께 반환한다. */
+  // 해시 입력 원문
   input: string;
 };
 
-/**
- * 서명에 들어가서는 안 되는 키.
- * 이 목록은 축소하지 않는다 — 서명은 사건이 아니라 사실 조합을 가리켜야 한다.
- */
+// 서명에서 제외할 식별자 키
 export const FORBIDDEN_SIGNATURE_KEY_PATTERN =
   /(match|referee|official|player|team|club|venue|stadium|kickoff|date|season|fixture)/i;
 
-/** 증거 포인터일 뿐 사실값이 아니므로 서명에서 제외한다. */
+// 증거 포인터 키 제외
 const EXCLUDED_KEYS = new Set(["shotIds"]);
 
 const normal = (value: unknown, path: string): unknown => {

@@ -13,6 +13,7 @@ dependencies = [
 
 [project.scripts]
 replay-video = "replay_video.cli:main"
+replay-worker = "replay_video.runner:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

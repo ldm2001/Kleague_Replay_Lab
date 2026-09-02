@@ -10,7 +10,7 @@ const citation = (file: RuleSetFile, stored: StoredCitation): RuleCitation =>
   Object.freeze({
     ruleId: `${file.versionId}-${stored.key}`,
     ruleRevision: stored.revision,
-    // 발췌가 바뀌면 해시가 바뀐다. 그래야 과거 판정이 어느 문구를 근거로 했는지 남는다.
+    // 인용 변경 감지 해시
     ruleContentSha256: digest("sha256").update(stored.quoteSnapshot, "utf8").digest("hex"),
     authority: file.authority,
     edition: file.edition,
@@ -62,5 +62,5 @@ const REGISTRY: ReadonlyMap<string, RuleSet> = new Map(
 
 export const KNOWN_RULE_VERSION_IDS: readonly string[] = Object.freeze([...REGISTRY.keys()]);
 
-/** 알 수 없는 판본이면 null. 던지지 않는 이유는 호출자가 UNKNOWN_RULE_VERSION으로 보고해야 하기 때문. */
+// 알 수 없는 판본은 null 결과
 export const ruleSet = (versionId: string): RuleSet | null => REGISTRY.get(versionId) ?? null;

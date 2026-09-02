@@ -6,6 +6,7 @@ from pathlib import Path
 
 @dataclass(frozen=True, slots=True)
 class VideoMetadata:
+    # 영상 메타데이터
     source: Path
     duration_ms: int
     width: int
@@ -17,6 +18,7 @@ class VideoMetadata:
 
 @dataclass(frozen=True, slots=True)
 class Shot:
+    # 영상 샷
     index: int
     start_ms: int
     end_ms: int
@@ -27,6 +29,7 @@ class Shot:
 
 @dataclass(frozen=True, slots=True)
 class Candidate:
+    # 판정 후보
     index: int
     category: str
     start_ms: int
@@ -40,6 +43,7 @@ class Candidate:
 
 @dataclass(frozen=True, slots=True)
 class Evidence:
+    # 증거 자료
     candidate_index: int
     kind: str
     path: Path
@@ -50,6 +54,7 @@ class Evidence:
 
 @dataclass(frozen=True, slots=True)
 class PipelineResult:
+    # 파이프라인 결과
     schema_version: int
     pipeline_version: str
     video: VideoMetadata

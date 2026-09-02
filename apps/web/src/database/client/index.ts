@@ -8,6 +8,7 @@ export type DatabaseClient = {
   close: () => Promise<void>;
 };
 
+// PostgreSQL 연결 생성
 export const client = (databaseUrl = process.env.DATABASE_URL): DatabaseClient => {
   if (!databaseUrl) {
     throw new Error("DATABASE_URL is required");

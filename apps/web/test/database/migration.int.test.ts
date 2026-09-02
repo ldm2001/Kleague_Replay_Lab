@@ -26,6 +26,7 @@ describeDatabase("initial PostgreSQL migration", () => {
     const tableNames = rows.map((row) => row.tablename);
     expect(tableNames).toContain("fact_revision_shots");
     expect(tableNames).toContain("processing_jobs");
+    expect(tableNames).toContain("processing_job_events");
     expect(tableNames).toContain("decision_results");
     expect(tableNames).toContain("upload_intents");
 
@@ -48,9 +49,12 @@ describeDatabase("initial PostgreSQL migration", () => {
         'fact_revision_shots_shot_fk',
         'incident_candidates_current_fact_revision_fk',
         'processing_jobs_target_check',
+        'processing_jobs_progress_check',
+        'processing_job_events_progress_check',
         'decision_results_citations_check',
         'competition_rule_versions_no_overlap',
         'analyses_temporary_expiry_policy_check',
+        'analyses_status_check',
         'video_assets_expiry_after_creation_check',
         'idempotency_records_expiry_after_creation_check'
       )
@@ -58,6 +62,7 @@ describeDatabase("initial PostgreSQL migration", () => {
     `;
 
     expect(constraints.map((constraint) => constraint.conname)).toEqual([
+      "analyses_status_check",
       "analyses_temporary_expiry_policy_check",
       "competition_rule_versions_no_overlap",
       "decision_results_citations_check",
@@ -65,6 +70,8 @@ describeDatabase("initial PostgreSQL migration", () => {
       "fact_revision_shots_shot_fk",
       "idempotency_records_expiry_after_creation_check",
       "incident_candidates_current_fact_revision_fk",
+      "processing_job_events_progress_check",
+      "processing_jobs_progress_check",
       "processing_jobs_target_check",
       "video_assets_expiry_after_creation_check",
     ]);
@@ -75,13 +82,14 @@ describeDatabase("initial PostgreSQL migration", () => {
       select tgname
       from pg_trigger
       where not tgisinternal
-        and tgname in ('fact_revisions_no_update', 'decision_results_no_update')
+        and tgname in ('fact_revisions_no_update', 'decision_results_no_update', 'processing_job_events_no_update')
       order by tgname
     `;
 
     expect(triggers.map((trigger) => trigger.tgname)).toEqual([
       "decision_results_no_update",
       "fact_revisions_no_update",
+      "processing_job_events_no_update",
     ]);
   });
 });

@@ -45,6 +45,7 @@ export type SubmitAnalysisDependencies = Readonly<{
   policy: SubmitAnalysisPolicy;
 }>;
 
+// 선택 문자열 정규화
 const optionalText = (value: string | undefined): string | null => {
   if (value === undefined) {
     return null;
@@ -54,6 +55,7 @@ const optionalText = (value: string | undefined): string | null => {
   return normalized.length === 0 ? null : normalized;
 };
 
+// 식별자 형식 확인
 const validIds = (
   input: Pick<SubmitAnalysisInput, "anonymousSessionId" | "videoAssetId" | "matchId">,
 ): boolean =>
@@ -61,6 +63,7 @@ const validIds = (
   UUID_PATTERN.test(input.videoAssetId) &&
   UUID_PATTERN.test(input.matchId);
 
+// 멱등 키 확인
 const idempotencyKey = (
   idempotencyKey: string,
 ): SubmitAnalysisInvalidInputReason | null => {
@@ -77,9 +80,11 @@ const idempotencyKey = (
   return null;
 };
 
+// 분석 제출 유스케이스
 export const analysis =
   ({ clock, hasher, repository, policy }: SubmitAnalysisDependencies) =>
   async (input: SubmitAnalysisInput): Promise<SubmitAnalysisResult> => {
+    // 입력과 정책 스냅샷 생성
     const snapshot = {
       anonymousSessionId: input.anonymousSessionId,
       videoAssetId: input.videoAssetId,
@@ -94,20 +99,25 @@ export const analysis =
       maxJobAttempts: policy.maxJobAttempts,
     };
 
+    // 식별자 형식 확인
     if (!validIds(snapshot)) {
       return { kind: "INVALID_INPUT", reason: "INVALID_ID" };
     }
 
+    // 멱등 키 형식 확인
     const idempotencyKeyError = idempotencyKey(snapshot.idempotencyKey);
     if (idempotencyKeyError !== null) {
       return { kind: "INVALID_INPUT", reason: idempotencyKeyError };
     }
 
+    // 식별자 소문자 정규화
     const anonymousSessionId = snapshot.anonymousSessionId.toLowerCase();
     const videoAssetId = snapshot.videoAssetId.toLowerCase();
     const matchId = snapshot.matchId.toLowerCase();
+    // 선택 문자열 정규화
     const sourceUrl = optionalText(snapshot.sourceUrl);
     const sourcePlatform = optionalText(snapshot.sourcePlatform);
+    // 요청 해시 입력 구성
     const requestHashInput = JSON.stringify({
       anonymousSessionId,
       videoAssetId,
@@ -117,10 +127,14 @@ export const analysis =
       pipelineVersion: snapshot.pipelineVersion,
       mediaPolicyVersion: snapshot.mediaPolicyVersion,
     });
+    // 멱등 키 해시 생성
     const keyHash = Uint8Array.from(await hasher.sha256(snapshot.idempotencyKey));
+    // 요청 내용 해시 생성
     const requestHash = Uint8Array.from(await hasher.sha256(requestHashInput));
+    // 현재 시각 조회
     const now = clock.now();
 
+    // 분석 제출 명령 구성
     const command: SubmitAnalysisCommand = {
       anonymousSessionId,
       videoAssetId,
@@ -137,5 +151,6 @@ export const analysis =
       maxJobAttempts: snapshot.maxJobAttempts,
     };
 
+    // 분석 저장소 호출
     return repository.submit(command);
   };

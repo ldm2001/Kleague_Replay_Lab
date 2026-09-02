@@ -1,0 +1,22 @@
+.solution-copy { animation: solution-copy-in 500ms cubic-bezier(.4, 0, .2, 1); }
+.solution-rail button { display: grid; place-items: center; padding: 8px; border: 0; border-bottom: 1px solid rgba(255, 255, 255, .13); background: transparent; color: rgba(255, 255, 255, .66); font: inherit; cursor: pointer; writing-mode: vertical-rl; }
+.solution-rail button:last-child { border-bottom: 0; }
+.solution-rail button:hover, .solution-rail button:focus-visible, .solution-rail button.is-active { background: rgba(12, 54, 215, .75); color: #fff; outline: none; }
+
+@keyframes solution-copy-in {
+  from { opacity: 0; transform: translateX(12px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@media (max-width: 980px) {
+  .solution-copy { animation-name: solution-copy-in-mobile; }
+}
+
+@keyframes solution-copy-in-mobile {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .solution-copy { animation: none; }
+}

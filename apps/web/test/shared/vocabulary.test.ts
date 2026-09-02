@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import * as vocabulary from "@replay/shared-types";
 
-// `vocabulary()`가 리터럴 튜플 타입을 돌려주므로 `Object.entries`의 값 자리는
-// 어휘별 튜플의 합집합이 된다. `unknown`으로 한 번 넓혀야 서술어가 성립한다.
+// 어휘 배열 확인을 위한 공통 목록
 const vocabularyArrays = (): [string, readonly string[]][] =>
   (Object.entries(vocabulary) as [string, unknown][]).filter(
     (entry): entry is [string, readonly string[]] => Array.isArray(entry[1]),

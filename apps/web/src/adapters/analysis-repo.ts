@@ -30,6 +30,7 @@ type LockedVideoRow = {
 
 const duplicateVideoConstraint = "analyses_video_asset_id_key";
 
+// 중복 영상 오류 확인
 const duplicateVideo = (error: unknown): boolean => {
   if (typeof error !== "object" || error === null) {
     return false;
@@ -49,20 +50,27 @@ const duplicateVideo = (error: unknown): boolean => {
   return candidate.cause !== undefined && duplicateVideo(candidate.cause);
 };
 
+// 분석 저장소 어댑터
 export class AnalysisRepo implements SubmitAnalysisRepository {
   public constructor(private readonly client: DatabaseHandle) {}
 
   public async submit(command: SubmitAnalysisCommand): Promise<SubmitAnalysisRepositoryResult> {
+    // 멱등 키 버퍼 변환
     const keyHash = Buffer.from(command.keyHash);
+    // 요청 해시 버퍼 변환
     const requestHash = Buffer.from(command.requestHash);
+    // 세션과 키 기반 잠금 범위
     const lockScope = `${command.anonymousSessionId}:${keyHash.toString("hex")}`;
 
     try {
+      // 분석 생성 트랜잭션 시작
       return await this.client.db.transaction(async (transaction) => {
+        // 동일 요청 잠금
         await transaction.execute(
           sql`select pg_advisory_xact_lock(hashtextextended(${lockScope}, 0))`,
         );
 
+        // 기존 멱등 기록 조회
         const [existingIdempotency] = await transaction
           .select({
             requestHash: idempotencyRecords.requestHash,
@@ -78,12 +86,15 @@ export class AnalysisRepo implements SubmitAnalysisRepository {
           )
           .limit(1);
 
+        // 기존 멱등 기록 분기
         if (existingIdempotency) {
+          // 요청 해시 비교
           return Buffer.compare(existingIdempotency.requestHash, requestHash) === 0
             ? { kind: "REPLAYED", analysisId: existingIdempotency.analysisId }
             : { kind: "IDEMPOTENCY_KEY_REUSED" };
         }
 
+        // 세션 소유권 조회
         const sessionRows = await transaction.execute(sql`
           select id
           from anonymous_sessions
@@ -92,12 +103,15 @@ export class AnalysisRepo implements SubmitAnalysisRepository {
             and expires_at > ${command.createdAt}
           for update
         `);
+        // 세션 행 선택
         const [session] = sessionRows as unknown as LockedSessionRow[];
 
+        // 세션 유효성 확인
         if (!session) {
           return { kind: "VIDEO_ASSET_UNAVAILABLE" };
         }
 
+        // 영상 자산 조회
         const videoRows = await transaction.execute(sql`
           select id, anonymous_session_id, content_sha256
           from video_assets
@@ -109,12 +123,15 @@ export class AnalysisRepo implements SubmitAnalysisRepository {
             and object_deleted_at is null
           for update
         `);
+        // 영상 행 선택
         const [video] = videoRows as unknown as LockedVideoRow[];
 
+        // 영상 소유권 확인
         if (!video || video.anonymous_session_id !== command.anonymousSessionId) {
           return { kind: "VIDEO_ASSET_UNAVAILABLE" };
         }
 
+        // 경기 조회
         const [match] = await transaction
           .select({
             id: matches.id,
@@ -126,10 +143,12 @@ export class AnalysisRepo implements SubmitAnalysisRepository {
           .where(eq(matches.id, command.matchId))
           .limit(1);
 
+        // 경기 존재 확인
         if (!match) {
           return { kind: "MATCH_UNAVAILABLE" };
         }
 
+        // 경기 날짜 기준 규정 판본 조회
         const [ruleVersion] = await transaction
           .select({ id: competitionRuleVersions.id })
           .from(competitionRuleVersions)
@@ -147,10 +166,12 @@ export class AnalysisRepo implements SubmitAnalysisRepository {
           .orderBy(desc(competitionRuleVersions.effectiveFrom))
           .limit(1);
 
+        // 규정 판본 존재 확인
         if (!ruleVersion) {
           return { kind: "RULE_VERSION_UNAVAILABLE" };
         }
 
+        // 분석 행 저장
         const analysisRows = await transaction.execute(sql`
           insert into analyses (
             anonymous_session_id, match_id, video_asset_id, status, retention_class,
@@ -163,12 +184,15 @@ export class AnalysisRepo implements SubmitAnalysisRepository {
           )
           returning id
         `);
+        // 분석 행 선택
         const [analysis] = analysisRows as unknown as Array<{ id: string }>;
 
+        // 분석 식별자 확인
         if (!analysis) {
           throw new Error("Analysis insert did not return an id");
         }
 
+        // 분석 작업 저장
         await transaction.execute(sql`
           insert into processing_jobs (
             analysis_id, job_type, status, payload_version, job_revision, attempt,
@@ -179,6 +203,7 @@ export class AnalysisRepo implements SubmitAnalysisRepository {
           )
         `);
 
+        // 멱등 기록 저장
         await transaction.execute(sql`
           insert into idempotency_records (
             anonymous_session_id, operation, key_hash, request_hash, analysis_id, created_at, expires_at
@@ -188,18 +213,22 @@ export class AnalysisRepo implements SubmitAnalysisRepository {
           )
         `);
 
+        // 생성 결과 반환
         return { kind: "CREATED", analysisId: analysis.id };
       });
     } catch (error) {
+      // 영상 중복 제약 확인
       if (duplicateVideo(error)) {
         return { kind: "VIDEO_ASSET_ALREADY_SUBMITTED" };
       }
 
+      // 처리하지 않은 오류 전달
       throw error;
     }
   }
 }
 
+// 분석 저장소 생성
 export const analysisRepo = (
   client: DatabaseHandle,
 ): AnalysisRepo => new AnalysisRepo(client);

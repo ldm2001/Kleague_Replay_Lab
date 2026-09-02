@@ -9,12 +9,17 @@
     "node": ">=22"
   },
   "scripts": {
+    "dev:web": "npm run dev --workspace @replay/web -- --port 3100",
+    "dev:worker": "PYTHONPATH=apps/video-worker/src python3 -m replay_video.runner",
+    "dev:infra": "docker compose -f infra/local/docker-compose.yml up -d",
     "test": "vitest run",
     "test:video": "python3 -m pytest -c apps/video-worker/pyproject.toml apps/video-worker/tests -q",
     "typecheck": "tsc -p tsconfig.base.json --noEmit",
     "check:enums": "node scripts/check/enums.mjs",
     "check:edition": "node scripts/check/no-edition-literal.mjs",
     "db:migrate": "node scripts/database/migrate.mjs",
+    "db:explain": "node scripts/database/explain.mjs",
+    "db:stats": "node scripts/database/stats.mjs",
     "check": "npm run typecheck && npm run check:edition && npm run check:enums && npm run test"
   },
   "devDependencies": {
