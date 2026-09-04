@@ -4,12 +4,16 @@ import type { CreateUploadStorage } from "../../ports/storage/upload-storage";
 import type { UploadPolicy } from "./upload-policy";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const COMPETITIONS = new Set(["K리그1", "K리그2"]);
+const SEASONS = new Set(["2026"]);
 
 export type CreateUploadInput = Readonly<{
   anonymousSessionId: string;
   expectedSizeBytes: number;
   declaredContentType: string;
   rightsConfirmed: boolean;
+  competition?: string;
+  season?: string;
 }>;
 
 export type CreateUploadResult =
@@ -20,7 +24,7 @@ export type CreateUploadResult =
       uploadUrl: string;
       expiresAt: string;
     }>
-  | Readonly<{ kind: "INVALID_INPUT"; reason: "INVALID_ID" | "INVALID_SIZE" }>
+  | Readonly<{ kind: "INVALID_INPUT"; reason: "INVALID_ID" | "INVALID_SIZE" | "COMPETITION" }>
   | Readonly<{ kind: "INVALID_SIZE" }>
   | Readonly<{ kind: "UNSUPPORTED_CONTENT_TYPE" }>
   | Readonly<{ kind: "RIGHTS_NOT_CONFIRMED" }>
@@ -42,6 +46,12 @@ export const upload =
     // 세션 식별자 확인
     if (!UUID_PATTERN.test(anonymousSessionId)) {
       return { kind: "INVALID_INPUT", reason: "INVALID_ID" };
+    }
+
+    const competition = input.competition?.trim() || "K리그1";
+    const season = input.season?.trim() || "2026";
+    if (!COMPETITIONS.has(competition) || !SEASONS.has(season)) {
+      return { kind: "INVALID_INPUT", reason: "COMPETITION" };
     }
 
     // 업로드 크기 형식 확인
@@ -85,6 +95,8 @@ export const upload =
         objectKey: grant.objectKey,
         expectedSizeBytes: input.expectedSizeBytes,
         declaredContentType: input.declaredContentType,
+        competition,
+        season,
         rightsConfirmedAt: createdAt,
         expiresAt,
         mediaPolicyVersion: policy.mediaPolicyVersion,

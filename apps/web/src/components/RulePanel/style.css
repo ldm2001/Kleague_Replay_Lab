@@ -1,0 +1,28 @@
+.rule-panel { margin-top: 22px; border: 1px solid #d8e2f2; border-radius: 14px; background: #fff; color: var(--navy); }
+.rule-panel.pending { display: flex; align-items: center; justify-content: space-between; gap: 32px; padding: 24px 28px; }
+.rule-panel.pending p { max-width: 620px; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.7; }
+.rule-panel.pending div > p, .rule-heading p { margin: 0 0 5px; color: var(--accent); font-size: 10px; font-weight: 800; }
+.rule-panel.pending h2, .rule-heading h2 { margin: 0; font-size: 20px; }
+.rule-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; padding: 22px 24px; border-bottom: 1px solid #e3e9f2; }
+.rule-heading > span { color: var(--muted); font-size: 11px; }
+.rule-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.rule-grid > section { min-width: 0; padding: 22px 24px; border-right: 1px solid #e3e9f2; }
+.rule-grid > section:nth-child(3) { border-right: 0; }
+.rule-grid h3 { margin: 0 0 14px; font-size: 14px; }
+.fact-grid, .var-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0; }
+.fact-grid div, .var-grid div { padding: 10px; border-radius: 7px; background: #f5f7fb; }
+.fact-grid dt, .var-grid dt { color: var(--muted); font-size: 9px; }
+.fact-grid dd, .var-grid dd { margin: 4px 0 0; font-size: 11px; font-weight: 800; overflow-wrap: anywhere; }
+.citation-list { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.citation-list li { min-width: 0; }
+.citation-list strong { color: var(--accent); font-size: 10px; }
+.citation-list p, .rule-empty, .var-panel > p { margin: 5px 0 0; color: var(--muted); font-size: 10px; line-height: 1.6; overflow-wrap: anywhere; }
+.citation-list a { display: inline-block; margin-top: 6px; color: var(--blue); font-size: 9px; font-weight: 800; }
+.rule-grid > .var-panel { grid-column: 1 / -1; border-top: 1px solid #e3e9f2; border-right: 0; }
+
+@media (max-width: 820px) {
+  .rule-grid { grid-template-columns: 1fr; }
+  .rule-grid > section { border-right: 0; border-bottom: 1px solid #e3e9f2; }
+  .rule-grid > section:last-child { border-bottom: 0; }
+  .rule-panel.pending, .rule-heading { align-items: flex-start; flex-direction: column; }
+}

@@ -16,6 +16,7 @@ export type StoredCitation = {
   section: string;
   relevance: Relevance;
   sourcePage: string | null;
+  sourceUrl?: string | null;
   quoteSnapshot: string;
 };
 

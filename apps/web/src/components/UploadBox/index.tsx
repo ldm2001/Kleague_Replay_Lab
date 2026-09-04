@@ -3,20 +3,29 @@
 import { useEffect, useRef, useState } from "react";
 import * as React from "react";
 import type { MediaView } from "@replay/application";
-import { ResultList } from "../ResultList";
 
 // 업로드 단계 값
-type Phase = "idle" | "uploading" | "completing" | "validating" | "analyzing" | "completed" | "error";
+type Phase = "idle" | "selected" | "uploading" | "completing" | "validating" | "analyzing" | "candidateReady" | "completed" | "error";
+type UploadBoxProps = Readonly<{ onView?: (view: MediaView | null) => void }>;
+type Selection = Readonly<{ file: File; url: string }>;
 
 // 단계별 안내 문구
 const message: Record<Phase, string> = {
   idle: "영상 파일을 선택해 주세요",
+  selected: "선택한 영상을 확인해 주세요",
   uploading: "영상 업로드 중",
   completing: "업로드 확인 중",
   validating: "영상 검증 중",
   analyzing: "후보 장면 분석 중",
+  candidateReady: "기초 장면 탐색 완료",
   completed: "분석 완료",
   error: "업로드를 다시 시도해 주세요",
+};
+
+const size = (bytes: number): string => {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
 
 // Object Storage 파일 전송
@@ -54,11 +63,13 @@ const responseBody = async (response: Response): Promise<Record<string, unknown>
 };
 
 // 업로드 상태와 진행률 화면
-export function UploadBox() {
+export function UploadBox({ onView }: UploadBoxProps = {}) {
   // 파일 입력 참조
   const input = useRef<HTMLInputElement>(null);
   // 현재 전송 참조
   const request = useRef<XMLHttpRequest | null>(null);
+  // 영상 미리보기 참조
+  const preview = useRef<string | null>(null);
   // 전송 진행률 참조
   const progress = useRef(0);
   // 진행률 타이머 참조
@@ -69,14 +80,16 @@ export function UploadBox() {
   const snapshot = useRef("");
   // 컴포넌트 활성 상태
   const alive = useRef(true);
-  // 최신 분석 복구 상태
-  const resumed = useRef(false);
   // 업로드 단계 상태
   const [phase, setPhase] = useState<Phase>("idle");
   // 화면 진행률 상태
   const [value, setValue] = useState(0);
   // 분석 결과 상태
   const [view, setView] = useState<MediaView | null>(null);
+  // 선택 영상 상태
+  const [selection, setSelection] = useState<Selection | null>(null);
+  const [competition, setCompetition] = useState("K리그1");
+  const [season, setSeason] = useState("2026");
 
   // 진행률 갱신 중지
   const stop = () => {
@@ -121,8 +134,13 @@ export function UploadBox() {
       stop();
       stopPoll();
       request.current?.abort();
+      if (preview.current) URL.revokeObjectURL(preview.current);
     };
   }, []);
+
+  useEffect(() => {
+    onView?.(view);
+  }, [onView, view]);
 
   // 분석 상태 조회
   const watch = async (videoAssetId: string): Promise<void> => {
@@ -138,6 +156,11 @@ export function UploadBox() {
       }
       if (next.videoStatus === "REJECTED" || next.analysis?.status === "FAILED") {
         setPhase("error");
+        return;
+      }
+      if (next.analysis?.status === "CANDIDATES_READY") {
+        setValue(100);
+        setPhase("candidateReady");
         return;
       }
       if (next.analysis?.status === "COMPLETED") {
@@ -158,26 +181,6 @@ export function UploadBox() {
     }
   };
 
-  // 최신 분석 복구
-  useEffect(() => {
-    if (resumed.current) return;
-    resumed.current = true;
-    const restore = async () => {
-      try {
-        const response = await fetch("/api/uploads/latest", { cache: "no-store" });
-        if (!response.ok) return;
-        const value = await responseBody(response);
-        if (typeof value.videoAssetId !== "string" || !alive.current) return;
-        setValue(5);
-        setPhase("validating");
-        await watch(value.videoAssetId);
-      } catch {
-        // 복구할 분석 없음
-      }
-    };
-    void restore();
-  }, []);
-
   // 파일 업로드 흐름
   const upload = async (file: File) => {
     try {
@@ -196,7 +199,7 @@ export function UploadBox() {
       const createdResponse = await fetch("/api/uploads", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ expectedSizeBytes: file.size, declaredContentType: file.type, rightsConfirmed: true }),
+        body: JSON.stringify({ expectedSizeBytes: file.size, declaredContentType: file.type, rightsConfirmed: true, competition, season }),
       });
       // 업로드 의도 응답 해석
       const created = await responseBody(createdResponse);
@@ -237,33 +240,67 @@ export function UploadBox() {
     }
   };
 
+  // 선택 영상 교체
+  const choice = (file: File) => {
+    if (preview.current) URL.revokeObjectURL(preview.current);
+    const url = URL.createObjectURL(file);
+    preview.current = url;
+    setSelection({ file, url });
+    setPhase("selected");
+    setValue(0);
+    setView(null);
+    snapshot.current = "";
+    stopPoll();
+  };
+
+  const busy = ["uploading", "completing", "validating", "analyzing"].includes(phase);
+  const finished = phase === "completed" || phase === "candidateReady";
+  const action = () => {
+    if (finished) {
+      input.current?.click();
+      return;
+    }
+    if (selection) void upload(selection.file);
+  };
+
   return (
-    <section className="upload-module" id="upload" aria-busy={["uploading", "completing", "validating", "analyzing"].includes(phase)}>
+    <section className="upload-module" id="upload" aria-busy={busy}>
       <div className="module-heading">
         <div><p className="module-kicker">영상 준비</p><h2>경기 영상 업로드</h2></div>
         <span className="module-index" aria-hidden="true">01</span>
       </div>
       <div className="select-row">
-        <label>대회<select aria-label="대회" defaultValue="K리그1"><option value="K리그1">K리그1</option><option value="K리그2">K리그2</option></select></label>
-        <label>시즌<select aria-label="시즌" defaultValue="2026"><option value="2026">2026</option><option value="2025">2025</option></select></label>
+        <label>대회<select aria-label="대회" value={competition} onChange={(event) => setCompetition(event.target.value)}><option value="K리그1">K리그1</option><option value="K리그2">K리그2</option></select></label>
+        <label>시즌<select aria-label="시즌" value={season} onChange={(event) => setSeason(event.target.value)}><option value="2026">2026</option></select></label>
       </div>
-      <div className="file-picker">
-        <span className="file-icon" aria-hidden="true">▷</span>
-        <strong>영상 파일 선택</strong>
-        <small>파일을 드래그하거나 버튼을 클릭하세요</small>
-        <small>지원 형식: MP4, MOV, WEBM</small>
-        <input ref={input} id="video-file" aria-label="영상 파일" type="file" accept="video/mp4,video/quicktime,video/webm" onChange={(event) => {
+      <div className={`file-picker${selection ? " has-file" : ""}`}>
+        <input ref={input} id="video-file" aria-label="영상 파일" type="file" accept="video/mp4,video/quicktime,video/webm" disabled={busy} onChange={(event) => {
           const file = event.currentTarget.files?.[0];
           event.currentTarget.value = "";
-          if (file) void upload(file);
+          if (file) choice(file);
         }} />
-        <label className="file-button" htmlFor="video-file">영상 파일 선택</label>
+        {selection ? (
+          <div className="file-preview">
+            <video aria-label="선택 영상 미리보기" src={selection.url} controls muted playsInline preload="auto" />
+            <div className="file-meta">
+              <span><strong>{selection.file.name}</strong><small>{size(selection.file.size)} · {selection.file.type || "영상 파일"}</small></span>
+              <label className="file-button" htmlFor="video-file">영상 변경</label>
+            </div>
+          </div>
+        ) : (
+          <>
+            <span className="file-icon" aria-hidden="true">▷</span>
+            <strong>영상 파일 선택</strong>
+            <small>파일을 드래그하거나 버튼을 클릭하세요</small>
+            <small>지원 형식: MP4, MOV, WEBM</small>
+            <label className="file-button" htmlFor="video-file">영상 파일 선택</label>
+          </>
+        )}
       </div>
       <label className="confidence-toggle"><input type="checkbox" defaultChecked /> <span>낮은 확신도 장면도 표시</span></label>
       <div className="upload-status" aria-live="polite">{message[phase]}</div>
       <div className="progress-track"><progress className="progress-fill" value={value} max={100} aria-valuemin={0} aria-valuemax={100} aria-valuenow={value} /></div>
-      <button className="primary-action" type="button" onClick={() => input.current?.click()} disabled={["uploading", "completing", "validating", "analyzing"].includes(phase)}><span aria-hidden="true">▷</span> {phase === "completed" ? "다른 영상 분석" : "분석 시작"}</button>
-      {phase === "completed" && view?.analysis ? <ResultList analysis={view.analysis} /> : null}
+      <button className="primary-action" type="button" onClick={action} disabled={busy || (!selection && !finished)}><span aria-hidden="true">▷</span> {finished ? "다른 영상 분석" : "분석 시작"}</button>
     </section>
   );
 }

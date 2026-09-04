@@ -8,12 +8,21 @@
 .select-row select { width: 100%; min-height: 42px; padding: 0 11px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); color: var(--navy); outline: none; }
 .select-row select:focus { border-color: #90a8cf; box-shadow: 0 0 0 3px #edf3ff; }
 .file-picker { min-height: 220px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 8px; padding: 22px; border: 1px dashed #aab8c8; border-radius: 11px; color: var(--navy); text-align: center; }
+.file-picker.has-file { justify-content: stretch; padding: 10px; border-style: solid; background: #f7f9fd; }
 .file-icon { display: grid; place-items: center; width: 50px; height: 50px; border: 2px solid #79bf8c; border-radius: 11px; color: var(--green); font-size: 23px; }
 .file-picker strong { margin-top: 4px; font-size: 17px; }
 .file-picker small { color: var(--muted); font-size: 11px; }
 .file-picker input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .file-button { display: inline-flex; align-items: center; min-height: 35px; margin-top: 5px; padding: 0 15px; border: 1px solid var(--green); border-radius: 7px; background: var(--surface); color: #2f8550; font-size: 11px; font-weight: 800; cursor: pointer; }
 .file-button:hover, .file-button:focus-visible { background: #effaf1; outline: none; }
+.file-preview { display: grid; grid-template-rows: minmax(0, 1fr) auto; width: 100%; min-width: 0; }
+.file-preview video { display: block; width: 100%; height: 164px; border-radius: 8px; background: #071126; object-fit: contain; }
+.file-meta { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-width: 0; padding: 10px 4px 0; text-align: left; }
+.file-meta > span { min-width: 0; }
+.file-meta strong, .file-meta small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-meta strong { max-width: 470px; margin: 0; font-size: 12px; }
+.file-meta small { margin-top: 4px; color: var(--muted); font-size: 10px; }
+.file-meta .file-button { flex: 0 0 auto; margin: 0; }
 .confidence-toggle { display: inline-flex; align-items: center; gap: 8px; margin-top: 15px; color: var(--navy); font-size: 12px; font-weight: 700; }
 .confidence-toggle input { width: 16px; height: 16px; accent-color: var(--accent); }
 .upload-status { min-height: 20px; margin-top: 16px; color: var(--muted); font-size: 11px; }
@@ -25,9 +34,13 @@
 .primary-action { width: 100%; min-height: 47px; margin-top: 18px; border: 0; border-radius: 7px; background: var(--green); color: #fff; font-size: 13px; font-weight: 800; transition: filter .16s ease, opacity .16s ease; }
 .primary-action:hover, .primary-action:focus-visible { filter: brightness(.95); outline: 3px solid #dff2e3; }
 .primary-action:disabled { cursor: wait; opacity: .62; }
+.primary-action:disabled:not([aria-busy="true"]) { cursor: not-allowed; }
 .primary-action span { margin-right: 7px; }
 
 @media (max-width: 700px) {
   .upload-module { min-height: auto; padding: 22px; }
   .select-row { gap: 8px; }
+  .file-meta { align-items: stretch; flex-direction: column; }
+  .file-meta strong { max-width: 100%; }
+  .file-meta .file-button { justify-content: center; }
 }

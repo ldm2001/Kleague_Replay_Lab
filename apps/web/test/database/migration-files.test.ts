@@ -15,6 +15,10 @@ describe("migration discovery", () => {
       "0006_job_progress",
       "0007_analysis_output",
       "0008_candidate_output",
+      "0009_candidate_ready",
+      "0010_baseline_state",
+      "0011_competition_context",
+      "0012_kleague_rule_scope",
     ]);
     expect(list[0]?.checksum).toMatch(/^[a-f0-9]{64}$/);
     expect(list[0]?.sql).toContain("CREATE TABLE analyses");
@@ -25,5 +29,10 @@ describe("migration discovery", () => {
     expect(output?.sql).toContain("limitations");
     const candidate = list.find((migration) => migration.name === "0008_candidate_output");
     expect(candidate?.sql).toContain("anchor_ms");
+    const context = list.find((migration) => migration.name === "0011_competition_context");
+    expect(context?.sql).toContain("competition_rule_versions");
+    expect(context?.sql).toContain("K리그1");
+    const scope = list.find((migration) => migration.name === "0012_kleague_rule_scope");
+    expect(scope?.sql).toContain("KLEAGUE");
   });
 });

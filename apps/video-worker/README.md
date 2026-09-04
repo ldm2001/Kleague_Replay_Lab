@@ -65,15 +65,14 @@ PYTHONPATH=src python3 -m replay_video.cli \
 
 ```bash
 cd ../..
-set -a
-source apps/web/.env.local
-set +a
 npm run dev:worker
 ```
 
+개발 스크립트가 `apps/web/.env.local`을 자동으로 읽는다
+
 결과 디렉터리에는 `report.json`과 후보별 `frames`와 `clips`가 생성된다
 
-현재 후보 범주는 `OTHER`로 기록한다 이 단계는 샷과 시간 근거를 만드는 기준선이며 파울과 핸드볼과 차징과 득점 취소를 분류하는 모델은 아직 연결하지 않는다 `report.json`의 `limitations`에도 이 한계를 기록한다
+현재 후보 범주는 `OTHER`로 기록한다 이 단계는 샷과 시간 근거를 만드는 기준선이며 파울과 핸드볼과 차징과 득점 취소를 분류하는 모델은 아직 연결하지 않는다 분석 상태는 `CANDIDATES_READY`로 저장하고 `report.json`의 `limitations`에도 이 한계를 기록한다
 
 Application 파이프라인은 `PipelinePorts`만 사용
 실제 미디어 구현은 `infrastructure.ports.media`에서 조립
@@ -82,6 +81,6 @@ Job 경계는 `replay_video.worker.job`으로 제공한다 현재 `VALIDATE_VIDE
 
 `replay_video.runner`는 Nextjs 내부 API에서 작업을 선점하고 Lease를 갱신하고 원본 영상을 내려받아 결과를 제출한다
 
-후보는 최대 40건까지 저장하고 상위 8건의 프레임과 클립을 Object Storage에 업로드한다
+후보는 최대 40건까지 저장하고 모든 후보의 프레임과 변화 신호가 높은 8건의 짧은 클립을 Object Storage에 업로드한다
 
 다음 단계에서 선수와 공과 포즈 추적과 사건별 분류기를 추가한다

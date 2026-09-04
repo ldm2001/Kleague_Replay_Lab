@@ -10,7 +10,7 @@
   },
   "scripts": {
     "dev:web": "npm run dev --workspace @replay/web -- --port 3100",
-    "dev:worker": "PYTHONPATH=apps/video-worker/src python3 -m replay_video.runner",
+    "dev:worker": "if [ -f apps/web/.env.local ]; then set -a; . apps/web/.env.local; set +a; fi; PYTHONPATH=apps/video-worker/src python3 -m replay_video.runner",
     "dev:infra": "docker compose -f infra/local/docker-compose.yml up -d",
     "test": "vitest run",
     "test:video": "python3 -m pytest -c apps/video-worker/pyproject.toml apps/video-worker/tests -q",

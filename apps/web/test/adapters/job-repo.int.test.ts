@@ -165,9 +165,9 @@ describeDatabase("PostgreSQL job result repository", () => {
     const storedEvidence = await database.sql<{ kind: string; object_key: string }[]>`
       select kind, object_key from evidence_assets where analysis_id = ${analysis!.id}
     `;
-    expect(completed?.status).toBe("COMPLETED");
+    expect(completed?.status).toBe("CANDIDATES_READY");
     expect(completed?.pipeline_version).toBe("video-baseline-v1");
-    expect(completed?.completed_at).toBeTruthy();
+    expect(completed?.completed_at).toBeNull();
     expect(storedShots).toEqual([{ shot_index: 0 }]);
     expect(storedCandidates).toEqual([{ candidate_index: 1, detection_confidence: 0.42 }]);
     expect(storedEvidence).toEqual([{

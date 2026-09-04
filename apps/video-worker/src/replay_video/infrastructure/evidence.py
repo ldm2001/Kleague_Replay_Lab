@@ -81,7 +81,7 @@ def evidence(
     metadata: VideoMetadata,
     candidate_list: tuple[Candidate, ...],
     *,
-    max_candidates: int = 8,
+    max_clips: int = 8,
 ) -> tuple[Evidence, ...]:
     # 입력 경로 정규화
     source_path = Path(source).resolve()
@@ -98,9 +98,10 @@ def evidence(
 
     # 증거 결과 초기화
     result: list[Evidence] = []
-    # 근거 대상 후보 제한
-    targets = sorted(candidate_list, key=lambda item: item.confidence, reverse=True)[:max_candidates]
-    targets.sort(key=lambda item: item.index)
+    # 모든 후보에 프레임 생성
+    targets = sorted(candidate_list, key=lambda item: item.index)
+    # 클립 생성 후보 제한
+    clips = {item.index for item in sorted(candidate_list, key=lambda item: item.confidence, reverse=True)[:max_clips]}
     # 후보별 증거 생성
     for candidate in targets:
         # 프레임 파일 경로 구성
@@ -110,11 +111,12 @@ def evidence(
         # 프레임 결과 추가
         result.append(Evidence(candidate.index, "FRAME", destination, candidate.anchor_ms, candidate.start_ms, candidate.end_ms))
 
-        # 클립 파일 경로 구성
-        clip_destination = clip_root / f"candidate-{candidate.index:04d}.mp4"
-        # 클립 저장
-        clip(source_path, clip_destination, candidate.start_ms, candidate.end_ms)
-        # 클립 결과 추가
-        result.append(Evidence(candidate.index, "CLIP", clip_destination, candidate.anchor_ms, candidate.start_ms, candidate.end_ms))
+        if candidate.index in clips:
+            # 클립 파일 경로 구성
+            clip_destination = clip_root / f"candidate-{candidate.index:04d}.mp4"
+            # 클립 저장
+            clip(source_path, clip_destination, candidate.start_ms, candidate.end_ms)
+            # 클립 결과 추가
+            result.append(Evidence(candidate.index, "CLIP", clip_destination, candidate.anchor_ms, candidate.start_ms, candidate.end_ms))
     # 증거 결과 반환
     return tuple(result)

@@ -89,6 +89,7 @@ def test_cycle_submits_pipeline_report(tmp_path: Path) -> None:
     assert isinstance(payload["candidates"], list)
     assert payload["candidates"]
     assert api.progresses[0] == ("SEGMENTING", 10)
+    assert {stage for stage, _percent in api.progresses} >= {"SEGMENTING", "DETECTING", "EXTRACTING_FACTS", "BUILDING_EVIDENCE", "APPLYING_RULES"}
     assert isinstance(payload["evidence"], list)
     assert len(payload["evidence"]) == 2
     assert len(api.uploads) == 2

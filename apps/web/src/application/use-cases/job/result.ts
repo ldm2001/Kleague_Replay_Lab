@@ -108,7 +108,7 @@ const analysis = (value: AnalysisPayload): boolean =>
   value.candidates.every(candidate) &&
   (value.evidence === undefined || (
     Array.isArray(value.evidence) &&
-    value.evidence.length <= 16 &&
+    value.evidence.length <= 128 &&
     value.evidence.every(evidence)
   ));
 

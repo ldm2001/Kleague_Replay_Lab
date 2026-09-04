@@ -13,6 +13,7 @@ export type RuleCitation = {
   relevance: Relevance;
   quoteSnapshot: string;
   sourcePage: string | null;
+  sourceUrl?: string | null;
 };
 
 // 조항 탐색을 막는 사실 요구

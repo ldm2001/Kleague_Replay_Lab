@@ -14,3 +14,4 @@ export { S3Storage, s3, type S3ObjectClient, type S3UploadStorageOptions } from 
 export { Sha256Hasher, hash } from "./hashing/node-sha256-hasher";
 export { JobRepo, jobRepo } from "./job-repo";
 export { StatusRepo, statusRepo } from "./status-repo";
+export { EvaluationRepo, evaluationRepo } from "./evaluation-repo";

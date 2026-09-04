@@ -38,6 +38,24 @@ describeDatabase("initial PostgreSQL migration", () => {
         and column_name = 'media_policy_version'
     `;
     expect(policyColumn?.column_name).toBe("media_policy_version");
+
+    const contextColumns = await sql<{ column_name: string }[]>`
+      select column_name
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'video_assets'
+        and column_name in ('competition', 'season')
+      order by column_name
+    `;
+    expect(contextColumns.map((column) => column.column_name)).toEqual(["competition", "season"]);
+
+    const [rule] = await sql<{ authority: string; law: string; source_document: string }[]>`
+      select authority, law, source_url as source_document
+      from rules
+      where authority = 'KLEAGUE' and edition = '2026'
+      limit 1
+    `;
+    expect(rule).toMatchObject({ authority: "KLEAGUE", law: "25", source_document: "https://www.kleague.com/about/competition.do" });
   });
 
   it("installs the relational constraints required by the DBML", async () => {

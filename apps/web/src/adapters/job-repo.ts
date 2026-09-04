@@ -236,15 +236,28 @@ export class JobRepo implements JobRepository, JobProgressRepository, JobResultR
             where video.id = accepted.video_asset_id
             returning accepted.id as job_id, accepted.job_revision, accepted.attempt,
                       video.id as video_asset_id, video.anonymous_session_id,
-                      video.content_sha256, video.expires_at
+                      video.content_sha256, video.expires_at,
+                      video.competition, video.season,
+                      (
+                        select version.id
+                        from competition_rule_versions as version
+                        where version.competition = video.competition
+                          and version.season = video.season
+                          and ${command.now}::date between version.effective_from
+                            and coalesce(version.effective_to, 'infinity'::date)
+                        order by version.effective_from desc
+                        limit 1
+                      ) as applied_rule_version_id
           ), new_analysis as (
             insert into analyses (
               anonymous_session_id, video_asset_id, status, retention_class,
-              source_fingerprint, pipeline_version, media_policy_version,
+              source_fingerprint, applied_rule_version_id,
+              pipeline_version, media_policy_version,
               state_version, created_at, expires_at
             )
             select anonymous_session_id, video_asset_id, 'QUEUED', 'TEMPORARY',
-                   content_sha256, 'video-baseline-v1', 'media-v1', 0,
+                   content_sha256, applied_rule_version_id,
+                   'video-baseline-v1', 'media-v1', 0,
                    ${command.now}, least(expires_at, ${command.now}::timestamptz + interval '24 hours')
             from asset
             on conflict (video_asset_id) do nothing
@@ -371,11 +384,11 @@ export class JobRepo implements JobRepository, JobProgressRepository, JobResultR
 
         await transaction.execute(sql`
           update analyses
-          set status = 'COMPLETED',
+          set status = 'CANDIDATES_READY',
               pipeline_version = ${payload.pipelineVersion},
               limitations = ${JSON.stringify(payload.limitations)}::jsonb,
               state_version = state_version + 1,
-              completed_at = ${command.now}
+              completed_at = null
           where id = ${target.analysis_id}
         `);
         await transaction.execute(sql`
