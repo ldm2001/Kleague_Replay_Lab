@@ -16,6 +16,7 @@ const view: MediaView = {
     failureCode: null,
     limitations: ["incident_category_classification_pending"],
     candidates: [{
+      id: "44444444-4444-4444-8444-444444444444",
       index: 1,
       startMs: 500,
       endMs: 1500,

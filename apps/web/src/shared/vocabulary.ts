@@ -61,6 +61,9 @@ export const RESTART_TYPES = vocabulary([
 ]);
 export type RestartType = (typeof RESTART_TYPES)[number];
 
+export const RESTART_BENEFICIARIES = vocabulary(["ATTACKING_TEAM", "DEFENDING_TEAM", "NONE", "UNKNOWN"]);
+export type RestartBeneficiary = (typeof RESTART_BENEFICIARIES)[number];
+
 export const GOAL_DECISIONS = vocabulary(["GOAL", "NO_GOAL", "NOT_APPLICABLE", "UNKNOWN"]);
 export type GoalDecision = (typeof GOAL_DECISIONS)[number];
 
@@ -72,6 +75,9 @@ export const DISCIPLINARY_ACTIONS = vocabulary([
   "SEND_OFF",
 ]);
 export type DisciplinaryAction = (typeof DISCIPLINARY_ACTIONS)[number];
+
+export const OBSERVED_SOURCES = vocabulary(["RESTART_INFERRED", "REFEREE_SIGNAL", "VAR_OFR", "USER_INPUT", "MATCH_REPORT"]);
+export type ObservedSource = (typeof OBSERVED_SOURCES)[number];
 
 export const DECISION_MATCHES = vocabulary(["MATCH", "MISMATCH", "UNDETERMINED"]);
 export type DecisionMatch = (typeof DECISION_MATCHES)[number];

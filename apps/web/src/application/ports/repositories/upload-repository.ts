@@ -3,6 +3,8 @@ export type CreateUploadCommand = Readonly<{
   objectKey: string;
   expectedSizeBytes: number;
   declaredContentType: string;
+  competition?: string;
+  season?: string;
   rightsConfirmedAt: string;
   expiresAt: string;
   mediaPolicyVersion: string;
@@ -22,6 +24,8 @@ export type UploadIntentRecord = Readonly<{
   objectKey: string;
   expectedSizeBytes: number;
   declaredContentType: string;
+  competition: string;
+  season: string;
   expiresAt: string;
 }>;
 

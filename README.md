@@ -102,9 +102,6 @@ npm run dev:web
 다른 터미널에서 Worker 실행
 
 ```bash
-set -a
-source apps/web/.env.local
-set +a
 npm run dev:worker
 ```
 
@@ -1659,6 +1656,16 @@ GET /api/rules/search
 
 모든 변경 API는 CSRF 방어와 Origin 검사와 요청 크기 제한과 Rate Limit 적용
 
+### 규정 기준 확인
+
+판정 보조는 [IFAB Law 12](https://www.theifab.com/laws/latest/fouls-and-misconduct/)의 접촉과 파울 강도와 핸드볼 기준을 사용함
+
+VAR 검토 범위와 재개 시한과 명백하고 분명한 오류 문턱은 [IFAB VAR Protocol](https://www.theifab.com/laws/latest/video-assistant-referee-var-protocol/)을 기준으로 함
+
+K리그1과 K리그2의 2026 대회요강은 [K LEAGUE 대회요강](https://www.kleague.com/about/competition.do)에서 확인한 득점과 PK와 퇴장과 징계조치 오류 네 범주를 적용함
+
+대회요강에 명시된 경기규칙은 FIFA 경기규칙을 따르며 세부 판정은 IFAB 판본과 함께 저장함
+
 ---
 
 ### 10 분석 상태
@@ -1685,6 +1692,7 @@ DETECTING          선수와 공과 접촉과 사건 후보 검출
 EXTRACTING_FACTS   후보별 사실값과 관측 조건 추출
 BUILDING_EVIDENCE  핵심 프레임과 짧은 증거 클립 생성
 APPLYING_RULES     후보별 규칙 엔진 적용
+CANDIDATES_READY   후보와 증거 생성 완료 사실과 규정 판정 대기
 COMPLETED
 FAILED
 EXPIRED

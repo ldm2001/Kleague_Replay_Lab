@@ -5,6 +5,11 @@ import type {
   ErrorMagnitude,
   ObservationSpeed,
   ObservedSeverity,
+  GoalDecision,
+  RestartBeneficiary,
+  ObservedSource,
+  RestartType,
+  DisciplinaryAction,
   SendOffCategory,
   ReviewScenario,
 } from "./vocabulary";
@@ -43,6 +48,20 @@ export type VarFacts = {
   errorMagnitude: ErrorMagnitude;
   // 주심단이 사건을 보지 못한 상황
   seriousMissedIncident: boolean;
+};
+
+export type ObservedDecision = {
+  restartType: RestartType;
+  restartBeneficiary: RestartBeneficiary;
+  card: DisciplinaryAction | null;
+  goalDecision: GoalDecision;
+  source: ObservedSource;
+};
+
+export type EvaluationFacts = {
+  push: PushFacts;
+  variable: VarFacts;
+  observed: ObservedDecision;
 };
 
 // 대회 채택 옵션과 판본 분리

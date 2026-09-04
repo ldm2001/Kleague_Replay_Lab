@@ -2,8 +2,11 @@
 import "@testing-library/jest-dom/vitest";
 import * as React from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { UploadBox } from "./index.js";
+
+const preview = vi.fn((file: File) => `blob:${file.name}`);
+const release = vi.fn();
 
 class FakeUploadRequest {
   onprogress: ((event: { loaded: number; total: number }) => void) | null = null;
@@ -25,15 +28,22 @@ class FakeUploadRequest {
 }
 
 describe("UploadBox", () => {
+  beforeEach(() => {
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: preview });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: release });
+    preview.mockClear();
+    release.mockClear();
+  });
+
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
   });
 
-  it("uploads a video and renders the completed candidate view", async () => {
+  it("uploads only after the analysis button is pressed", async () => {
+    const onView = vi.fn();
     vi.stubGlobal("XMLHttpRequest", FakeUploadRequest);
     vi.spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(new Response(JSON.stringify({ kind: "NOT_FOUND" }), { status: 404 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({
         kind: "CREATED",
         uploadIntentId: "22222222-2222-4222-8222-222222222222",
@@ -51,7 +61,7 @@ describe("UploadBox", () => {
           analysisId: "44444444-4444-4444-8444-444444444444",
           mode: "VISUAL_CHANGE_BASELINE",
           judgmentStatus: "NOT_EVALUATED",
-          status: "COMPLETED",
+          status: "CANDIDATES_READY",
           stage: "SUCCEEDED",
           progressPercent: 100,
           failureCode: null,
@@ -72,15 +82,21 @@ describe("UploadBox", () => {
         },
       }), { status: 200 }));
 
-    render(<React.StrictMode><UploadBox /></React.StrictMode>);
+    render(<React.StrictMode><UploadBox onView={onView} /></React.StrictMode>);
     const file = new File([new Uint8Array(128)], "highlight.mp4", { type: "video/mp4" });
     fireEvent.change(screen.getByLabelText("영상 파일"), { target: { files: [file] } });
 
+    expect(fetch).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("선택 영상 미리보기")).toHaveAttribute("src", "blob:highlight.mp4");
+    expect(screen.getByText("highlight.mp4")).toBeInTheDocument();
+    expect(screen.getByText(/128 B/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "분석 시작" }));
+
     await waitFor(() => expect(screen.getAllByText("기초 장면 탐색 완료").length).toBeGreaterThan(0));
-    expect(screen.getByText("후보 장면 01")).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "후보 장면 01 핵심 프레임" })).toBeInTheDocument();
-    expect(screen.getByLabelText("후보 장면 01 클립")).toBeInTheDocument();
-    expect(fetch).toHaveBeenCalledTimes(4);
+    expect(onView).toHaveBeenCalledWith(expect.objectContaining({ videoAssetId: "33333333-3333-4333-8333-333333333333" }));
+    expect(screen.queryByText("후보 장면 01")).not.toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledTimes(3);
     expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "100");
   });
 
@@ -91,34 +107,24 @@ describe("UploadBox", () => {
     expect(screen.getByLabelText("대회")).toBeInTheDocument();
     expect(screen.getByLabelText("시즌")).toBeInTheDocument();
     expect(screen.getByText("낮은 확신도 장면도 표시")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "분석 시작" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "분석 시작" })).toBeDisabled();
   });
 
-  it("restores the latest completed analysis after remount", async () => {
-    vi.spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(new Response(JSON.stringify({
-        videoAssetId: "33333333-3333-4333-8333-333333333333",
-      }), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({
-        videoAssetId: "33333333-3333-4333-8333-333333333333",
-        videoStatus: "VALID",
-        validationErrorCode: null,
-        analysis: {
-          analysisId: "44444444-4444-4444-8444-444444444444",
-          mode: "VISUAL_CHANGE_BASELINE",
-          judgmentStatus: "NOT_EVALUATED",
-          status: "COMPLETED",
-          stage: "SUCCEEDED",
-          progressPercent: 100,
-          failureCode: null,
-          limitations: [],
-          candidates: [],
-        },
-      }), { status: 200 }));
+  it("releases previews when the file changes and the component closes", () => {
+    const view = render(<UploadBox />);
+    const input = screen.getByLabelText("영상 파일");
 
+    fireEvent.change(input, { target: { files: [new File(["a"], "first.mp4", { type: "video/mp4" })] } });
+    fireEvent.change(input, { target: { files: [new File(["b"], "second.mp4", { type: "video/mp4" })] } });
+
+    expect(release).toHaveBeenCalledWith("blob:first.mp4");
+    view.unmount();
+    expect(release).toHaveBeenCalledWith("blob:second.mp4");
+  });
+
+  it("starts without a previous analysis after remount", () => {
     render(<React.StrictMode><UploadBox /></React.StrictMode>);
 
-    await waitFor(() => expect(screen.getAllByText("기초 장면 탐색 완료").length).toBeGreaterThan(0));
-    expect(screen.getByText("영상 변화 구간 0건")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "분석 결과" })).not.toBeInTheDocument();
   });
 });

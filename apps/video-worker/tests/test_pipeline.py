@@ -123,6 +123,23 @@ def test_pipeline_ports(tmp_path: Path) -> None:
     assert "infrastructure" not in (Path(__file__).parents[1] / "src/replay_video/application/pipeline.py").read_text()
 
 
+def test_pipeline_reports_stage_boundaries(tmp_path: Path) -> None:
+    source = tmp_path / "input.mp4"
+    output = tmp_path / "result"
+    metadata = VideoMetadata(source, 1000, 320, 180, 10.0, 10, "test")
+    events: list[tuple[str, int]] = []
+    ports = PipelinePorts(
+        probe=lambda _value: metadata,
+        shots=lambda _value, _item: (Shot(0, 0, 1000),),
+        candidates=lambda _value, _item, _shots: (Candidate(1, "OTHER", 0, 1000, 500, 0.4, "MEDIUM", ("test",), (0,)),),
+        evidence=lambda _value, _target, _item, _candidates: (),
+    )
+
+    pipeline(source, output, ports=ports, progress=lambda stage, percent, _message: events.append((stage, percent)))
+
+    assert [stage for stage, _percent in events] == ["SEGMENTING", "DETECTING", "EXTRACTING_FACTS", "BUILDING_EVIDENCE", "APPLYING_RULES"]
+
+
 def test_candidate_count_is_bounded(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     source = tmp_path / "long.mp4"
     metadata = VideoMetadata(source, 400_000, 320, 180, 10.0, 4000, "test")
@@ -164,7 +181,7 @@ def test_evidence_count_is_bounded(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
 
     result = evidence(source, tmp_path / "result", metadata, items)
 
-    assert len(result) == 16
-    assert {item.candidate_index for item in result} == set(range(5, 13))
-    assert sum(item.kind == "FRAME" for item in result) == 8
+    assert len(result) == 20
+    assert {item.candidate_index for item in result} == set(range(1, 13))
+    assert sum(item.kind == "FRAME" for item in result) == 12
     assert sum(item.kind == "CLIP" for item in result) == 8

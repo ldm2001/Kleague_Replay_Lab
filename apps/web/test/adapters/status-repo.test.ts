@@ -81,4 +81,18 @@ describe("StatusRepo", () => {
       now: "2026-09-01T00:00:00.000Z",
     })).resolves.toBe("11111111-1111-4111-8111-111111111111");
   });
+
+  it("maps an owned analysis directly for the result page", async () => {
+    const queue = [[{ video_asset_id: "11111111-1111-4111-8111-111111111111" }], ...rows];
+    const repository = new StatusRepo({ db: { execute: async () => queue.shift() ?? [] } } as never);
+
+    await expect(repository.analysis({
+      anonymousSessionId: "33333333-3333-4333-8333-333333333333",
+      analysisId: "22222222-2222-4222-8222-222222222222",
+      now: "2026-09-03T00:00:00.000Z",
+    })).resolves.toMatchObject({
+      analysisId: "22222222-2222-4222-8222-222222222222",
+      candidates: [{ index: 1 }],
+    });
+  });
 });

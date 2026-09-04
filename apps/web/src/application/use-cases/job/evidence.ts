@@ -6,7 +6,7 @@ import type { EvidenceStorage } from "../../ports/storage/evidence-storage";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const TYPES = ["image/jpeg", "video/mp4"] as const;
-const MAX_ITEMS = 16;
+const MAX_ITEMS = 128;
 const MAX_ITEM_BYTES = 50 * 1024 * 1024;
 const MAX_TOTAL_BYTES = 200 * 1024 * 1024;
 

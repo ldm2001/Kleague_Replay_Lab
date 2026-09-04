@@ -1,0 +1,29 @@
+.scene-gallery { margin-top: 24px; color: var(--navy); outline: none; }
+.scene-gallery:focus-visible { border-radius: 15px; box-shadow: 0 0 0 3px #bcd0f5; }
+.scene-gallery.empty { padding: 40px; border: 1px solid #d8e2f2; border-radius: 14px; background: #fff; text-align: center; }
+.scene-gallery.empty h2 { margin: 0; font-size: 18px; }
+.gallery-main { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(320px, .75fr); min-height: 560px; overflow: hidden; border: 1px solid #d8e2f2; border-radius: 14px; background: #fff; box-shadow: 0 18px 45px rgba(31, 62, 123, .09); }
+.scene-stage { display: grid; grid-template-rows: minmax(0, 1fr) auto; min-width: 0; background: #071126; }
+.scene-media { display: grid; place-items: center; min-height: 490px; overflow: hidden; background: #071126; }
+.scene-media video, .scene-media img { display: block; width: 100%; height: 100%; max-height: 502px; object-fit: contain; background: #071126; }
+.scene-media > p { color: #b8c3d5; font-size: 12px; }
+.scene-caption { display: flex; align-items: center; justify-content: space-between; gap: 20px; min-height: 70px; padding: 0 20px; background: #0c1832; color: #fff; }
+.scene-caption > div span, .scene-caption > div strong { display: block; }
+.scene-caption > div span { color: #8fa4cb; font-size: 9px; }
+.scene-caption > div strong { margin-top: 4px; font-size: 13px; }
+.scene-controls { display: flex; align-items: center; gap: 12px; }
+.scene-controls > span { min-width: 55px; color: #dce6f8; font-size: 11px; font-weight: 800; text-align: center; }
+.scene-controls button { display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 1px solid #51658e; border-radius: 50%; background: transparent; color: #fff; }
+.scene-controls button:hover, .scene-controls button:focus-visible { border-color: #fff; outline: none; }
+.scene-controls button:disabled { cursor: default; opacity: .3; }
+.scene-controls svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+@media (max-width: 820px) {
+  .gallery-main { grid-template-columns: 1fr; min-height: auto; }
+  .scene-media { min-height: 0; aspect-ratio: 16 / 9; }
+  .scene-media video, .scene-media img { max-height: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scene-rail button { transition: none; }
+}

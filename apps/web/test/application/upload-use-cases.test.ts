@@ -75,6 +75,8 @@ class CompletionRepoFake implements CompleteUploadRepository {
     objectKey: "temporary/session/video.mp4",
     expectedSizeBytes: 50,
     declaredContentType: "video/mp4",
+    competition: "K리그1",
+    season: "2026",
     expiresAt: "2026-08-24T00:15:00.000Z",
   };
   readonly commands: Array<Parameters<CompleteUploadRepository["complete"]>[0]> = [];
@@ -121,6 +123,23 @@ describe("upload", () => {
     expect(storage.requests[0]?.expiresAt).toBe("2026-08-24T00:15:00.000Z");
   });
 
+  it("keeps the selected competition context in the intent command", async () => {
+    const storage = new UploadStorageFake();
+    const repository = new UploadRepoFake();
+    const operation = upload({ clock, policy: POLICY, storage, repository });
+
+    await operation({
+      anonymousSessionId: SESSION_ID,
+      expectedSizeBytes: 50,
+      declaredContentType: "video/mp4",
+      rightsConfirmed: true,
+      competition: "K리그2",
+      season: "2026",
+    });
+
+    expect(repository.commands[0]).toMatchObject({ competition: "K리그2", season: "2026" });
+  });
+
   it("cleans up the grant when the session cannot be persisted", async () => {
     const storage = new UploadStorageFake();
     const repository = new UploadRepoFake();
@@ -147,6 +166,7 @@ describe("upload", () => {
     await expect(operation({ anonymousSessionId: SESSION_ID, expectedSizeBytes: POLICY.maxBytes + 1, declaredContentType: "video/mp4", rightsConfirmed: true })).resolves.toEqual({ kind: "INVALID_SIZE" });
     await expect(operation({ anonymousSessionId: SESSION_ID, expectedSizeBytes: 50, declaredContentType: "video/webm", rightsConfirmed: true })).resolves.toEqual({ kind: "UNSUPPORTED_CONTENT_TYPE" });
     await expect(operation({ anonymousSessionId: SESSION_ID, expectedSizeBytes: 50, declaredContentType: "video/mp4", rightsConfirmed: false })).resolves.toEqual({ kind: "RIGHTS_NOT_CONFIRMED" });
+    await expect(operation({ anonymousSessionId: SESSION_ID, expectedSizeBytes: 50, declaredContentType: "video/mp4", rightsConfirmed: true, competition: "K리그3", season: "2026" })).resolves.toEqual({ kind: "INVALID_INPUT", reason: "COMPETITION" });
     expect(storage.requests).toHaveLength(0);
     expect(repository.commands).toHaveLength(0);
   });
@@ -188,6 +208,8 @@ describe("completeUpload", () => {
       objectKey: "temporary/session/video.mp4",
       expectedSizeBytes: 50,
       declaredContentType: "video/mp4",
+      competition: "K리그1",
+      season: "2026",
       expiresAt: "2026-08-24T00:15:00.000Z",
     };
     storage.headResult = null;

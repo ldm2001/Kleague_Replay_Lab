@@ -88,4 +88,29 @@ describe("evidence grants", () => {
     expect(repository.commands).toHaveLength(0);
     expect(storage.inputs).toHaveLength(0);
   });
+
+  it("accepts evidence for every baseline candidate", async () => {
+    const repository = new AccessRepo();
+    const storage = new Storage();
+    const operation = evidence({
+      clock: { now: () => NOW },
+      hasher: { sha256: async () => Uint8Array.from([1]) },
+      repository,
+      storage,
+    });
+    const items = Array.from({ length: 48 }, (_, index) => ({
+      name: `candidate-${String(index + 1).padStart(4, "0")}.jpg`,
+      contentType: "image/jpeg" as const,
+      sizeBytes: 128,
+    }));
+
+    await expect(operation({
+      jobId: "11111111-1111-4111-8111-111111111111",
+      workerId: "worker-1",
+      jobRevision: 2,
+      leaseToken: "lease-token",
+      items,
+    })).resolves.toMatchObject({ kind: "GRANTED", items: items.map((item) => ({ name: item.name })) });
+    expect(storage.inputs).toHaveLength(48);
+  });
 });

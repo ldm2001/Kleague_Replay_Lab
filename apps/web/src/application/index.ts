@@ -83,6 +83,8 @@ export type {
   ResultResult,
 } from "./use-cases/job/result";
 export type {
+  AnalysisResultCommand,
+  AnalysisResultRepo,
   AnalysisView,
   CandidateView,
   EvidenceView,
@@ -94,7 +96,11 @@ export type {
   MediaStatusCommand,
   MediaStatusRepo,
   MediaView,
+  RuleView,
+  JudgmentView,
 } from "./ports/repositories/status-repo";
+export { report } from "./use-cases/status/report";
+export type { ReportDependencies, ReportInput, ReportResult } from "./use-cases/status/report";
 export { status } from "./use-cases/status/status";
 export type { StatusDependencies, StatusInput, StatusResult } from "./use-cases/status/status";
 export { asset } from "./use-cases/status/evidence";
@@ -103,6 +109,20 @@ export { latest } from "./use-cases/status/latest";
 export type { LatestDependencies, LatestInput, LatestResult } from "./use-cases/status/latest";
 export { evaluate } from "./use-cases/evaluation/evaluate";
 export type { EvaluateDependencies, EvaluateInput, EvaluateResult } from "./use-cases/evaluation/evaluate";
+export { facts } from "./use-cases/evaluation/facts";
+export type { FactDependencies, FactInput, FactResult } from "./use-cases/evaluation/facts";
+export { decision } from "./use-cases/evaluation/decision";
+export type { DecisionDependencies, DecisionInput, DecisionResult } from "./use-cases/evaluation/decision";
+export type {
+  DecisionSaveCommand,
+  DecisionSaveResult,
+  EvaluationContext,
+  EvaluationContextCommand,
+  EvaluationContextResult,
+  EvaluationRepo,
+  FactPatchCommand,
+  FactPatchResult,
+} from "./ports/repositories/evaluation-repo";
 export type { EvidenceAccess, EvidenceAccessCommand, EvidenceAccessRepo } from "./ports/repositories/evidence-repo";
 export type { EvidenceBody, EvidenceBodyStorage, EvidenceGrant, EvidenceGrantInput, EvidenceStorage } from "./ports/storage/evidence-storage";
 export { evidence } from "./use-cases/job/evidence";

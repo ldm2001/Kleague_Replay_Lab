@@ -20,6 +20,8 @@ type IntentRow = Readonly<{
   object_key: string;
   expected_size_bytes: number | string;
   declared_content_type: string;
+  competition: string;
+  season: string;
   expires_at: string;
 }>;
 
@@ -38,6 +40,8 @@ const intentRecord = (row: IntentRow): UploadIntentRecord => ({
   objectKey: row.object_key,
   expectedSizeBytes: Number(row.expected_size_bytes),
   declaredContentType: row.declared_content_type,
+  competition: row.competition,
+  season: row.season,
   expiresAt: new Date(row.expires_at).toISOString(),
 });
 
@@ -70,11 +74,12 @@ export class UploadRepo implements CreateUploadRepository, CompleteUploadReposit
         insert into upload_intents (
           anonymous_session_id, object_key, expected_size_bytes,
           declared_content_type, rights_confirmed_at, status,
-          expires_at, media_policy_version
+          expires_at, media_policy_version, competition, season
         ) values (
           ${command.anonymousSessionId}, ${command.objectKey}, ${command.expectedSizeBytes},
           ${command.declaredContentType}, ${command.rightsConfirmedAt}, 'CREATED',
-          ${command.expiresAt}, ${command.mediaPolicyVersion}
+          ${command.expiresAt}, ${command.mediaPolicyVersion},
+          ${command.competition ?? "K리그1"}, ${command.season ?? "2026"}
         )
         returning id
       `);
@@ -95,7 +100,7 @@ export class UploadRepo implements CreateUploadRepository, CompleteUploadReposit
     // 소유 의도 조회
     const rows = await this.client.db.execute(sql`
       select id, anonymous_session_id, object_key, expected_size_bytes,
-             declared_content_type, expires_at
+             declared_content_type, competition, season, expires_at
       from upload_intents
       where id = ${input.uploadIntentId}
         and anonymous_session_id = ${input.anonymousSessionId}
@@ -129,7 +134,7 @@ export class UploadRepo implements CreateUploadRepository, CompleteUploadReposit
       // 업로드 의도 잠금 조회
       const rows = await transaction.execute(sql`
         select id, anonymous_session_id, object_key, expected_size_bytes,
-               declared_content_type, expires_at, status, rights_confirmed_at,
+               declared_content_type, competition, season, expires_at, status, rights_confirmed_at,
                media_policy_version
         from upload_intents
         where id = ${command.uploadIntentId}
@@ -177,10 +182,12 @@ export class UploadRepo implements CreateUploadRepository, CompleteUploadReposit
       const assetRows = await transaction.execute(sql`
         insert into video_assets (
           anonymous_session_id, object_key, content_sha256, content_type,
-          size_bytes, status, rights_confirmed_at, created_at, expires_at
+          size_bytes, status, rights_confirmed_at, created_at, expires_at,
+          competition, season
         ) values (
           ${command.anonymousSessionId}, ${command.objectKey}, ${Buffer.from(command.contentSha256)}, ${command.contentType},
-          ${command.sizeBytes}, 'VALIDATING', ${intent.rights_confirmed_at}, ${command.createdAt}, ${command.expiresAt}
+          ${command.sizeBytes}, 'VALIDATING', ${intent.rights_confirmed_at}, ${command.createdAt}, ${command.expiresAt},
+          ${intent.competition}, ${intent.season}
         )
         returning id
       `);

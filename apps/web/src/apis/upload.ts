@@ -69,6 +69,8 @@ const payload = (value: Record<string, unknown>): Omit<CreateUploadInput, "anony
     expectedSizeBytes: value.expectedSizeBytes,
     declaredContentType: value.declaredContentType,
     rightsConfirmed: value.rightsConfirmed,
+    ...(typeof value.competition === "string" ? { competition: value.competition } : {}),
+    ...(typeof value.season === "string" ? { season: value.season } : {}),
   };
 };
 

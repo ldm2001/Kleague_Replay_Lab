@@ -4,7 +4,9 @@ import "../styles/index.css";
 import "../components/Header/style.css";
 import "../components/Footer/style.css";
 import "../components/UploadBox/style.css";
-import "../components/ResultList/style.css";
+import "../components/SceneGallery/style.css";
+import "../components/SceneRail/style.css";
+import "../components/RulePanel/style.css";
 import "../components/Reveal/style.css";
 import "../components/HeroMotion/style.css";
 import "../components/SolutionDeck/style.css";
@@ -13,6 +15,7 @@ import "../components/PreFooter/style.css";
 import "../components/FloatingTools/style.css";
 import "../views/Landing/style.css";
 import "../views/Analysis/style.css";
+import "../views/Result/style.css";
 
 // 전역 레이아웃과 스타일 진입점
 export const metadata: Metadata = {

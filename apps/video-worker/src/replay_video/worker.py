@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping
+from typing import Callable, Mapping
 
 from .application.pipeline import pipeline
 from .infrastructure.probe import probe
@@ -33,7 +33,7 @@ def text(value: object) -> str:
 
 
 # 작업 실행
-def job(value: Mapping[str, object]) -> JobResult:
+def job(value: Mapping[str, object], *, progress: Callable[[str, int, str], None] | None = None) -> JobResult:
     # 작업 식별자 확인
     job_id = text(value.get("job_id"))
     # 작업 유형 확인
@@ -66,7 +66,7 @@ def job(value: Mapping[str, object]) -> JobResult:
         # 출력 경로 확인
         output = Path(text(value.get("output_path"))).expanduser()
         # 영상 파이프라인 실행
-        result = pipeline(source, output, ports=media())
+        result = pipeline(source, output, ports=media(), progress=progress)
         # 분석 결과 반환
         return JobResult(
             job_id=job_id,

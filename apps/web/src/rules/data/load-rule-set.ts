@@ -19,6 +19,11 @@ const citation = (file: RuleSetFile, stored: StoredCitation): RuleCitation =>
     relevance: stored.relevance,
     quoteSnapshot: stored.quoteSnapshot,
     sourcePage: stored.sourcePage,
+    sourceUrl: stored.sourceUrl ?? (file.authority === "IFAB"
+      ? stored.law === "VAR"
+        ? "https://www.theifab.com/laws/latest/video-assistant-referee-var-protocol/"
+        : "https://www.theifab.com/laws/latest/fouls-and-misconduct/"
+      : null),
   });
 
 const rule = (file: RuleSetFile): RuleSet => {

@@ -156,7 +156,7 @@ def cycle(api: WorkerApi, kind: str, root: Path) -> bool:
                     "job_type": item.get("jobType"),
                     "source_path": str(source),
                     "output_path": str(output),
-                })
+                }, progress=lambda stage, percent, message: api.progress(item, stage, percent, message))
                 if local.payload.get("kind") == "VALIDATED":
                     payload = {
                         "kind": "VALIDATED",
@@ -166,6 +166,7 @@ def cycle(api: WorkerApi, kind: str, root: Path) -> bool:
                     }
                 else:
                     payload = report(api, item, Path(str(local.payload["report_path"])))
+                    api.progress(item, "APPLYING_RULES", 95, "facts-required")
             api.result(item, payload)
             return True
     except Exception:
