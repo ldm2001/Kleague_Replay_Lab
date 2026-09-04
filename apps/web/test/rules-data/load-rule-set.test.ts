@@ -96,6 +96,10 @@ describe("판본 차이", () => {
     expect(older.ruleId).not.toBe(newer.ruleId);
     expect(older.sourcePage).toBe("109");
     expect(newer.sourcePage).toBe("115");
+    expect(older.sourceUrl).toBe("https://downloads.theifab.com/downloads/laws-of-the-game-2025-26-single-pages?l=en");
+    expect(newer.sourceUrl).toBe("https://downloads.theifab.com/downloads/laws-of-the-game-202627-single-pages?l=en");
+    expect(ruleSet2025!.cite("VAR_THRESHOLD")[0]!.sourceUrl).toBe(older.sourceUrl);
+    expect(ruleSet2026!.cite("VAR_THRESHOLD")[0]!.sourceUrl).toBe(newer.sourceUrl);
   });
 
   it("재개 예외는 두 판본에서 같다", () => {

@@ -53,6 +53,7 @@ export const decision =
     return repository.save({
       anonymousSessionId: input.anonymousSessionId.toLowerCase(),
       analysisId: input.analysisId.toLowerCase(),
+      analysisStateVersion: context.value.analysisStateVersion,
       candidateId: input.candidateId.toLowerCase(),
       factRevisionId: context.value.factRevisionId,
       ruleVersionId: context.value.ruleVersionDbId,

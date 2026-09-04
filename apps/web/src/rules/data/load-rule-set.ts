@@ -5,6 +5,10 @@ import ifab202627 from "../data/ifab/2026-27.json" with { type: "json" };
 import type { RuleSetFile, StoredCitation } from "./schema";
 
 const FILES: readonly RuleSetFile[] = [ifab202526 as RuleSetFile, ifab202627 as RuleSetFile];
+const DOCUMENTS: Readonly<Record<string, string>> = Object.freeze({
+  "2025-26": "https://downloads.theifab.com/downloads/laws-of-the-game-2025-26-single-pages?l=en",
+  "2026-27": "https://downloads.theifab.com/downloads/laws-of-the-game-202627-single-pages?l=en",
+});
 
 const citation = (file: RuleSetFile, stored: StoredCitation): RuleCitation =>
   Object.freeze({
@@ -19,11 +23,7 @@ const citation = (file: RuleSetFile, stored: StoredCitation): RuleCitation =>
     relevance: stored.relevance,
     quoteSnapshot: stored.quoteSnapshot,
     sourcePage: stored.sourcePage,
-    sourceUrl: stored.sourceUrl ?? (file.authority === "IFAB"
-      ? stored.law === "VAR"
-        ? "https://www.theifab.com/laws/latest/video-assistant-referee-var-protocol/"
-        : "https://www.theifab.com/laws/latest/fouls-and-misconduct/"
-      : null),
+    sourceUrl: stored.sourceUrl ?? (file.authority === "IFAB" ? DOCUMENTS[file.edition] ?? null : null),
   });
 
 const rule = (file: RuleSetFile): RuleSet => {

@@ -14,6 +14,7 @@ type DatabaseHandle = Pick<DatabaseClient, "db">;
 
 type ContextRow = Readonly<{
   analysis_id: string;
+  analysis_state_version: number;
   candidate_id: string;
   fact_revision_id: string | null;
   facts: unknown;
@@ -147,6 +148,7 @@ export class EvaluationRepo implements EvaluationRepoPort {
   public async context(command: EvaluationContextCommand): Promise<EvaluationContextResult> {
     const rows = await this.client.db.execute(sql`
       select analysis.id as analysis_id,
+             analysis.state_version as analysis_state_version,
              candidate.id as candidate_id,
              candidate.current_fact_revision_id as fact_revision_id,
              fact.facts,
@@ -176,6 +178,7 @@ export class EvaluationRepo implements EvaluationRepoPort {
       kind: "READY",
       value: {
         analysisId: row.analysis_id,
+        analysisStateVersion: row.analysis_state_version,
         candidateId: row.candidate_id,
         factRevisionId: row.fact_revision_id,
         facts: row.facts as import("@replay/shared-types").EvaluationFacts,
@@ -306,6 +309,8 @@ export class EvaluationRepo implements EvaluationRepoPort {
           update analyses as analysis
           set status = 'COMPLETED', completed_at = ${command.now}, state_version = analysis.state_version + 1
           where analysis.id = ${command.analysisId}
+            and analysis.status = 'CANDIDATES_READY'
+            and analysis.state_version = ${command.analysisStateVersion}
             and not exists (
               select 1
               from incident_candidates as pending

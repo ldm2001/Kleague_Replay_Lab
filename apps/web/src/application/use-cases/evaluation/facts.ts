@@ -82,7 +82,8 @@ export const facts =
   ({ clock, hasher, repository }: FactDependencies) =>
   async (input: FactInput): Promise<FactResult> => {
     if (!ids(input)) return { kind: "INVALID_INPUT", reason: "ID" };
-    if (typeof input.expectedFactRevisionId === "string" && !UUID.test(input.expectedFactRevisionId)) {
+    const expected = input.expectedFactRevisionId;
+    if (expected !== undefined && expected !== null && (typeof expected !== "string" || !UUID.test(expected))) {
       return { kind: "INVALID_INPUT", reason: "ID" };
     }
     if (typeof input.idempotencyKey !== "string") return { kind: "INVALID_INPUT", reason: "KEY" };
@@ -95,7 +96,7 @@ export const facts =
     const anonymousSessionId = input.anonymousSessionId.toLowerCase();
     const analysisId = input.analysisId.toLowerCase();
     const candidateId = input.candidateId.toLowerCase();
-    const expectedFactRevisionId = input.expectedFactRevisionId?.toLowerCase() ?? null;
+    const expectedFactRevisionId = expected?.toLowerCase() ?? null;
     const requestHash = Uint8Array.from(await hasher.sha256(JSON.stringify({ analysisId, candidateId, facts: input.facts })));
     const keyHash = Uint8Array.from(await hasher.sha256(input.idempotencyKey));
     return repository.patch({
