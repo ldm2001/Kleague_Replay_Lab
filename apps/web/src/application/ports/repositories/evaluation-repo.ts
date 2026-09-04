@@ -27,6 +27,7 @@ export type EvaluationContextCommand = Readonly<{
 
 export type EvaluationContext = Readonly<{
   analysisId: string;
+  analysisStateVersion: number;
   candidateId: string;
   factRevisionId: string;
   facts: EvaluationFacts;
@@ -42,6 +43,7 @@ export type EvaluationContextResult =
 export type DecisionSaveCommand = Readonly<{
   anonymousSessionId: string;
   analysisId: string;
+  analysisStateVersion: number;
   candidateId: string;
   factRevisionId: string;
   ruleVersionId: string;

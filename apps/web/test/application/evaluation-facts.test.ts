@@ -85,4 +85,19 @@ describe("facts", () => {
     expect(result).toEqual({ kind: "INVALID_INPUT", reason: "FACTS" });
     expect(repository.calls).toHaveLength(0);
   });
+
+  it("rejects a non string expected fact revision", async () => {
+    const repository = new RepoFake();
+    const result = await facts({ clock, hasher: new HashFake(), repository })({
+      anonymousSessionId: SESSION,
+      analysisId: ANALYSIS,
+      candidateId: CANDIDATE,
+      expectedFactRevisionId: 7 as never,
+      idempotencyKey: "fact-1",
+      facts: value,
+    });
+
+    expect(result).toEqual({ kind: "INVALID_INPUT", reason: "ID" });
+    expect(repository.calls).toHaveLength(0);
+  });
 });

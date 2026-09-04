@@ -1,12 +1,9 @@
 from __future__ import annotations
-
 from pathlib import Path
-
+import time
 from test_pipeline import fixture
-
-from replay_video.runner import cycle
+from replay_video.runner import Pulse, cycle
 from replay_video.http import HttpError
-
 
 class ApiFake:
     def __init__(self, source: Path) -> None:
@@ -104,3 +101,20 @@ def test_cycle_does_not_crash_when_stale_result_is_rejected(tmp_path: Path) -> N
             raise HttpError("http-409")
 
     assert cycle(Stale(source), "VALIDATE_VIDEO", tmp_path / "work") is True
+
+
+def test_pulse_heartbeat_keeps_latest_progress(tmp_path: Path) -> None:
+    source = tmp_path / "sample.mp4"
+    source.write_bytes(b"video")
+    api = ApiFake(source)
+    item = api.claim("ANALYZE_VIDEO")
+
+    with Pulse(api, item, "SEGMENTING", interval=0.005) as pulse:
+        pulse.progress("DETECTING", 40, "candidate-scan")
+        deadline = time.monotonic() + 0.2
+        while len(api.progresses) < 3 and time.monotonic() < deadline:
+            time.sleep(0.005)
+
+    assert api.progresses[0] == ("SEGMENTING", 10)
+    assert api.progresses[1] == ("DETECTING", 40)
+    assert api.progresses[-1] == ("DETECTING", 40)

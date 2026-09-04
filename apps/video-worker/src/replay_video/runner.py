@@ -35,15 +35,30 @@ class Pulse:
         self.api = api
         self.item = item
         self.stage = stage
+        self.percent = 10
         self.interval = interval
         self.stop = threading.Event()
+        self.lock = threading.Lock()
         self.thread = threading.Thread(target=self.beat, daemon=True)
+
+    # 최신 진행 상태 보고
+    def progress(self, stage: str, percent: int, message: str | None = None) -> None:
+        with self.lock:
+            self.stage = stage
+            self.percent = percent
+        try:
+            self.api.progress(self.item, stage, percent, message)
+        except Exception:
+            pass
 
     # 갱신 반복
     def beat(self) -> None:
         while not self.stop.wait(self.interval):
+            with self.lock:
+                stage = self.stage
+                percent = self.percent
             try:
-                self.api.progress(self.item, self.stage, 10, "worker-heartbeat")
+                self.api.progress(self.item, stage, percent, "worker-heartbeat")
             except Exception:
                 self.stop.set()
 
@@ -149,14 +164,14 @@ def cycle(api: WorkerApi, kind: str, root: Path) -> bool:
                 raise ValueError("source-url-invalid")
             output = work / "result"
             stage = "VALIDATING" if kind == "VALIDATE_VIDEO" else "SEGMENTING"
-            with Pulse(api, item, stage):
+            with Pulse(api, item, stage) as pulse:
                 api.media(source_url, source)
                 local = job({
                     "job_id": item.get("jobId"),
                     "job_type": item.get("jobType"),
                     "source_path": str(source),
                     "output_path": str(output),
-                }, progress=lambda stage, percent, message: api.progress(item, stage, percent, message))
+                }, progress=pulse.progress)
                 if local.payload.get("kind") == "VALIDATED":
                     payload = {
                         "kind": "VALIDATED",
@@ -166,7 +181,7 @@ def cycle(api: WorkerApi, kind: str, root: Path) -> bool:
                     }
                 else:
                     payload = report(api, item, Path(str(local.payload["report_path"])))
-                    api.progress(item, "APPLYING_RULES", 95, "facts-required")
+                    pulse.progress("APPLYING_RULES", 95, "facts-required")
             api.result(item, payload)
             return True
     except Exception:
