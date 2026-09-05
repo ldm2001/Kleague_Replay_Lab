@@ -20,6 +20,7 @@ import { factSignature } from "../signatures/fact-signature";
 const exception = (
   value: SendOffCategory,
 ): value is SendOffCategory & VarWindowException =>
+  // 재개 후 예외 어휘 확인
   (VAR_WINDOW_EXCEPTIONS as readonly string[]).includes(value);
 
 type CategoryGate = {
@@ -33,6 +34,7 @@ const categoryGate = (
   matched: VarCategoryRule | undefined,
   competitionOptions: CompetitionOptions,
 ): CategoryGate | { unknownOption: string } => {
+  // 검토 범주가 없으면 범위 밖 결과
   if (!matched) {
     return {
       reviewable: false,
@@ -42,6 +44,7 @@ const categoryGate = (
   }
 
   if (matched.requiresCompetitionOption !== null) {
+    // 대회별 채택 옵션 조회
     const adopted = competitionOptions[matched.requiresCompetitionOption];
     if (adopted === undefined) {
       // 미확인 옵션 보류
@@ -62,6 +65,7 @@ const categoryGate = (
 
 // 문턱 게이트
 const thresholdGate = (facts: VarFacts): VarThresholdResult => {
+  // 심각한 누락 사건은 문턱 충족
   if (facts.seriousMissedIncident) return "MET";
 
   switch (facts.errorMagnitude) {
@@ -76,7 +80,9 @@ const thresholdGate = (facts: VarFacts): VarThresholdResult => {
 
 // 절차 게이트
 const procedureGate = (facts: VarFacts, reviewable: boolean): VarReviewProcedure => {
+  // 검토 범위 밖이면 절차 없음
   if (!reviewable) return "NONE";
+  // 주관 판정은 OFR 적용
   return facts.decisionNature === "SUBJECTIVE" ? "OFR" : "VAR_ONLY";
 };
 
@@ -96,6 +102,7 @@ export const varResult = (
   const matched =
     candidates.find((category) => category.requiresMistakenIdentity) ?? candidates[0];
 
+  // 범주 채택 여부 확인
   const gate1 = categoryGate(matched, competitionOptions);
   if ("unknownOption" in gate1) {
     return {
@@ -122,6 +129,7 @@ export const varResult = (
   const withinTimeWindow = !facts.restartOccurred || windowException !== "NONE";
 
   const thresholdMet = thresholdGate(facts);
+  // 검토 절차 계산
   const reviewProcedure = procedureGate(facts, gate1.reviewable);
 
   const assessment: VarAssessment = {

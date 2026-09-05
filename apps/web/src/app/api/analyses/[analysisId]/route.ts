@@ -11,5 +11,8 @@ export async function GET(
   request: Request,
   context: { params: Promise<{ analysisId: string }> },
 ): Promise<Response> {
-  return analysis(request, await context.params, resultView());
+  // 분석 식별자 해석
+  const params = await context.params;
+  // 분석 결과 API 호출
+  return analysis(request, params, resultView());
 }

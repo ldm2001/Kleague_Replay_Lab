@@ -7,20 +7,24 @@ import { HeroMotion } from "./index.js";
 
 describe("HeroMotion", () => {
   afterEach(() => {
+    // 테스트 DOM과 모형 정리
     cleanup();
     vi.restoreAllMocks();
   });
 
   it("marks the hero as scrolled without subscribing React state", () => {
+    // 애니메이션 프레임 모형 구성
     vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation((callback) => {
       callback(0);
       return 1;
     });
+    // 영웅 영역 렌더링
     render(<HeroMotion><span>경기 판정</span></HeroMotion>);
     const hero = document.querySelector(".hero");
     expect(hero).toHaveAttribute("data-scrolled", "false");
 
     Object.defineProperty(globalThis, "scrollY", { configurable: true, value: 120 });
+    // 스크롤 이벤트 전달
     globalThis.dispatchEvent(new Event("scroll"));
 
     expect(hero).toHaveAttribute("data-scrolled", "true");

@@ -7,5 +7,6 @@ export const runtime = "nodejs";
 
 // 업로드 API 진입점
 export async function POST(request: Request): Promise<Response> {
+  // 업로드 API 호출
   return upload(request, container());
 }

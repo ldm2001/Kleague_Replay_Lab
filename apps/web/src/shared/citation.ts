@@ -1,6 +1,7 @@
 import type { Authority, FactBlocker, FactStatus, Relevance } from "./vocabulary";
 
 // 인용 단위 출처 보존
+// 규정 인용 모델
 export type RuleCitation = {
   ruleId: string;
   ruleRevision: number;
@@ -17,6 +18,7 @@ export type RuleCitation = {
 };
 
 // 조항 탐색을 막는 사실 요구
+// 사실 요구 모델
 export type FactRequirement = {
   fact: string;
   status: FactStatus;
@@ -25,6 +27,7 @@ export type FactRequirement = {
   narrowsTo: RuleCitation | null;
 };
 
+// 권위 계층 모델
 export type AuthorityAccount = {
   authority: Authority;
   edition: string;
@@ -33,6 +36,7 @@ export type AuthorityAccount = {
 };
 
 // 규정 계층 충돌 기록
+// 계층 충돌 모델
 export type LayerConflict = {
   topic: string;
   readings: { authority: string; text: string }[];

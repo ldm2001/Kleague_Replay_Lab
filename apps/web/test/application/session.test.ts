@@ -14,6 +14,7 @@ const SESSION_ID = "11111111-1111-4111-8111-111111111111";
 const clock: Clock = { now: () => NOW };
 const policy: SessionPolicy = { ttlMs: 24 * 60 * 60 * 1000 };
 
+// 세션 저장소 모형
 class SessionStoreFake implements SessionStore {
   readonly issued: Array<Parameters<SessionStore["issue"]>[0]> = [];
   readonly lookups: Array<Parameters<SessionStore["lookup"]>[0]> = [];
@@ -42,6 +43,7 @@ class HashFake implements Hasher {
 
 describe("session", () => {
   it("issues a session with a bounded expiry", async () => {
+    // 세션 발급 실행
     const repository = new SessionStoreFake();
 
     const result = await session({ clock, policy, repository })();
@@ -56,6 +58,7 @@ describe("session", () => {
 
 describe("record", () => {
   it("hashes a non-empty token and resolves its active session", async () => {
+    // 세션 토큰 조회 실행
     const repository = new SessionStoreFake();
     const hasher = new HashFake();
 
@@ -70,6 +73,7 @@ describe("record", () => {
   });
 
   it("does not call external ports for an empty token", async () => {
+    // 빈 토큰 조회 실행
     const repository = new SessionStoreFake();
     const hasher = new HashFake();
 

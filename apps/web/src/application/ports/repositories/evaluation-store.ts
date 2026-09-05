@@ -2,6 +2,7 @@
 import type { EvaluationFacts } from "@replay/shared-types";
 import type { EvaluationResult } from "@replay/shared-types";
 
+// 사실 수정 입력
 export type FactPatchCommand = Readonly<{
   anonymousSessionId: string;
   analysisId: string;
@@ -19,6 +20,7 @@ export type FactPatchResult =
   | Readonly<{ kind: "IDEMPOTENCY_KEY_REUSED" }>
   | Readonly<{ kind: "NOT_FOUND" }>;
 
+// 판정 문맥 조회 입력
 export type EvaluationContextCommand = Readonly<{
   anonymousSessionId: string;
   analysisId: string;
@@ -41,6 +43,7 @@ export type EvaluationContextResult =
   | Readonly<{ kind: "READY"; value: EvaluationContext }>
   | Readonly<{ kind: "NO_FACTS" | "RULE_VERSION_UNAVAILABLE" | "NOT_FOUND" }>;
 
+// 판정 저장 입력
 export type DecisionSaveCommand = Readonly<{
   anonymousSessionId: string;
   analysisId: string;
@@ -59,6 +62,7 @@ export type DecisionSaveResult =
   | Readonly<{ kind: "CREATED" | "REPLAYED"; decisionId: string }>
   | Readonly<{ kind: "NOT_FOUND" | "FACT_NOT_FOUND" | "RULE_VERSION_UNAVAILABLE" | "STALE_FACT_REVISION" | "STALE_ANALYSIS" }>;
 
+// 평가 저장 포트
 export type EvaluationStore = Readonly<{
   patch: (command: FactPatchCommand) => Promise<FactPatchResult>;
   context: (command: EvaluationContextCommand) => Promise<EvaluationContextResult>;

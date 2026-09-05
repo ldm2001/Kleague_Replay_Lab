@@ -10,5 +10,8 @@ export async function GET(
   request: Request,
   context: { params: Promise<{ analysisId: string; evidenceId: string }> },
 ): Promise<Response> {
-  return evidence(request, await context.params, mediaEvidence());
+  // 분석과 증거 식별자 해석
+  const params = await context.params;
+  // 증거 API 호출
+  return evidence(request, params, mediaEvidence());
 }

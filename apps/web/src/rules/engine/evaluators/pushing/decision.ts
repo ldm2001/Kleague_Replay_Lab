@@ -4,8 +4,11 @@ import { factSignature } from "../../signatures/fact-signature";
 import { pushGates } from "../../gates/push-gates";
 
 const ruleCitations = (citations: RuleCitation[]): RuleCitation[] => {
+  // 이미 사용한 조항 식별자 추적
   const seen = new Set<string>();
+  // 중복 제거 결과 초기화
   const unique: RuleCitation[] = [];
+  // 조항 목록 순회
   for (const citation of citations) {
     if (seen.has(citation.ruleId)) continue;
     seen.add(citation.ruleId);
@@ -19,6 +22,7 @@ export const pushResult = (facts: PushFacts, rules: RuleSet): EvaluationResult =
   const view = pushAccounts(facts, rules);
   const verdict = pushGates(facts, rules);
 
+  // 판정 입력의 재현 서명 생성
   const { signature, input } = factSignature({
     contactDetected: facts.contactDetected,
     severity: facts.severity,
@@ -27,6 +31,7 @@ export const pushResult = (facts: PushFacts, rules: RuleSet): EvaluationResult =
     cameraSufficiency: facts.cameraSufficiency,
   });
 
+  // 판정 경로의 조항 결합
   const citations = ruleCitations([
     ...verdict.citations,
     ...view.narrowedTo,

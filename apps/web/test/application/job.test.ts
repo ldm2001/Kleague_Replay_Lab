@@ -18,6 +18,7 @@ import {
 const NOW = new Date("2026-08-29T00:00:00.000Z");
 const clock: Clock = { now: () => NOW };
 
+// 작업 선점 저장소 모형
 class JobStoreFake implements JobStore {
   readonly commands: JobClaimCommand[] = [];
   result: JobClaim | null = {
@@ -43,6 +44,7 @@ class JobStoreFake implements JobStore {
 
 describe("claim", () => {
   it("creates a bounded lease command for a supported job type", async () => {
+    // 지원 작업 선점 실행
     const repository = new JobStoreFake();
     const result = await claim({
       clock,
@@ -64,6 +66,7 @@ describe("claim", () => {
   });
 
   it("rejects an unsupported worker or job type before the repository", async () => {
+    // 잘못된 작업 선점 실행
     const repository = new JobStoreFake();
     const operation = claim({
       clock,
@@ -102,6 +105,7 @@ class ProgressStoreFake implements JobProgressStore {
 
 describe("progress", () => {
   it("hashes the lease token and records a bounded progress update", async () => {
+    // 진행 상태 저장 실행
     const repository = new ProgressStoreFake();
     const hasher = { sha256: async () => Uint8Array.from([1, 2, 3]) };
     const result = await progress({ clock, hasher, repository, leaseMs: 30_000 })({
@@ -129,6 +133,7 @@ describe("progress", () => {
   });
 
   it("rejects an invalid lease or progress before the repository", async () => {
+    // 잘못된 진행 상태 실행
     const repository = new ProgressStoreFake();
     const operation = progress({
       clock,
@@ -169,6 +174,7 @@ class ResultStoreFake implements JobResultStore {
 
 describe("result", () => {
   it("hashes the lease token and submits validated video metadata", async () => {
+    // 검증 결과 저장 실행
     const repository = new ResultStoreFake();
     const operation = result({
       clock,

@@ -4,6 +4,7 @@ import { KNOWN_RULE_VERSION_IDS, ruleSet } from "@replay/rule-data";
 
 const ruleSet2025 = ruleSet("ifab-2025-26");
 
+// 기본 판본 조회 검증
 describe("ruleSet", () => {
   it("알 수 없는 판본에는 null을 반환하고 던지지 않는다", () => {
     expect(ruleSet("ifab-1998-99")).toBeNull();
@@ -65,6 +66,7 @@ describe("ruleSet", () => {
   });
 });
 
+// 판본 차이 검증
 describe("판본 차이", () => {
   const ruleSet2026 = ruleSet("ifab-2026-27");
 

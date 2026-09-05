@@ -6,6 +6,7 @@ const columns = [
   { title: "이용 안내", links: [["분석 권한", "#top"], ["낮은 확신도", "#rules"], ["영상 한계", "#rules"], ["개인정보 안내", "#top"]] },
 ] as const;
 
+// 푸터 정보 화면
 // 공통 푸터
 export function Footer() {
   // 공통 하단 정보 구성
@@ -18,6 +19,7 @@ export function Footer() {
           <p>영상 근거와 공개 규정을 비교하는 판정 보조 시스템</p>
         </div>
         <nav className="footer-nav" aria-label="푸터 메뉴">
+          {/* 푸터 메뉴 열 구성 */}
           {columns.map((column) => <div key={column.title}><h2>{column.title}</h2><ul>{column.links.map(([label, href]) => <li key={label}><a href={href}>{label}</a></li>)}</ul></div>)}
         </nav>
       </div>

@@ -14,16 +14,20 @@ const items = [
 
 describe("CaseSlider", () => {
   afterEach(() => {
+    // 테스트 DOM과 모형 정리
     cleanup();
     vi.restoreAllMocks();
   });
 
   it("moves the review range strip with the navigation buttons", () => {
+    // 스크롤 모형 구성
     Object.defineProperty(HTMLElement.prototype, "scrollBy", { configurable: true, value: () => undefined });
+    // 검토 범위 슬라이더 렌더링
     const scrollBy = vi.spyOn(HTMLElement.prototype, "scrollBy").mockImplementation(() => undefined);
     render(<CaseSlider items={items} />);
 
     expect(screen.getByRole("button", { name: "이전 검토 범위" })).toBeDisabled();
+    // 다음 카드 이동
     fireEvent.click(screen.getByRole("button", { name: "다음 검토 범위" }));
 
     expect(scrollBy).toHaveBeenCalledWith({ left: 340, behavior: "smooth" });

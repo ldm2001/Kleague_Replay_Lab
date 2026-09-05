@@ -2,6 +2,7 @@ import type { LayerConflict, RuleCitation } from "./citation";
 import type { SendOffCategory, VarCategory, ReviewScenario } from "./vocabulary";
 
 // 엔진과 규정 데이터 사이의 질문 목록
+// 규정 개념 키
 export const CONCEPT_KEYS = Object.freeze([
   "LAW_12_DIRECT_FREE_KICK",
   "LAW_12_DISCIPLINE",
@@ -12,6 +13,7 @@ export const CONCEPT_KEYS = Object.freeze([
 ] as const);
 export type ConceptKey = (typeof CONCEPT_KEYS)[number];
 
+// VAR 범주 규칙
 export type VarCategoryRule = {
   id: VarCategory;
   appliesTo: readonly ReviewScenario[];
@@ -21,11 +23,13 @@ export type VarCategoryRule = {
   requiresMistakenIdentity: boolean;
 };
 
+// 시간 창 예외 규칙
 export type TimeWindowExceptions = {
   mistakenIdentity: boolean;
   sendOffCategories: readonly SendOffCategory[];
 };
 
+// 규정 판본 실행 포트
 export type RuleSet = {
   cite(conceptKey: ConceptKey): RuleCitation[];
   varCategories(): readonly VarCategoryRule[];

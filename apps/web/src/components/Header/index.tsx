@@ -17,17 +17,22 @@ export function Header({ mode }: Props) {
 
   // 스크롤 상태 연결
   useEffect(() => {
+    // 랜딩 화면에서만 스크롤 상태 연결
     if (!landing) return;
+    // 예약된 화면 갱신 식별자
     let frame = 0;
+    // 헤더 스크롤 상태 반영
     const render = () => {
       frame = 0;
       if (header.current) header.current.dataset.scrolled = String(globalThis.scrollY > 1);
     };
+    // 스크롤 이벤트를 다음 프레임으로 묶기
     const scroll = () => {
       if (frame === 0) frame = globalThis.requestAnimationFrame(render);
     };
     render();
     globalThis.addEventListener("scroll", scroll, { passive: true });
+    // 이벤트 해제와 예약 취소
     return () => {
       globalThis.removeEventListener("scroll", scroll);
       if (frame !== 0) globalThis.cancelAnimationFrame(frame);
@@ -48,16 +53,22 @@ export function Header({ mode }: Props) {
       </a>
 
       {landing ? (
-        <nav className="site-nav" aria-label="주요 메뉴">
-          <a href="#solutions">솔루션</a>
-          <a href="#services">분석 기능</a>
-          <a href="#rules">규정</a>
-          <a href="#cases">검토 범위</a>
-        </nav>
+        <>
+          {/* 랜딩 메뉴 표시 */}
+          <nav className="site-nav" aria-label="주요 메뉴">
+            <a href="#solutions">솔루션</a>
+            <a href="#services">분석 기능</a>
+            <a href="#rules">규정</a>
+            <a href="#cases">검토 범위</a>
+          </nav>
+        </>
       ) : (
-        <a className="analysis-back" href="/">
-          랜딩으로 돌아가기 <span aria-hidden="true">↖</span>
-        </a>
+        <>
+          {/* 분석 화면 복귀 링크 표시 */}
+          <a className="analysis-back" href="/">
+            랜딩으로 돌아가기 <span aria-hidden="true">↖</span>
+          </a>
+        </>
       )}
     </header>
   );

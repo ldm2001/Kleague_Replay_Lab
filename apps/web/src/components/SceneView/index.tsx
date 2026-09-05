@@ -17,7 +17,9 @@ const source = (analysisId: string, evidenceId: string) =>
 export function SceneView({ analysis }: Readonly<{ analysis: AnalysisView }>) {
   // 현재 장면 위치 관리
   const [index, setIndex] = useState(0);
+  // 마지막 후보 위치 계산
   const last = analysis.candidates.length - 1;
+  // 현재 후보 선택
   const candidate = analysis.candidates[index] ?? null;
 
   // 장면 위치 제한
@@ -36,7 +38,9 @@ export function SceneView({ analysis }: Readonly<{ analysis: AnalysisView }>) {
   if (!candidate) return <section className="scene-gallery empty"><h2>탐지된 주요 장면이 없습니다</h2></section>;
 
   const frame = media(candidate, "FRAME");
+  // 현재 후보의 클립 선택
   const clip = media(candidate, "CLIP");
+  // 현재 후보의 대표 프레임 주소 생성
   const frameSource = frame ? source(analysis.analysisId, frame.evidenceId) : undefined;
 
   return (
@@ -44,13 +48,16 @@ export function SceneView({ analysis }: Readonly<{ analysis: AnalysisView }>) {
       <div className="gallery-main">
         <div className="scene-stage">
           <div className="scene-media">
+            {/* 클립과 프레임과 준비 문구 중 하나 표시 */}
             {clip ? <video key={clip.evidenceId} controls preload="metadata" poster={frameSource} src={source(analysis.analysisId, clip.evidenceId)} /> : frameSource ? <img src={frameSource} alt={`후보 장면 ${String(index + 1).padStart(2, "0")} 핵심 프레임`} /> : <p>영상 준비 중</p>}
           </div>
           <div className="scene-caption">
             <div><span>선택 장면</span><strong>후보 장면 {String(index + 1).padStart(2, "0")}</strong></div>
             <nav className="scene-controls" aria-label="장면 이동">
+              {/* 이전 후보 이동 버튼 */}
               <button type="button" aria-label="이전 장면" disabled={index === 0} onClick={() => select(index - 1)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg></button>
               <span>{String(index + 1).padStart(2, "0")} / {String(analysis.candidates.length).padStart(2, "0")}</span>
+              {/* 다음 후보 이동 버튼 */}
               <button type="button" aria-label="다음 장면" disabled={index === last} onClick={() => select(index + 1)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg></button>
             </nav>
           </div>

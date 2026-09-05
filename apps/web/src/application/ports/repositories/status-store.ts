@@ -1,9 +1,11 @@
 // 결과 조회 명령
+// 증거 화면 모델
 export type EvidenceView = Readonly<{
   evidenceId: string;
   kind: "FRAME" | "CLIP";
 }>;
 
+// 후보 화면 모델
 export type CandidateView = Readonly<{
   id: string;
   index: number;
@@ -17,6 +19,7 @@ export type CandidateView = Readonly<{
   judgment?: JudgmentView | null;
 }>;
 
+// 판정 화면 모델
 export type JudgmentView = Readonly<{
   factRevisionId: string;
   facts: EvaluationFacts;
@@ -32,6 +35,7 @@ export type JudgmentView = Readonly<{
   citations: readonly RuleCitation[];
 }>;
 
+// 분석 화면 모델
 export type AnalysisView = Readonly<{
   analysisId: string;
   mode: "VISUAL_CHANGE_BASELINE" | "ADJUDICATED";
@@ -46,6 +50,7 @@ export type AnalysisView = Readonly<{
   candidates: readonly CandidateView[];
 }>;
 
+// 규정 판본 화면 모델
 export type RuleView = Readonly<{
   competition: string;
   season: string;
@@ -54,6 +59,7 @@ export type RuleView = Readonly<{
   sourceUrl: string | null;
 }>;
 
+// 영상 상태 화면 모델
 export type MediaView = Readonly<{
   videoAssetId: string;
   videoStatus: string;
@@ -61,31 +67,37 @@ export type MediaView = Readonly<{
   analysis: AnalysisView | null;
 }>;
 
+// 영상 상태 조회 입력
 export type MediaStatusCommand = Readonly<{
   anonymousSessionId: string;
   videoAssetId: string;
   now: string;
 }>;
 
+// 영상 상태 저장 포트
 export type MediaStatusStore = Readonly<{
   status: (command: MediaStatusCommand) => Promise<MediaView | null>;
 }>;
 
+// 분석 결과 조회 입력
 export type AnalysisResultCommand = Readonly<{
   anonymousSessionId: string;
   analysisId: string;
   now: string;
 }>;
 
+// 분석 결과 저장 포트
 export type AnalysisResultStore = Readonly<{
   analysis: (command: AnalysisResultCommand) => Promise<AnalysisView | null>;
 }>;
 
+// 증거 미디어 모델
 export type EvidenceMedia = Readonly<{
   objectKey: string;
   contentType: "image/jpeg" | "video/mp4";
 }>;
 
+// 증거 미디어 조회 입력
 export type EvidenceMediaCommand = Readonly<{
   anonymousSessionId: string;
   analysisId: string;
@@ -93,15 +105,18 @@ export type EvidenceMediaCommand = Readonly<{
   now: string;
 }>;
 
+// 증거 미디어 저장 포트
 export type EvidenceMediaStore = Readonly<{
   media: (command: EvidenceMediaCommand) => Promise<EvidenceMedia | null>;
 }>;
 
+// 최근 영상 조회 입력
 export type LatestMediaCommand = Readonly<{
   anonymousSessionId: string;
   now: string;
 }>;
 
+// 최근 영상 저장 포트
 export type LatestMediaStore = Readonly<{
   latest: (command: LatestMediaCommand) => Promise<string | null>;
 }>;

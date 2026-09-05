@@ -36,6 +36,7 @@ class WorkerApi(Protocol):
 class Pulse:
     # 작업 Lease 갱신
     def __init__(self, api: WorkerApi, item: dict[str, object], stage: str, interval: float = 10.0) -> None:
+        # API와 작업 정보 저장
         self.api = api
         self.item = item
         self.stage = stage
@@ -80,21 +81,30 @@ class Pulse:
 
 # 증거 파일 업로드
 def artifacts(api: WorkerApi, item: dict[str, object], root: Path, entries: list[dict[str, object]]) -> list[dict[str, object]]:
+    # 증거 권한 요청 목록 초기화
     requests: list[dict[str, object]] = []
+    # 파일 이름별 원본 정보 초기화
     files: dict[str, tuple[Path, str, dict[str, object]]] = {}
+    # 증거 입력 순회
     for entry in entries:
+        # 작업 폴더 안의 경로 확인
         path = (root / str(entry["path"])).resolve()
         if not path.is_relative_to(root.resolve()) or not path.is_file():
             raise RuntimeError("evidence-path-invalid")
         content_type = "image/jpeg" if path.suffix.lower() in {".jpg", ".jpeg"} else "video/mp4"
+        # 업로드 권한 항목 구성
         requests.append({"name": path.name, "contentType": content_type, "sizeBytes": path.stat().st_size})
+        # 이름으로 원본 조회 등록
         files[path.name] = (path, content_type, entry)
     if not requests:
+        # 증거가 없으면 빈 결과 반환
         return []
+    # 증거 업로드 권한 요청
     response = api.evidence(item, requests)
     if not response or response.get("kind") != "GRANTED" or not isinstance(response.get("items"), list):
         raise RuntimeError("evidence-grant-invalid")
     result: list[dict[str, object]] = []
+    # 발급된 권한별 파일 업로드
     for grant in response["items"]:
         if not isinstance(grant, dict):
             raise RuntimeError("evidence-grant-invalid")
@@ -103,11 +113,13 @@ def artifacts(api: WorkerApi, item: dict[str, object], root: Path, entries: list
         if source is None:
             raise RuntimeError("evidence-grant-invalid")
         path, content_type, entry = source
+        # 업로드 URL과 객체 키 확인
         upload_url = grant.get("uploadUrl")
         object_key = grant.get("objectKey")
         if not isinstance(upload_url, str) or not isinstance(object_key, str):
             raise RuntimeError("evidence-grant-invalid")
         api.put(upload_url, path, content_type)
+        # 저장된 증거 메타데이터 구성
         result.append({
             "candidateIndex": entry["candidate_index"],
             "kind": entry["kind"],
@@ -123,7 +135,9 @@ def artifacts(api: WorkerApi, item: dict[str, object], root: Path, entries: list
 
 # 파이프라인 보고서 변환
 def report(api: WorkerApi, item: dict[str, object], path: Path) -> dict[str, object]:
+    # 파이프라인 보고서 읽기
     value = json.loads(path.read_text(encoding="utf-8"))
+    # 샷 결과 API 형식 변환
     shots = [{
         "index": item["index"],
         "startMs": item["start_ms"],
@@ -132,6 +146,7 @@ def report(api: WorkerApi, item: dict[str, object], path: Path) -> dict[str, obj
         "isReplay": item["is_replay"],
         "cameraAngle": item["camera_angle"],
     } for item in value["shots"]]
+    # 후보 결과 API 형식 변환
     candidates = [{
         "index": item["index"],
         "category": item["category"],
@@ -143,6 +158,7 @@ def report(api: WorkerApi, item: dict[str, object], path: Path) -> dict[str, obj
         "reasons": item["reasons"],
         "shotIndices": item["shot_indices"],
     } for item in value["candidates"]]
+    # 분석 결과와 증거 업로드 정보 반환
     return {
         "kind": "ANALYZED",
         "pipelineVersion": value["pipeline_version"],
@@ -155,27 +171,34 @@ def report(api: WorkerApi, item: dict[str, object], path: Path) -> dict[str, obj
 
 # 작업 한 건 처리
 def cycle(api: WorkerApi, kind: str, root: Path) -> bool:
+    # 처리할 작업 선점
     item = api.claim(kind)
     if item is None:
         return False
     root.mkdir(parents=True, exist_ok=True)
     try:
+        # 작업별 임시 폴더 생성
         with tempfile.TemporaryDirectory(prefix="replay-", dir=root) as directory:
             work = Path(directory)
             source = work / "source.mp4"
             source_url = item.get("sourceUrl")
+            # 원본 주소 확인
             if not isinstance(source_url, str) or not source_url:
                 raise ValueError("source-url-invalid")
             output = work / "result"
             stage = "VALIDATING" if kind == "VALIDATE_VIDEO" else "SEGMENTING"
+            # Lease 갱신과 작업 실행
             with Pulse(api, item, stage) as pulse:
+                # 원본 영상 다운로드
                 api.media(source_url, source)
+                # 로컬 파이프라인 실행
                 local = job({
                     "job_id": item.get("jobId"),
                     "job_type": item.get("jobType"),
                     "source_path": str(source),
                     "output_path": str(output),
                 }, progress=pulse.progress)
+                # 검증 결과 API payload 변환
                 if local.payload.get("kind") == "VALIDATED":
                     payload = {
                         "kind": "VALIDATED",
@@ -184,15 +207,20 @@ def cycle(api: WorkerApi, kind: str, root: Path) -> bool:
                         "height": local.payload["height"],
                     }
                 else:
+                    # 분석 보고서 API payload 변환
                     payload = report(api, item, Path(str(local.payload["report_path"])))
                     pulse.progress("APPLYING_RULES", 95, "facts-required")
             api.result(item, payload)
+            # 작업 완료 반환
             return True
     except Exception:
+        # 처리 실패 결과 전송
         try:
             api.result(item, {"kind": "FAILED", "failureCode": "WORKER_ERROR", "retryable": False})
         except Exception:
+            # 실패 결과 전송 오류 무시
             pass
+        # 작업은 처리되었으므로 다음 작업 진행
         return True
 
 
@@ -208,6 +236,7 @@ def loop(api: WorkerApi, root: Path, delay: float) -> None:
             except Exception as error:
                 logger.warning("claim-failed job=%s type=%s", kind, type(error).__name__)
                 failure = True
+        # 작업이 없거나 실패하면 폴링 지연
         # 실패 반복 중 요청 과열 방지
         if failure or not worked:
             time.sleep(delay)

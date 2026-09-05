@@ -10,5 +10,8 @@ export async function PATCH(
   request: Request,
   context: { params: Promise<{ analysisId: string; candidateId: string }> },
 ): Promise<Response> {
-  return facts(request, await context.params, evaluation());
+  // 분석과 후보 식별자 해석
+  const params = await context.params;
+  // 사실 수정 API 호출
+  return facts(request, params, evaluation());
 }

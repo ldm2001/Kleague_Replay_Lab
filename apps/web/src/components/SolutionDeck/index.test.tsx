@@ -6,14 +6,19 @@ import { afterEach, describe, expect, it } from "vitest";
 import { SolutionDeck } from "./index.js";
 
 describe("SolutionDeck", () => {
-  afterEach(() => cleanup());
+  afterEach(() => {
+    // 테스트 DOM 정리
+    cleanup();
+  });
 
   it("expands the focused solution and updates its content", () => {
+    // 솔루션 패널 렌더링
     render(<SolutionDeck />);
     const tabs = screen.getAllByRole("tab");
     expect(tabs[0]).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("heading", { name: "영상 근거 중심의 판정 보조" })).toBeInTheDocument();
 
+    // 두 번째 탭 포커스 전달
     fireEvent.focus(tabs[1]!);
 
     expect(tabs[1]!).toHaveAttribute("aria-selected", "true");

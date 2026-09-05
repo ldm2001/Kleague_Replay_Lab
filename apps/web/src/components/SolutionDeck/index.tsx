@@ -47,10 +47,15 @@ export function SolutionDeck() {
             onMouseEnter={() => setActive(index)}
             onFocus={() => setActive(index)}
             onKeyDown={(event) => {
+              // 방향키 외 입력은 기본 동작 유지
               if (!["ArrowRight", "ArrowDown", "ArrowLeft", "ArrowUp"].includes(event.key)) return;
+              // 탭 이동 기본 동작 차단
               event.preventDefault();
+              // 방향에 맞는 다음 패널 계산
               const next = event.key === "ArrowRight" || event.key === "ArrowDown" ? (index + 1) % slides.length : (index + slides.length - 1) % slides.length;
+              // 다음 패널 활성화
               setActive(next);
+              // 다음 탭으로 포커스 이동
               document.querySelector<HTMLButtonElement>(`[aria-controls="solution-panel"][data-index="${next}"]`)?.focus();
             }}
             id={`solution-tab-${index}`}

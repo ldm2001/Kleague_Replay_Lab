@@ -11,6 +11,7 @@ const SESSION = "11111111-1111-4111-8111-111111111111";
 const ANALYSIS = "22222222-2222-4222-8222-222222222222";
 const NOW = new Date("2026-09-03T00:00:00.000Z");
 
+// 결과 화면 모형
 const view = {
   analysisId: ANALYSIS,
   mode: "VISUAL_CHANGE_BASELINE",
@@ -34,6 +35,7 @@ class ResultDouble implements AnalysisResultStore {
 
 describe("analysis result", () => {
   it("loads only an analysis owned by the active anonymous session", async () => {
+    // 소유 분석 조회 실행
     const repository = new ResultDouble();
     const value = await report({ clock: { now: () => NOW }, repository })({
       anonymousSessionId: SESSION,
@@ -45,6 +47,7 @@ describe("analysis result", () => {
   });
 
   it("rejects malformed identifiers before the repository", async () => {
+    // 잘못된 식별자 조회 실행
     const repository = new ResultDouble();
     await expect(report({ clock: { now: () => NOW }, repository })({ anonymousSessionId: SESSION, analysisId: "bad" })).resolves.toEqual({ kind: "INVALID_INPUT" });
     expect(repository.commands).toHaveLength(0);

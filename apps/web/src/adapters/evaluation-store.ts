@@ -35,7 +35,9 @@ export class EvaluationStore implements EvaluationStorePort {
     return this.client.db.transaction(async (transaction) => {
       // 아직 저장 행이 없는 동일 요청도 세션과 키 단위로 직렬화
       const scope = `${command.anonymousSessionId}:PATCH_FACTS:${Buffer.from(command.keyHash).toString("hex")}`;
+      // 동일 멱등 요청 잠금
       await transaction.execute(sql`select pg_advisory_xact_lock(hashtextextended(${scope}, 0))`);
+      // 기존 멱등 기록 조회
       const existingRows = await transaction.execute(sql`
         select request_hash, fact_revision_id
         from idempotency_records
@@ -44,24 +46,29 @@ export class EvaluationStore implements EvaluationStorePort {
           and key_hash = ${Buffer.from(command.keyHash)}
         for update
       `);
+      // 기존 요청 행 선택
       const [existing] = existingRows as unknown as Array<{ request_hash: Buffer; fact_revision_id: string | null }>;
+      // 기존 요청이면 해시와 결과 확인
       if (existing) {
         if (Buffer.compare(existing.request_hash, Buffer.from(command.requestHash)) !== 0) {
           return { kind: "IDEMPOTENCY_KEY_REUSED" };
         }
         if (!existing.fact_revision_id) return { kind: "NOT_FOUND" };
+        // 기존 사실 이력 조회
         const revisions = await transaction.execute(sql`
           select revision
           from fact_revisions
           where id = ${existing.fact_revision_id}
           limit 1
         `);
+        // 기존 사실 이력 반환
         const [revision] = revisions as unknown as Array<{ revision: number }>;
         return revision
           ? { kind: "REPLAYED", factRevisionId: existing.fact_revision_id, revision: revision.revision }
           : { kind: "NOT_FOUND" };
       }
 
+      // 후보 소유권과 현재 사실 이력 조회
       const rows = await transaction.execute(sql`
         select candidate.id, candidate.current_fact_revision_id
         from incident_candidates as candidate
@@ -75,25 +82,32 @@ export class EvaluationStore implements EvaluationStorePort {
           and analysis.expires_at > ${command.now}
         for update
       `);
+      // 후보 행 선택
       const [candidate] = rows as unknown as Array<{ id: string; current_fact_revision_id: string | null }>;
+      // 후보 존재 확인
       if (!candidate) return { kind: "NOT_FOUND" };
+      // 낙관적 사실 버전 확인
       if (candidate.current_fact_revision_id !== command.expectedFactRevisionId) {
         return { kind: "STALE_FACT_REVISION" };
       }
 
+      // 다음 사실 이력 번호 조회
       const nextRows = await transaction.execute(sql`
         select coalesce(max(revision), 0) + 1 as revision
         from fact_revisions
         where incident_candidate_id = ${command.candidateId}
       `);
+      // 다음 이력 행 선택
       const [next] = nextRows as unknown as Array<{ revision: number }>;
       if (!next) throw new Error("fact-revision-sequence-missing");
+      // 사실에 연결된 샷 식별자 수집
       const shotIds = [...new Set([
         ...command.facts.push.contactDetected.shotIds,
         ...command.facts.push.severity.shotIds,
         ...command.facts.push.opponentDisplacement.shotIds,
         ...command.facts.push.insidePenaltyArea.shotIds,
       ])];
+      // 연결 샷이 있으면 소유권 확인
       if (shotIds.length > 0) {
         const shotList = sql.join(shotIds.map((shot) => sql`${shot}::uuid`), sql`, `);
         const shotRows = await transaction.execute(sql`
@@ -102,9 +116,11 @@ export class EvaluationStore implements EvaluationStorePort {
           where analysis_id = ${command.analysisId}
             and id in (${shotList})
         `);
+        // 연결 샷 개수 확인
         const [shotCount] = shotRows as unknown as Array<{ count: number }>;
         if (!shotCount || shotCount.count !== shotIds.length) return { kind: "NOT_FOUND" };
       }
+      // 사실 이력 저장
       const revisionRows = await transaction.execute(sql`
         insert into fact_revisions (
           analysis_id, incident_candidate_id, revision, facts, fact_schema_version,
@@ -115,10 +131,12 @@ export class EvaluationStore implements EvaluationStorePort {
         )
         returning id, revision
       `);
+      // 저장된 사실 이력 선택
       const [revision] = revisionRows as unknown as Array<{ id: string; revision: number }>;
       if (!revision) throw new Error("fact-revision-insert-missing");
 
       if (shotIds.length > 0) {
+        // 사실 이력과 샷 연결 저장
         const shotList = sql.join(shotIds.map((shot) => sql`${shot}::uuid`), sql`, `);
         await transaction.execute(sql`
           insert into fact_revision_shots (fact_revision_id, shot_id, analysis_id)
@@ -129,6 +147,7 @@ export class EvaluationStore implements EvaluationStorePort {
         `);
       }
 
+      // 후보의 현재 사실 이력 갱신
       await transaction.execute(sql`
         update incident_candidates
         set current_fact_revision_id = ${revision.id}, review_status = 'CONFIRMED'
@@ -136,6 +155,7 @@ export class EvaluationStore implements EvaluationStorePort {
           and analysis_id = ${command.analysisId}
       `);
       // 사실 변경 전 판정은 이력으로 남기고 분석을 재평가 대기로 전환
+      // 멱등 기록 저장
       await transaction.execute(sql`
         update analyses
         set status = 'CANDIDATES_READY', completed_at = null, state_version = state_version + 1
@@ -151,6 +171,7 @@ export class EvaluationStore implements EvaluationStorePort {
           ${revision.id}, ${command.now}, ${command.now}::timestamptz + interval '24 hours'
         )
       `);
+      // 사실 수정 결과 반환
       return { kind: "CREATED", factRevisionId: revision.id, revision: revision.revision };
     });
   }
@@ -180,11 +201,17 @@ export class EvaluationStore implements EvaluationStorePort {
         and analysis.expires_at > ${command.now}
       limit 1
     `);
+    // 평가 문맥 행 선택
     const [row] = rows as unknown as ContextRow[];
+    // 분석과 후보 존재 확인
     if (!row) return { kind: "NOT_FOUND" };
+    // 사실 이력 존재 확인
     if (!row.fact_revision_id || !row.facts) return { kind: "NO_FACTS" };
+    // IFAB 규정 판본 존재 확인
     if (!row.rule_id || !row.ifab_edition) return { kind: "RULE_VERSION_UNAVAILABLE" };
+    // 대회 규정 정보 존재 확인
     if (!row.competition || !row.season) return { kind: "RULE_VERSION_UNAVAILABLE" };
+    // 규정 엔진 입력 반환
     return {
       kind: "READY",
       value: {
@@ -205,6 +232,7 @@ export class EvaluationStore implements EvaluationStorePort {
     const assessment = command.evaluation.varAssessment;
     if (!assessment) throw new Error("var-assessment-missing");
     return this.client.db.transaction(async (transaction) => {
+      // 후보 최신 상태 잠금 조회
       const owned = await transaction.execute(sql`
         select candidate.id, candidate.current_fact_revision_id,
                analysis.state_version, analysis.status
@@ -221,13 +249,16 @@ export class EvaluationStore implements EvaluationStorePort {
         limit 1
         for update
       `);
+      // 후보 상태 행 선택
       const [candidate] = owned as unknown as Array<{ id: string; current_fact_revision_id: string | null; state_version: number; status: string }>;
+      // 후보가 없으면 저장 중단
       if (!candidate) return { kind: "NOT_FOUND" };
       // 잠금 이후에도 현재 사실과 분석 상태가 평가 시작 시점과 같은지 확인
       if (candidate.current_fact_revision_id !== command.factRevisionId) return { kind: "STALE_FACT_REVISION" };
       if (candidate.state_version !== command.analysisStateVersion || !["CANDIDATES_READY", "COMPLETED"].includes(candidate.status)) {
         return { kind: "STALE_ANALYSIS" };
       }
+      // 사실 이력 존재 확인
       const factRows = await transaction.execute(sql`
         select id
         from fact_revisions
@@ -236,8 +267,10 @@ export class EvaluationStore implements EvaluationStorePort {
           and analysis_id = ${command.analysisId}
         limit 1
       `);
+      // 사실 이력이 없으면 저장 중단
       if (factRows.length === 0) return { kind: "FACT_NOT_FOUND" };
 
+      // 최신 K리그 규정 인용 조회
       const kleagueRows = await transaction.execute(sql`
         select authority, edition, law, section, concept, revision, content_sha256,
                coalesce(official_korean, plain_korean, original_text) as quote_snapshot,
@@ -249,6 +282,7 @@ export class EvaluationStore implements EvaluationStorePort {
         order by revision desc, id desc
         limit 1
       `);
+      // K리그 인용 행 선택
       const [kleague] = kleagueRows as unknown as Array<{
         authority: "KLEAGUE";
         edition: string;
@@ -262,6 +296,7 @@ export class EvaluationStore implements EvaluationStorePort {
         source_url: string | null;
         review_status: string;
       }>;
+      // IFAB 인용에 K리그 인용 추가
       const citations = kleague && kleague.quote_snapshot
         ? [...command.evaluation.citations, {
             ruleId: `kleague-${kleague.edition}-${kleague.law}-${kleague.section}-${kleague.concept}`,
@@ -279,6 +314,7 @@ export class EvaluationStore implements EvaluationStorePort {
         : command.evaluation.citations;
       const evaluation = { ...command.evaluation, citations };
 
+      // 판정 결과 저장
       const inserted = await transaction.execute(sql`
         insert into decision_results (
           analysis_id, incident_candidate_id, fact_revision_id, applied_rule_version_id,
@@ -321,8 +357,10 @@ export class EvaluationStore implements EvaluationStorePort {
         do nothing
         returning id
       `);
+      // 저장된 판정 행 선택
       const [row] = inserted as unknown as Array<{ id: string }>;
       if (row) {
+        // 모든 최신 후보가 평가되면 분석 완료
         await transaction.execute(sql`
           update analyses as analysis
           set status = 'COMPLETED', completed_at = ${command.now}, state_version = analysis.state_version + 1
@@ -342,8 +380,10 @@ export class EvaluationStore implements EvaluationStorePort {
                 )
             )
         `);
+        // 신규 판정 결과 반환
         return { kind: "CREATED", decisionId: row.id };
       }
+      // 동일 판정 결과 조회
       const existing = await transaction.execute(sql`
         select id
         from decision_results
@@ -353,7 +393,9 @@ export class EvaluationStore implements EvaluationStorePort {
           and rule_engine_version = ${command.ruleEngineVersion}
         limit 1
       `);
+      // 기존 판정 행 선택
       const [saved] = existing as unknown as Array<{ id: string }>;
+      // 재생 결과 또는 저장 실패 반환
       return saved ? { kind: "REPLAYED", decisionId: saved.id } : { kind: "NOT_FOUND" };
     });
   }

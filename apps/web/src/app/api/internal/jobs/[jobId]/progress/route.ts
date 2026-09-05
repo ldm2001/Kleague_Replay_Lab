@@ -11,5 +11,8 @@ export async function POST(
   request: Request,
   context: { params: Promise<{ jobId: string }> },
 ): Promise<Response> {
-  return progress(request, await context.params, jobs());
+  // 작업 식별자 해석
+  const params = await context.params;
+  // 진행 API 호출
+  return progress(request, params, jobs());
 }

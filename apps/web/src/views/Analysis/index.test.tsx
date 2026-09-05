@@ -23,10 +23,16 @@ class UploadRequest {
 
 // 분석 화면 테스트
 describe("AnalysisView", () => {
-  afterEach(() => { cleanup(); vi.restoreAllMocks(); push.mockReset(); });
+  afterEach(() => {
+    // 테스트 DOM과 모형 정리
+    cleanup();
+    vi.restoreAllMocks();
+    push.mockReset();
+  });
 
   // 업로드 화면 확인
   it("presents the upload flow on its own analysis page", () => {
+    // 분석 화면 렌더링
     render(<AnalysisView />);
 
     expect(screen.getByRole("link", { name: "K리그 판정 보조 홈" })).toHaveAttribute("href", "/");
@@ -40,6 +46,7 @@ describe("AnalysisView", () => {
 
   // 완료 후 결과 이동 확인
   it.each([true, false])("결과 이동과 표시 옵션 %s", async (low) => {
+    // 업로드 모형 구성
     vi.stubGlobal("XMLHttpRequest", UploadRequest);
     Object.defineProperty(URL, "createObjectURL", { configurable: true, value: vi.fn(() => "blob:match.mp4") });
     Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: vi.fn() });
@@ -63,9 +70,12 @@ describe("AnalysisView", () => {
         },
       }), { status: 200 }));
 
+    // 분석 화면 렌더링
     render(<AnalysisView />);
     if (!low) fireEvent.click(screen.getByRole("checkbox", { name: "낮은 확신도 장면도 표시" }));
+    // 영상 선택 이벤트 전달
     fireEvent.change(screen.getByLabelText("영상 파일"), { target: { files: [new File([new Uint8Array(128)], "match.mp4", { type: "video/mp4" })] } });
+    // 분석 시작 이벤트 전달
     fireEvent.click(screen.getByRole("button", { name: "분석 시작" }));
 
     await waitFor(() => expect(push).toHaveBeenCalledWith(`\/results/44444444-4444-4444-8444-444444444444${low ? "" : "?low=0"}`));

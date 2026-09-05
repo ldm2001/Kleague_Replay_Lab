@@ -47,11 +47,14 @@ export type AnalysisDependencies = Readonly<{
 
 // 선택 문자열 정규화
 const optionalText = (value: string | undefined): string | null => {
+  // 선택값이 없으면 null 반환
   if (value === undefined) {
     return null;
   }
 
+  // 선택값 공백 제거
   const normalized = value.trim();
+  // 빈 선택값을 null로 변환
   return normalized.length === 0 ? null : normalized;
 };
 
@@ -67,6 +70,7 @@ const validIds = (
 const idempotencyKey = (
   idempotencyKey: string,
 ): AnalysisError | null => {
+  // 멱등 키 UTF-8 길이 계산
   const byteLength = new TextEncoder().encode(idempotencyKey).byteLength;
 
   if (byteLength === 0) {
@@ -77,6 +81,7 @@ const idempotencyKey = (
     return "IDEMPOTENCY_KEY_TOO_LONG";
   }
 
+  // 허용된 멱등 키 반환
   return null;
 };
 

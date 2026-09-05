@@ -48,8 +48,10 @@ export const upload =
       return { kind: "INVALID_INPUT", reason: "INVALID_ID" };
     }
 
+    // 대회와 시즌 기본값 적용
     const competition = input.competition?.trim() || "K리그1";
     const season = input.season?.trim() || "2026";
+    // 대회와 시즌 허용값 확인
     if (!COMPETITIONS.has(competition) || !SEASONS.has(season)) {
       return { kind: "INVALID_INPUT", reason: "COMPETITION" };
     }
@@ -107,6 +109,7 @@ export const upload =
       throw error;
     }
 
+    // 업로드 의도 저장 결과 확인
     if (persisted.kind !== "CREATED") {
       // 저장 실패 보상 삭제
       await storage.cleanup(grant.objectKey);

@@ -187,6 +187,7 @@ describe("completeUpload", () => {
       anonymousSessionId: SESSION_ID,
       sizeBytes: 50,
       contentSha256: Uint8Array.from([1, 2, 3]),
+      contentType: "video/mp4",
       expiresAt: "2026-08-24T02:00:00.000Z",
       mediaPolicyVersion: "media-v1",
       validationJobPayloadVersion: 1,

@@ -21,9 +21,13 @@ export function CaseSlider({ items }: Props) {
 
   // 목록 이동
   const move = (direction: -1 | 1) => {
+    // 이동 가능한 카드 범위 계산
     const next = Math.min(Math.max(index + direction, 0), Math.max(items.length - 1, 0));
+    // 첫 카드 너비 조회
     const width = list.current?.firstElementChild?.getBoundingClientRect().width || 320;
+    // 카드 목록을 부드럽게 이동
     list.current?.scrollBy({ left: direction * (width + 20), behavior: "smooth" });
+    // 현재 카드 위치 저장
     setIndex(next);
   };
 
@@ -31,7 +35,9 @@ export function CaseSlider({ items }: Props) {
   return (
     <div className="case-slider">
       <div className="case-slider-controls" aria-label="검토 범위 이동">
+        {/* 이전 카드 이동 */}
         <button type="button" aria-label="이전 검토 범위" onClick={() => move(-1)} disabled={index === 0}>←</button>
+        {/* 다음 카드 이동 */}
         <button type="button" aria-label="다음 검토 범위" onClick={() => move(1)} disabled={index >= items.length - 1}>→</button>
       </div>
       <div className="case-grid" ref={list} role="list">

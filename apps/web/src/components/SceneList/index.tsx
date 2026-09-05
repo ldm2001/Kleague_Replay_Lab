@@ -19,7 +19,9 @@ type SceneRowProps = Readonly<{
 
 // 밀리초를 시간 문구로 변환
 const time = (value: number): string => {
+  // 음수 시간을 0초로 보정
   const seconds = Math.max(0, Math.floor(value / 1000));
+  // 분과 초 형식 생성
   return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 };
 
@@ -30,6 +32,7 @@ const SceneRow = memo(function SceneRow({ analysisId, candidate, index, active, 
   const frame = candidate.evidence?.find((item) => item.kind === "FRAME");
 
   useEffect(() => {
+    // 활성 후보를 목록 안에서 보이도록 이동
     if (active && typeof row.current?.scrollIntoView === "function") {
       row.current.scrollIntoView({ block: "nearest" });
     }
@@ -43,14 +46,17 @@ const SceneRow = memo(function SceneRow({ analysisId, candidate, index, active, 
         aria-label={`후보 장면 ${String(index + 1).padStart(2, "0")} ${time(candidate.startMs)}부터 ${time(candidate.endMs)}`}
         onClick={() => onSelect(index)}
       >
+        {/* 후보 대표 프레임 표시 */}
         <span className="rail-thumb">
           {frame ? <img src={`/api/analyses/${analysisId}/evidence/${frame.evidenceId}`} alt="" loading="lazy" decoding="async" /> : <span>프레임 준비 중</span>}
         </span>
+        {/* 후보 시간과 판정 상태 표시 */}
         <span className="rail-copy">
           <strong>후보 장면 {String(index + 1).padStart(2, "0")}</strong>
           <small>{time(candidate.startMs)}부터 {time(candidate.endMs)}</small>
           <em>{candidate.judgment ? "규정 대조 완료" : "영상 사실 추출 대기"}</em>
         </span>
+        {/* 변화 신호 점수 표시 */}
         <span className="rail-score">{candidate.signalScore === null ? "—" : `${Math.round(candidate.signalScore * 100)}%`}</span>
       </button>
     </li>

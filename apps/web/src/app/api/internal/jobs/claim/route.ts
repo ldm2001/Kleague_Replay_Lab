@@ -8,5 +8,6 @@ export const runtime = "nodejs";
 // 작업 선점 API 진입점
 // 작업 선점 요청
 export async function POST(request: Request): Promise<Response> {
+  // 작업 선점 API 호출
   return claim(request, jobs());
 }

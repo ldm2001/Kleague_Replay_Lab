@@ -20,6 +20,7 @@ from replay_video.infrastructure.signals import Signal
 
 # 테스트 영상 생성
 def fixture(path: Path) -> None:
+    # 테스트용 영상 인코더 생성
     writer = cv2.VideoWriter(
         str(path),
         cv2.VideoWriter_fourcc(*"mp4v"),
@@ -28,25 +29,36 @@ def fixture(path: Path) -> None:
     )
     assert writer.isOpened()
     try:
+        # 테스트 프레임 생성
         for index in range(40):
+            # 구간별 배경색 선택
             background = (36, 92, 48) if index < 20 else (48, 48, 112)
+            # 단색 프레임 생성
             frame = np.full((180, 320, 3), background, dtype=np.uint8)
             if 8 <= index < 16:
+                # 움직이는 사각형 위치 계산
                 left = 22 + (index - 8) * 28
+                # 움직이는 도형 그리기
                 cv2.rectangle(frame, (left, 58), (left + 75, 125), (242, 242, 242), -1)
                 cv2.circle(frame, (left + 65, 92), 17, (30, 220, 240), -1)
+            # 프레임 기록
             writer.write(frame)
     finally:
+        # 인코더 종료
         writer.release()
 
 
 # 영상 메타데이터 확인
 def test_probe(tmp_path: Path) -> None:
+    # 테스트 영상 경로 준비
     source = tmp_path / "sample.mp4"
+    # 테스트 영상 생성
     fixture(source)
 
+    # 영상 메타데이터 조회
     metadata = probe(source)
 
+    # 기본 영상 크기 확인
     assert metadata.width == 320
     assert metadata.height == 180
     assert metadata.fps == pytest.approx(10.0, abs=0.1)
@@ -57,9 +69,11 @@ def test_probe(tmp_path: Path) -> None:
 
 # 샷 경계 확인
 def test_shots(tmp_path: Path) -> None:
+    # 테스트 영상 준비
     source = tmp_path / "sample.mp4"
     fixture(source)
 
+    # 샷 경계 계산
     result = shots(source, probe(source))
 
     assert len(result) == 2
@@ -70,10 +84,12 @@ def test_shots(tmp_path: Path) -> None:
 
 # 파이프라인 산출물 확인
 def test_assets(tmp_path: Path) -> None:
+    # 입력과 출력 경로 준비
     source = tmp_path / "sample.mp4"
     output = tmp_path / "result"
     fixture(source)
 
+    # 전체 파이프라인 실행
     result = pipeline(source, output, ports=media())
 
     assert result.schema_version == 1
@@ -86,6 +102,7 @@ def test_assets(tmp_path: Path) -> None:
     assert result.report_path == output / "report.json"
     assert result.report_path.exists()
     assert result.report_path.stat().st_size > 0
+    # 보고서 파일 확인
     report = json.loads(result.report_path.read_text(encoding="utf-8"))
     assert report["limitations"] == [
         "replay_detection_pending",
@@ -99,6 +116,7 @@ def test_assets(tmp_path: Path) -> None:
 
 # 없는 영상 오류 확인
 def test_missing(tmp_path: Path) -> None:
+    # 존재하지 않는 입력 검증
     with pytest.raises(MediaError, match="media-not-found"):
         probe(tmp_path / "missing.mp4")
 
@@ -121,6 +139,7 @@ def test_ports(tmp_path: Path) -> None:
         evidence=lambda value, target, item, items: calls.append("evidence") or evidence_list,
     )
 
+    # 포트 조립 파이프라인 실행
     result = pipeline(source, output, ports=ports)
 
     assert calls == ["probe", "shots", "candidates", "evidence"]
@@ -131,6 +150,7 @@ def test_ports(tmp_path: Path) -> None:
 
 # 단계 보고 확인
 def test_stages(tmp_path: Path) -> None:
+    # 단계 보고용 입력 준비
     source = tmp_path / "input.mp4"
     output = tmp_path / "result"
     metadata = VideoMetadata(source, 1000, 320, 180, 10.0, 10, "test")
@@ -142,26 +162,32 @@ def test_stages(tmp_path: Path) -> None:
         evidence=lambda _value, _target, _item, _candidates: (),
     )
 
+    # 단계 보고를 포함한 파이프라인 실행
     pipeline(source, output, ports=ports, progress=lambda stage, percent, _message: events.append((stage, percent)))
 
+    # 단계 순서 확인
     assert [stage for stage, _percent in events] == ["SEGMENTING", "DETECTING", "EXTRACTING_FACTS", "BUILDING_EVIDENCE", "APPLYING_RULES"]
 
 
 # 후보 개수 제한 확인
 def test_candidates(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    # 후보 제한용 메타데이터 준비
     source = tmp_path / "long.mp4"
     metadata = VideoMetadata(source, 400_000, 320, 180, 10.0, 4000, "test")
     shot_list = (Shot(0, 0, 400_000),)
     values = tuple(Signal(index, index * 3000, 0.5) for index in range(1, 101))
     monkeypatch.setattr("replay_video.infrastructure.candidates.signals", lambda *_args: values)
 
+    # 후보 탐지 실행
     result = candidates(source, metadata, shot_list)
 
+    # 최대 후보 수 확인
     assert len(result) == 40
 
 
 # 증거 개수 제한 확인
 def test_evidence(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    # 증거 생성용 입력 준비
     source = tmp_path / "source.mp4"
     source.write_bytes(b"source")
     metadata = VideoMetadata(source, 60_000, 1920, 1080, 30.0, 1800, "h264")
@@ -188,8 +214,10 @@ def test_evidence(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         lambda _source, destination, _start, _end: destination.write_bytes(b"clip"),
     )
 
+    # 증거 묶음 생성
     result = evidence(source, tmp_path / "result", metadata, items)
 
+    # 프레임과 상위 확신도 클립 수 확인
     assert len(result) == 20
     assert {item.candidate_index for item in result} == set(range(1, 13))
     assert sum(item.kind == "FRAME" for item in result) == 12

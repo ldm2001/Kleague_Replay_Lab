@@ -10,5 +10,8 @@ export async function POST(
   request: Request,
   context: { params: Promise<{ jobId: string }> },
 ): Promise<Response> {
-  return evidence(request, await context.params, jobs());
+  // 작업 식별자 해석
+  const params = await context.params;
+  // 증거 권한 API 호출
+  return evidence(request, params, jobs());
 }

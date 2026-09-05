@@ -74,12 +74,14 @@ export type EvaluationResult = {
 };
 
 // 입력 부족 오류 결과
+// 규정 평가 실패 모델
 export type EvaluationFailure = {
   ok: false;
   error: EvaluationErrorCode;
   message: string;
 };
 
+// VAR 평가 결과
 export type VarOutcome =
   | {
       ok: true;
@@ -90,5 +92,6 @@ export type VarOutcome =
     }
   | EvaluationFailure;
 
+// 실패 결과 판별
 export const failure = (outcome: VarOutcome): outcome is EvaluationFailure =>
   outcome.ok === false;

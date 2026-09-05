@@ -23,8 +23,10 @@ const variable: VarFacts = {
   seriousMissedIncident: false,
 };
 
+// 규정 평가 유스케이스 테스트
 describe("assessment", () => {
   it("combines pushing rules and VAR gates with citations", async () => {
+    // 밀기와 VAR 판정 의존성 구성
     const result = await assessment({
       rule: (id) => ruleSet(id),
       push: pushResult,
@@ -32,6 +34,7 @@ describe("assessment", () => {
       hash: async () => new Uint8Array(32).fill(1),
     })({ ruleVersionId: "ifab-2025-26", push, variable, options: {} satisfies CompetitionOptions });
 
+    // 평가 성공 확인
     expect(result.kind).toBe("EVALUATED");
     if (result.kind !== "EVALUATED") return;
     expect(result.value.varAssessment?.category).toBe("GOAL_NO_GOAL");
@@ -40,6 +43,7 @@ describe("assessment", () => {
   });
 
   it("rejects an unknown rule version", async () => {
+    // 알 수 없는 규정 판본 실행
     await expect(assessment({
       rule: () => null,
       push: pushResult,

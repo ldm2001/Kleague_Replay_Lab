@@ -116,6 +116,7 @@ export class S3Storage implements UploadStorage, CompletionStorage, JobSourceSto
   }
 
   public async read(objectKey: string): Promise<string> {
+    // Worker가 읽을 원본 객체 주소 생성
     return this.sign(
       this.options.client,
       new GetObjectCommand({ Bucket: this.options.bucket, Key: objectKey }),
@@ -124,6 +125,7 @@ export class S3Storage implements UploadStorage, CompletionStorage, JobSourceSto
   }
 
   public async evidence(input: EvidenceGrantInput): Promise<EvidenceGrant> {
+    // 증거 객체 업로드 주소 생성
     const objectKey = `evidence/${input.analysisId}/${input.jobId}/${input.name}`;
     const uploadUrl = await this.sign(
       this.options.client,
@@ -139,6 +141,7 @@ export class S3Storage implements UploadStorage, CompletionStorage, JobSourceSto
   }
 
   public async body(objectKey: string): Promise<EvidenceBody> {
+    // 증거 객체 스트림 조회
     const result = await this.options.client.send(
       new GetObjectCommand({ Bucket: this.options.bucket, Key: objectKey }),
     ) as Readonly<{ Body?: Body }>;
@@ -147,6 +150,7 @@ export class S3Storage implements UploadStorage, CompletionStorage, JobSourceSto
   }
 
   public async cleanup(objectKey: string): Promise<void> {
+    // 미완료 업로드 객체 삭제
     await this.options.client.send(
       new DeleteObjectCommand({ Bucket: this.options.bucket, Key: objectKey }),
     );

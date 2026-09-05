@@ -10,8 +10,10 @@ export type AssetInput = Readonly<{
   evidenceId: string;
 }>;
 
+// 증거 미디어 결과
 export type AssetResult = EvidenceMedia | null | Readonly<{ kind: "INVALID_INPUT" }>;
 
+// 증거 미디어 의존성
 export type AssetDependencies = Readonly<{
   clock: Clock;
   repository: EvidenceMediaStore;
@@ -20,13 +22,20 @@ export type AssetDependencies = Readonly<{
 export const asset =
   ({ clock, repository }: AssetDependencies) =>
   async (input: AssetInput): Promise<AssetResult> => {
+    // 세션과 분석과 증거 식별자 확인
     if (![input.anonymousSessionId, input.analysisId, input.evidenceId].every((value) => UUID.test(value))) {
       return { kind: "INVALID_INPUT" };
     }
+    // 증거 미디어 저장소 조회
+    // 식별자 소문자 정규화
+    const anonymousSessionId = input.anonymousSessionId.toLowerCase();
+    const analysisId = input.analysisId.toLowerCase();
+    const evidenceId = input.evidenceId.toLowerCase();
+    // 미디어 저장소 호출
     return repository.media({
-      anonymousSessionId: input.anonymousSessionId.toLowerCase(),
-      analysisId: input.analysisId.toLowerCase(),
-      evidenceId: input.evidenceId.toLowerCase(),
+      anonymousSessionId,
+      analysisId,
+      evidenceId,
       now: clock.now().toISOString(),
     });
   };
