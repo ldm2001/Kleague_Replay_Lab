@@ -100,8 +100,11 @@ export class StatusStore implements StatusPort, ResultPort, EvidencePort, Latest
         and video.object_deleted_at is null
       limit 1
     `);
+    // 영상 상태 행 선택
     const [row] = rows as unknown as MediaRow[];
+    // 영상이 없으면 빈 결과 반환
     if (!row) return null;
+    // 분석이 아직 생성되지 않은 영상 반환
     if (!row.analysis_id || !row.analysis_status) {
       return {
         videoAssetId: row.video_asset_id,
@@ -111,6 +114,7 @@ export class StatusStore implements StatusPort, ResultPort, EvidencePort, Latest
       };
     }
 
+    // 후보와 최신 판정 조회
     const candidates = await this.client.db.execute(sql`
       select candidate.id, candidate.candidate_index, candidate.start_ms, candidate.end_ms, candidate.anchor_ms,
              candidate.detection_confidence as signal_score, candidate.camera_sufficiency::text as camera_sufficiency,
@@ -146,6 +150,7 @@ export class StatusStore implements StatusPort, ResultPort, EvidencePort, Latest
       where candidate.analysis_id = ${row.analysis_id}
       order by detection_confidence desc nulls last, candidate_index
     `);
+    // 증거 파일 목록 조회
     const evidence = await this.client.db.execute(sql`
       select asset.id, candidate.candidate_index, asset.kind::text as kind
       from evidence_assets as asset
@@ -155,12 +160,15 @@ export class StatusStore implements StatusPort, ResultPort, EvidencePort, Latest
         and (asset.expires_at is null or asset.expires_at > ${command.now})
       order by candidate.candidate_index, asset.kind, asset.id
     `);
+    // 후보별 증거 묶음 초기화
     const grouped = new Map<number, Array<{ evidenceId: string; kind: "FRAME" | "CLIP" }>>();
+    // 증거 행을 후보 번호로 그룹화
     for (const item of evidence as unknown as EvidenceRow[]) {
       const entries = grouped.get(item.candidate_index) ?? [];
       entries.push({ evidenceId: item.id, kind: item.kind });
       grouped.set(item.candidate_index, entries);
     }
+    // 후보 데이터 화면 모델 변환
     const views: CandidateView[] = (candidates as unknown as CandidateRow[]).map((item) => ({
       id: item.id,
       index: item.candidate_index,
@@ -203,6 +211,7 @@ export class StatusStore implements StatusPort, ResultPort, EvidencePort, Latest
     // 화면에 연결한 현재 버전 판정만 완료 건수에 포함
     const evaluated = views.filter((item) => item.judgment !== null).length;
     const allJudged = views.length > 0 && evaluated === views.length;
+    // 상태와 결과 화면 모델 반환
     return {
       videoAssetId: row.video_asset_id,
       videoStatus: row.video_status,
@@ -246,8 +255,11 @@ export class StatusStore implements StatusPort, ResultPort, EvidencePort, Latest
         and video.object_deleted_at is null
       limit 1
     `);
+    // 분석 소유권 행 선택
     const [row] = rows as unknown as Array<{ video_asset_id: string }>;
+    // 분석이 없으면 빈 결과 반환
     if (!row) return null;
+    // 영상 상태 조회 결과에서 분석 결과 추출
     const media = await this.status({
       anonymousSessionId: command.anonymousSessionId,
       videoAssetId: row.video_asset_id,
@@ -273,8 +285,11 @@ export class StatusStore implements StatusPort, ResultPort, EvidencePort, Latest
         and (asset.expires_at is null or asset.expires_at > ${command.now})
       limit 1
     `);
+    // 증거 접근 행 선택
     const [row] = rows as unknown as Array<{ object_key: string; kind: "FRAME" | "CLIP" }>;
+    // 증거가 없으면 빈 결과 반환
     if (!row) return null;
+    // 증거 종류에 맞는 콘텐츠 형식 반환
     return {
       objectKey: row.object_key,
       contentType: row.kind === "FRAME" ? "image/jpeg" : "video/mp4",
@@ -295,7 +310,9 @@ export class StatusStore implements StatusPort, ResultPort, EvidencePort, Latest
       order by video.created_at desc, video.id desc
       limit 1
     `);
+    // 최근 영상 행 선택
     const [row] = rows as unknown as Array<{ id: string }>;
+    // 최근 영상 식별자 반환
     return row?.id ?? null;
   }
 }

@@ -12,6 +12,7 @@ import {
 
 const NOW = new Date("2026-08-31T00:00:00.000Z");
 
+// 증거 권한 저장소 모형
 class EvidenceStoreFake implements EvidenceStore {
   commands: EvidenceAccessCommand[] = [];
   response: EvidenceAccess = {
@@ -39,6 +40,7 @@ class Storage implements EvidenceStorage {
 
 describe("evidence grants", () => {
   it("authorizes a lease and grants only bounded evidence files", async () => {
+    // 유효한 Lease 증거 권한 실행
     const repository = new EvidenceStoreFake();
     const storage = new Storage();
     const result = await evidence({
@@ -69,6 +71,7 @@ describe("evidence grants", () => {
   });
 
   it("rejects unsupported evidence before storage", async () => {
+    // 지원하지 않는 증거 요청 실행
     const repository = new EvidenceStoreFake();
     const storage = new Storage();
     const operation = evidence({
@@ -90,6 +93,7 @@ describe("evidence grants", () => {
   });
 
   it("accepts evidence for every baseline candidate", async () => {
+    // 후보 전체 증거 권한 실행
     const repository = new EvidenceStoreFake();
     const storage = new Storage();
     const operation = evidence({

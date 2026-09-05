@@ -65,6 +65,7 @@ const stamp = () => timestamp({ withTimezone: true, mode: "string" }).notNull().
 // UUID 식별자 기본값
 const id = () => uuid().primaryKey().default(sql`gen_random_uuid()`);
 
+// 익명 세션 테이블
 export const anonymousSessions = pgTable("anonymous_sessions", {
   id: id(),
   tokenHash: bytea("token_hash").notNull().unique(),
@@ -74,6 +75,7 @@ export const anonymousSessions = pgTable("anonymous_sessions", {
   revokedAt: timestamp("revoked_at", { withTimezone: true, mode: "string" }),
 });
 
+// 구단 테이블
 export const clubs = pgTable("clubs", {
   id: id(),
   canonicalName: text("canonical_name").notNull(),
@@ -81,6 +83,7 @@ export const clubs = pgTable("clubs", {
   createdAt: stamp(),
 });
 
+// 경기 기본 정보 테이블
 export const matches = pgTable("matches", {
   id: id(),
   competition: varchar({ length: 64 }).notNull(),
@@ -92,6 +95,7 @@ export const matches = pgTable("matches", {
   scoreAway: smallint("score_away"),
 });
 
+// 대회 규정 판본 테이블
 export const competitionRuleVersions = pgTable("competition_rule_versions", {
   id: id(),
   competition: varchar({ length: 64 }).notNull(),
@@ -103,6 +107,7 @@ export const competitionRuleVersions = pgTable("competition_rule_versions", {
   verificationStatus: varchar("verification_status", { length: 32 }).notNull(),
 });
 
+// 업로드 영상 자산 테이블
 export const videoAssets = pgTable("video_assets", {
   id: id(),
   anonymousSessionId: uuid("anonymous_session_id").notNull().references(() => anonymousSessions.id),
@@ -124,6 +129,7 @@ export const videoAssets = pgTable("video_assets", {
   objectDeletedAt: timestamp("object_deleted_at", { withTimezone: true, mode: "string" }),
 });
 
+// 업로드 의도 테이블
 export const uploadIntents = pgTable(
   "upload_intents",
   {
@@ -150,6 +156,7 @@ export const uploadIntents = pgTable(
   ],
 );
 
+// 분석 작업 테이블
 export const analyses = pgTable(
   "analyses",
   {
@@ -175,6 +182,7 @@ export const analyses = pgTable(
   (table) => [uniqueIndex("analyses_video_asset_id_unique").on(table.videoAssetId)],
 );
 
+// Worker 처리 작업 테이블
 export const processingJobs = pgTable("processing_jobs", {
   id: id(),
   analysisId: uuid("analysis_id").references(() => analyses.id),
@@ -198,6 +206,7 @@ export const processingJobs = pgTable("processing_jobs", {
   updatedAt: stamp(),
 });
 
+// Worker 처리 이벤트 테이블
 export const processingJobEvents = pgTable(
   "processing_job_events",
   {
@@ -214,6 +223,7 @@ export const processingJobEvents = pgTable(
   (table) => [index("processing_job_events_job_time_idx").on(table.jobId, table.createdAt, table.id)],
 );
 
+// 판정 후보 장면 테이블
 export const incidentCandidates = pgTable(
   "incident_candidates",
   {
@@ -239,6 +249,7 @@ export const incidentCandidates = pgTable(
   ],
 );
 
+// 영상 샷 테이블
 export const shots = pgTable(
   "shots",
   {
@@ -257,6 +268,7 @@ export const shots = pgTable(
   ],
 );
 
+// 사실 수정 이력 테이블
 export const factRevisions = pgTable(
   "fact_revisions",
   {
@@ -278,6 +290,7 @@ export const factRevisions = pgTable(
   ],
 );
 
+// 사실 이력과 샷 연결 테이블
 export const factRevisionShots = pgTable(
   "fact_revision_shots",
   {
@@ -293,6 +306,7 @@ export const factRevisionShots = pgTable(
   ],
 );
 
+// 프레임과 클립 증거 테이블
 export const evidenceAssets = pgTable(
   "evidence_assets",
   {
@@ -313,6 +327,7 @@ export const evidenceAssets = pgTable(
   (table) => [uniqueIndex("evidence_assets_id_analysis_unique").on(table.id, table.analysisId)],
 );
 
+// 규정 원문과 인용 테이블
 export const rules = pgTable(
   "rules",
   {
@@ -336,6 +351,7 @@ export const rules = pgTable(
   ],
 );
 
+// 규정 엔진 판정 결과 테이블
 export const decisionResults = pgTable(
   "decision_results",
   {
@@ -391,6 +407,7 @@ export const decisionResults = pgTable(
   ],
 );
 
+// 공식 판정 기록 테이블
 export const officialVerdicts = pgTable(
   "official_verdicts",
   {
@@ -408,6 +425,7 @@ export const officialVerdicts = pgTable(
   (table) => [uniqueIndex("official_verdicts_id_analysis_unique").on(table.id, table.analysisId)],
 );
 
+// 중복 요청 방지 기록 테이블
 export const idempotencyRecords = pgTable(
   "idempotency_records",
   {

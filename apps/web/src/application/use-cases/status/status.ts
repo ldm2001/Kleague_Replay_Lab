@@ -9,8 +9,10 @@ export type StatusInput = Readonly<{
   videoAssetId: string;
 }>;
 
+// 영상 상태 결과
 export type StatusResult = MediaView | null | Readonly<{ kind: "INVALID_INPUT" }>;
 
+// 영상 상태 의존성
 export type StatusDependencies = Readonly<{
   clock: Clock;
   repository: MediaStatusStore;
@@ -19,12 +21,18 @@ export type StatusDependencies = Readonly<{
 export const status =
   ({ clock, repository }: StatusDependencies) =>
   async (input: StatusInput): Promise<StatusResult> => {
+    // 세션과 영상 식별자 확인
     if (!UUID.test(input.anonymousSessionId) || !UUID.test(input.videoAssetId)) {
       return { kind: "INVALID_INPUT" };
     }
+    // 영상 상태 저장소 조회
+    // 식별자 소문자 정규화
+    const anonymousSessionId = input.anonymousSessionId.toLowerCase();
+    const videoAssetId = input.videoAssetId.toLowerCase();
+    // 상태 저장소 호출
     return repository.status({
-      anonymousSessionId: input.anonymousSessionId.toLowerCase(),
-      videoAssetId: input.videoAssetId.toLowerCase(),
+      anonymousSessionId,
+      videoAssetId,
       now: clock.now().toISOString(),
     });
   };

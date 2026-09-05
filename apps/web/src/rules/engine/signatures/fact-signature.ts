@@ -14,15 +14,19 @@ export const FORBIDDEN_SIGNATURE_KEY_PATTERN =
 const EXCLUDED_KEYS = new Set(["shotIds"]);
 
 const normal = (value: unknown, path: string): unknown => {
+  // 배열 요소 순서 보존
   if (Array.isArray(value)) {
     return value.map((entry, index) => normal(entry, `${path}[${index}]`));
   }
   if (value !== null && typeof value === "object") {
+    // 객체 키 정렬과 포인터 키 제거
     const entries = Object.entries(value as Record<string, unknown>)
       .filter(([key]) => !EXCLUDED_KEYS.has(key))
       .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0));
 
+    // 정규화 객체 초기화
     const output: Record<string, unknown> = {};
+    // 정규화된 키와 값 구성
     for (const [key, entryValue] of entries) {
       if (FORBIDDEN_SIGNATURE_KEY_PATTERN.test(key)) {
         throw new Error(
@@ -37,7 +41,9 @@ const normal = (value: unknown, path: string): unknown => {
 };
 
 export const factSignature = (facts: Record<string, unknown>): FactSignature => {
+  // 사실 입력을 안정적인 JSON으로 변환
   const input = JSON.stringify(normal(facts, ""));
+  // 안정화된 입력 해시 생성
   return {
     signature: digest("sha256").update(input, "utf8").digest("hex"),
     input,

@@ -52,6 +52,8 @@ export const claim =
       now: now.toISOString(),
       leaseUntil,
     });
+    // 선점 결과가 없으면 작업 없음 반환
     if (!item || !item.objectKey) return item;
+    // 저장소 원본 주소 연결
     return { ...item, sourceUrl: await source.read(item.objectKey) };
   };

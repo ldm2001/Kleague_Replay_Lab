@@ -7,15 +7,20 @@ import { analysis, candidate, judgment } from "../../../test/fixtures/result";
 import { RulePanel } from "./index";
 
 describe("RulePanel", () => {
-  afterEach(() => cleanup());
+  afterEach(() => {
+    // 테스트 DOM 정리
+    cleanup();
+  });
 
   it("shows a pending state without inventing a decision", () => {
+    // 사실 대기 후보 렌더링
     render(<RulePanel analysis={analysis()} candidate={candidate(0)} />);
     expect(screen.getByText("영상 사실 추출 대기")).toBeInTheDocument();
     expect(screen.queryByText("파울 가능성 있음")).not.toBeInTheDocument();
   });
 
   it("separates facts IFAB K League and VAR evidence", () => {
+    // 판정이 있는 후보 렌더링
     render(<RulePanel analysis={analysis()} candidate={candidate(1, judgment)} />);
     expect(screen.getByRole("region", { name: "확인된 사실" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "IFAB 규정" })).toBeInTheDocument();

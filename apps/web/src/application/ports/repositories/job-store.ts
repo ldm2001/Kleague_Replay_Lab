@@ -5,6 +5,7 @@ export type JobType =
   | "DELETE_VIDEO_ASSET"
   | "PURGE_ANALYSIS";
 
+// 작업 처리 단계
 export type JobStage =
   | "QUEUED"
   | "VALIDATING"
@@ -16,6 +17,7 @@ export type JobStage =
   | "SUCCEEDED"
   | "FAILED";
 
+// 작업 선점 입력
 export type JobClaimCommand = Readonly<{
   workerId: string;
   jobType: JobType;
@@ -23,6 +25,7 @@ export type JobClaimCommand = Readonly<{
   leaseUntil: string;
 }>;
 
+// 작업 선점 결과
 export type JobClaim = Readonly<{
   jobId: string;
   jobType: JobType;
@@ -39,10 +42,12 @@ export type JobClaim = Readonly<{
   sourceUrl?: string;
 }>;
 
+// 작업 선점 저장 포트
 export type JobStore = Readonly<{
   claim: (command: JobClaimCommand) => Promise<JobClaim | null>;
 }>;
 
+// 작업 진행 입력
 export type JobProgressCommand = Readonly<{
   jobId: string;
   workerId: string;
@@ -55,6 +60,7 @@ export type JobProgressCommand = Readonly<{
   message: string | null;
 }>;
 
+// 작업 진행 결과
 export type JobProgress =
   | Readonly<{
       kind: "UPDATED";
@@ -65,10 +71,12 @@ export type JobProgress =
     }>
   | Readonly<{ kind: "NOT_FOUND" | "STALE_LEASE" }>;
 
+// 작업 진행 저장 포트
 export type JobProgressStore = Readonly<{
   progress: (command: JobProgressCommand) => Promise<JobProgress>;
 }>;
 
+// 영상 검증 결과 입력
 export type ValidationPayload = Readonly<{
   kind: "VALIDATED";
   durationMs: number;
@@ -76,12 +84,14 @@ export type ValidationPayload = Readonly<{
   height: number;
 }>;
 
+// 작업 실패 결과
 export type JobFailurePayload = Readonly<{
   kind: "FAILED";
   failureCode: string;
   retryable: boolean;
 }>;
 
+// 분석 샷 결과
 export type AnalysisShot = Readonly<{
   index: number;
   startMs: number;
@@ -91,6 +101,7 @@ export type AnalysisShot = Readonly<{
   cameraAngle: string | null;
 }>;
 
+// 분석 후보 결과
 export type AnalysisCandidate = Readonly<{
   index: number;
   category: "OTHER";
@@ -103,6 +114,7 @@ export type AnalysisCandidate = Readonly<{
   shotIndices: readonly number[];
 }>;
 
+// 분석 증거 결과
 export type AnalysisEvidence = Readonly<{
   candidateIndex: number;
   kind: "FRAME" | "CLIP";
@@ -114,6 +126,7 @@ export type AnalysisEvidence = Readonly<{
   height: number | null;
 }>;
 
+// 분석 결과 입력
 export type AnalysisPayload = Readonly<{
   kind: "ANALYZED";
   pipelineVersion: string;
@@ -123,8 +136,10 @@ export type AnalysisPayload = Readonly<{
   evidence?: readonly AnalysisEvidence[];
 }>;
 
+// Worker 결과 payload
 export type JobResultPayload = ValidationPayload | AnalysisPayload | JobFailurePayload;
 
+// 작업 결과 저장 입력
 export type JobResultCommand = Readonly<{
   jobId: string;
   workerId: string;
@@ -134,10 +149,12 @@ export type JobResultCommand = Readonly<{
   payload: JobResultPayload;
 }>;
 
+// 작업 결과 저장 상태
 export type JobResult = Readonly<{
   kind: "ACCEPTED" | "NOT_FOUND" | "STALE_LEASE" | "ALREADY_FINISHED";
 }>;
 
+// 작업 결과 저장 포트
 export type JobResultStore = Readonly<{
   result: (command: JobResultCommand) => Promise<JobResult>;
 }>;

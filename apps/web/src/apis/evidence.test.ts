@@ -13,8 +13,10 @@ const dependencies: EvidenceApiDependencies = {
   }),
 };
 
+// 증거 스트림 API 테스트
 describe("evidence API", () => {
   it("streams owned private evidence", async () => {
+    // 세션 있는 증거 스트림 요청 구성
     const response = await evidence(
       new Request("http://localhost/api/analyses/analysis/evidence/evidence", {
         headers: { cookie: "replay_session=session-token" },
@@ -26,12 +28,14 @@ describe("evidence API", () => {
       dependencies,
     );
 
+    // 증거 응답 상태와 본문 확인
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toBe("image/jpeg");
     expect(Array.from(new Uint8Array(await response.arrayBuffer()))).toEqual([1, 2, 3]);
   });
 
   it("rejects a missing session", async () => {
+    // 세션 없는 증거 요청 구성
     const response = await evidence(
       new Request("http://localhost/api/analyses/analysis/evidence/evidence"),
       {

@@ -30,28 +30,33 @@ export const decision =
     if (![input.anonymousSessionId, input.analysisId, input.candidateId].every((value) => UUID.test(value))) {
       return { kind: "INVALID_INPUT", reason: "ID" };
     }
+    // 판정에 필요한 사실과 규정 조회
     const context = await repository.context({
       anonymousSessionId: input.anonymousSessionId.toLowerCase(),
       analysisId: input.analysisId.toLowerCase(),
       candidateId: input.candidateId.toLowerCase(),
       now: clock.now().toISOString(),
     });
+    // 판정 입력이 준비되지 않으면 원인 반환
     if (context.kind !== "READY") {
       if (context.kind === "NO_FACTS") return { kind: "NO_FACTS" };
       if (context.kind === "RULE_VERSION_UNAVAILABLE") return { kind: "RULE_VERSION_UNKNOWN" };
       return { kind: "EVALUATION_FAILED", message: "candidate-not-found" };
     }
+    // 규정 엔진 실행
     const result = await run({
       ruleVersionId: context.value.ruleVersionId,
       push: context.value.facts.push,
       variable: context.value.facts.variable,
       options: context.value.competitionOptions,
     });
+    // 규정 엔진 결과 확인
     if (result.kind !== "EVALUATED") {
       return result.kind === "RULE_VERSION_UNKNOWN"
         ? { kind: "RULE_VERSION_UNKNOWN" }
         : { kind: "EVALUATION_FAILED", message: result.message };
     }
+    // 판정 결과 저장
     return repository.save({
       anonymousSessionId: input.anonymousSessionId.toLowerCase(),
       analysisId: input.analysisId.toLowerCase(),

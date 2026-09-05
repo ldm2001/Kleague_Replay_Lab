@@ -26,7 +26,9 @@ const requirement = (
   options: { cameraSufficiency: PushFacts["cameraSufficiency"]; needsNormalSpeed: boolean },
   narrowsTo: RuleCitation | null,
 ): FactRequirement => {
+  // 사실 차단 상태 초기화
   let blockedBy: FactBlocker | null = null;
+  // 사실 확정 상태 초기화
   let established = true;
 
   if (options.cameraSufficiency === "LOW") {
@@ -49,12 +51,14 @@ const requirement = (
 
 // 규정 요구사항과 차단 사실
 export const pushAccounts = (facts: PushFacts, rules: RuleSet): PushAccountView => {
+  // 밀기 판정 조항 조회
   const offenceCitations = rules.cite("LAW_12_DIRECT_FREE_KICK");
   const disciplineCitations = rules.cite("LAW_12_DISCIPLINE");
   const speedCitations = rules.cite("VAR_REVIEW_PROCESS");
   const disciplineEntry = disciplineCitations[0] ?? null;
 
   const camera = { cameraSufficiency: facts.cameraSufficiency, needsNormalSpeed: false };
+  // 정상 속도까지 필요한 사실 조건 구성
   const cameraAndSpeed = { cameraSufficiency: facts.cameraSufficiency, needsNormalSpeed: true };
 
   const requires: FactRequirement[] = [
@@ -66,6 +70,7 @@ export const pushAccounts = (facts: PushFacts, rules: RuleSet): PushAccountView 
   ];
 
   const blockedFrom = requires.filter((entry) => entry.status === "UNMET");
+  // 강도 사실 확정 여부 계산
   const severityEstablished =
     requires.find((entry) => entry.fact === "severity")?.status === "ESTABLISHED";
 
@@ -77,6 +82,7 @@ export const pushAccounts = (facts: PushFacts, rules: RuleSet): PushAccountView 
     narrowedTo.push(...speedCitations.filter((citation) => citation.relevance === "PRIMARY"));
   }
 
+  // 규정 계층별 계정 구성
   const accounts: AuthorityAccount[] = offenceCitations[0]
     ? [
         {

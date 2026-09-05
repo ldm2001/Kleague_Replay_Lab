@@ -42,6 +42,7 @@ export type ResultDependencies = Readonly<{
   repository: JobResultStore;
 }>;
 
+// 영상 검증 payload 확인
 const validation = (payload: ValidationPayload): boolean =>
   Number.isSafeInteger(payload.durationMs) &&
   payload.durationMs > 0 &&
@@ -50,9 +51,11 @@ const validation = (payload: ValidationPayload): boolean =>
   Number.isSafeInteger(payload.height) &&
   payload.height > 0;
 
+// Worker 실패 payload 확인
 const failure = (payload: JobFailurePayload): boolean =>
   CODE.test(payload.failureCode) && typeof payload.retryable === "boolean";
 
+// 샷 payload 확인
 const shot = (value: AnalysisShot): boolean =>
   Number.isSafeInteger(value.index) &&
   value.index >= 0 &&
@@ -64,6 +67,7 @@ const shot = (value: AnalysisShot): boolean =>
   typeof value.isReplay === "boolean" &&
   (value.cameraAngle === null || typeof value.cameraAngle === "string");
 
+// 후보 payload 확인
 const candidate = (value: AnalysisCandidate): boolean =>
   Number.isSafeInteger(value.index) &&
   value.index >= 0 &&
@@ -84,6 +88,7 @@ const candidate = (value: AnalysisCandidate): boolean =>
   Array.isArray(value.shotIndices) &&
   value.shotIndices.every((index) => Number.isSafeInteger(index) && index >= 0);
 
+// 증거 payload 확인
 const evidence = (value: AnalysisEvidence): boolean =>
   Number.isSafeInteger(value.candidateIndex) &&
   value.candidateIndex >= 0 &&
@@ -97,6 +102,7 @@ const evidence = (value: AnalysisEvidence): boolean =>
   (value.width === null || (Number.isSafeInteger(value.width) && value.width > 0)) &&
   (value.height === null || (Number.isSafeInteger(value.height) && value.height > 0));
 
+// 분석 payload 확인
 const analysis = (value: AnalysisPayload): boolean =>
   typeof value.pipelineVersion === "string" &&
   value.pipelineVersion.length > 0 &&
@@ -113,6 +119,7 @@ const analysis = (value: AnalysisPayload): boolean =>
     value.evidence.every(evidence)
   ));
 
+// 결과 유형별 payload 확인
 const payload = (value: JobResultPayload): boolean =>
   value.kind === "VALIDATED"
     ? validation(value)
@@ -145,7 +152,9 @@ export const result =
       return { kind: "INVALID_INPUT", reason: "PAYLOAD" };
     }
 
+    // Lease 토큰 해시 생성
     const leaseTokenHash = Uint8Array.from(await hasher.sha256(input.leaseToken));
+    // 작업 결과 저장
     return repository.result({
       jobId: input.jobId.toLowerCase(),
       workerId,

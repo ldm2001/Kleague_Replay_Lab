@@ -10,5 +10,8 @@ export async function POST(
   request: Request,
   context: { params: Promise<{ analysisId: string; candidateId: string }> },
 ): Promise<Response> {
-  return decision(request, await context.params, evaluation());
+  // 분석과 후보 식별자 해석
+  const params = await context.params;
+  // 판정 API 호출
+  return decision(request, params, evaluation());
 }

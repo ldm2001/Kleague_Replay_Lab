@@ -10,6 +10,8 @@ export async function GET(
   request: Request,
   context: { params: Promise<{ id: string }> },
 ): Promise<Response> {
+  // 영상 식별자 해석
   const { id } = await context.params;
+  // 영상 상태 API 호출
   return media(request, { videoAssetId: id }, mediaStatus());
 }

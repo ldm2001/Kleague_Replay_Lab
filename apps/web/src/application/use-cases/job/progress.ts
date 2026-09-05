@@ -85,6 +85,8 @@ export const progress =
     const now = clock.now();
     // Lease 만료 시각 계산
     const leaseUntil = new Date(now.getTime() + leaseMs).toISOString();
+    // 진행 메시지 정규화
+    const message = input.message?.trim() || null;
     // 진행 정보 저장
     return repository.progress({
       jobId: input.jobId.toLowerCase(),
@@ -95,6 +97,6 @@ export const progress =
       progressPercent: input.progressPercent,
       now: now.toISOString(),
       leaseUntil,
-      message: input.message?.trim() || null,
+      message,
     });
   };

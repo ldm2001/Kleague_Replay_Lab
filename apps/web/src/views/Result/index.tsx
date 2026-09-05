@@ -21,19 +21,29 @@ export function ResultView({ analysisId, low = true }: Readonly<{ analysisId: st
   useEffect(() => {
     // 결과 요청 취소 제어
     const controller = new AbortController();
+    // 분석 결과 API 요청
     void fetch(`/api/analyses/${analysisId}`, { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
+        // 오류 응답 중단
         if (!response.ok) throw new Error(String(response.status));
+        // 결과 본문 변환
         return response.json() as Promise<AnalysisView>;
       })
-      .then((analysis) => setState({ kind: "READY", analysis }))
+      .then((analysis) => {
+        // 결과 화면 상태 저장
+        setState({ kind: "READY", analysis });
+      })
       .catch((error: unknown) => {
+        // 취소된 요청은 상태 변경 생략
         if (error instanceof DOMException && error.name === "AbortError") return;
+        // 조회 실패 상태 저장
         setState({ kind: "ERROR" });
       });
+    // 화면 종료 시 요청 취소
     return () => controller.abort();
   }, [analysisId]);
 
+  // 표시 조건에 따라 후보 목록 필터링
   // 평가가 있으면 판정 확신도 사용 · 미평가 장면은 변화 신호 기준
   const candidates = state.kind === "READY" ? state.analysis.candidates.filter((candidate) =>
     visible || (candidate.judgment ? candidate.judgment.confidence !== "LOW" : (candidate.signalScore ?? 0) >= 0.5)
@@ -50,11 +60,14 @@ export function ResultView({ analysisId, low = true }: Readonly<{ analysisId: st
             <div><p>Video review</p><h1>영상 검토 결과</h1></div>
             <a href="/analyze">새 영상 분석</a>
           </header>
+          {/* 결과 표시 조건 선택 */}
           <label className="confidence-toggle">
             <input type="checkbox" checked={visible} onChange={(event) => visibility(event.target.checked)} />
             <span>낮은 확신도 장면도 표시</span>
           </label>
           {!visible ? <p className="upload-status">미평가 장면은 변화 신호 50% 이상 표시 · 파울 확률과 무관</p> : null}
+          {/* 필터 결과 또는 장면 캐러셀 표시 */}
+          {/* 후보가 없으면 필터 안내를 표시 */}
           {candidates.length === 0 && state.analysis.candidates.length > 0
             ? <p role="status">현재 표시 조건에 맞는 장면이 없습니다 · 낮은 확신도 장면 표시를 켜서 전체 장면을 확인하세요</p>
             : <SceneView key={`${analysisId}:${visible}`} analysis={{ ...state.analysis, candidates }} />}

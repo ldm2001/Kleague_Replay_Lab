@@ -64,6 +64,8 @@ export const completion =
       return { kind: "UPLOAD_INVALID" };
     }
 
+    // 검증 작업 만료 시각 계산
+    const expiresAt = new Date(now.getTime() + policy.sourceTtlMs).toISOString();
     // 검증 작업 저장
     return repository.complete({
       uploadIntentId,
@@ -71,9 +73,9 @@ export const completion =
       objectKey: intent.objectKey,
       sizeBytes: uploadedObject.sizeBytes,
       contentSha256: Uint8Array.from(uploadedObject.contentSha256),
-      contentType: "application/octet-stream",
+      contentType: intent.declaredContentType,
       createdAt,
-      expiresAt: new Date(now.getTime() + policy.sourceTtlMs).toISOString(),
+      expiresAt,
       mediaPolicyVersion: policy.mediaPolicyVersion,
       validationJobPayloadVersion: policy.validationJobPayloadVersion,
       validationMaxAttempts: policy.validationMaxAttempts,

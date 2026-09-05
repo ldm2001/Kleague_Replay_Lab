@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { claim, evidence as jobEvidence, progress, result as jobResult, type JobApiDependencies } from "./job.js";
 import type { EvidenceResult, JobClaim, JobProgress, JobResult } from "@replay/application";
 
+// 작업 선점 응답 모형
 const result: JobClaim = {
   jobId: "11111111-1111-4111-8111-111111111111",
   jobType: "ANALYZE_VIDEO" as const,
@@ -17,6 +18,7 @@ const result: JobClaim = {
   objectKey: "uploads/video.mp4",
 };
 
+// 작업 API 의존성 모형
 const dependencies = (value: JobClaim | null = result): JobApiDependencies => ({
   key: "worker-secret",
   claim: async () => value,
@@ -45,6 +47,7 @@ const evidenceResult: EvidenceResult = {
 
 describe("job claim API", () => {
   it("returns a claimed job for an authorized worker", async () => {
+    // 인증된 Worker 요청 구성
     const response = await claim(
       new Request("http://localhost/internal/jobs/claim", {
         method: "POST",
@@ -62,6 +65,7 @@ describe("job claim API", () => {
   });
 
   it("rejects an unauthorized worker before reading the job body", async () => {
+    // 잘못된 인증 요청 구성
     const response = await claim(
       new Request("http://localhost/internal/jobs/claim", {
         method: "POST",
@@ -76,6 +80,7 @@ describe("job claim API", () => {
   });
 
   it("returns no-content when the queue has no eligible job", async () => {
+    // 대기 작업 없음 요청 구성
     const response = await claim(
       new Request("http://localhost/internal/jobs/claim", {
         method: "POST",
@@ -93,6 +98,7 @@ describe("job claim API", () => {
   });
 
   it("returns the updated progress for the claimed lease", async () => {
+    // 진행 상태 요청 구성
     const response = await progress(
       new Request("http://localhost/internal/jobs/job-1/progress", {
         method: "POST",
@@ -118,6 +124,7 @@ describe("job claim API", () => {
   });
 
   it("accepts a validation result for the claimed lease", async () => {
+    // 검증 결과 요청 구성
     const response = await jobResult(
       new Request("http://localhost/internal/jobs/job-1/result", {
         method: "POST",
@@ -146,6 +153,7 @@ describe("job claim API", () => {
   });
 
   it("returns scoped evidence upload grants", async () => {
+    // 증거 권한 요청 구성
     const response = await jobEvidence(
       new Request("http://localhost/internal/jobs/job-1/evidence", {
         method: "POST",

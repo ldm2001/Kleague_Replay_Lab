@@ -11,6 +11,7 @@ const DOCUMENTS: Readonly<Record<string, string>> = Object.freeze({
 });
 
 const citation = (file: RuleSetFile, stored: StoredCitation): RuleCitation =>
+  // 저장 규정 인용을 실행 모델로 변환
   Object.freeze({
     ruleId: `${file.versionId}-${stored.key}`,
     ruleRevision: stored.revision,
@@ -27,7 +28,9 @@ const citation = (file: RuleSetFile, stored: StoredCitation): RuleCitation =>
   });
 
 const rule = (file: RuleSetFile): RuleSet => {
+  // 개념별 인용 맵 초기화
   const citations = new Map<ConceptKey, readonly RuleCitation[]>();
+  // 규정 파일의 인용 변환
   for (const [conceptKey, stored] of Object.entries(file.concepts)) {
     citations.set(
       conceptKey as ConceptKey,
@@ -35,6 +38,7 @@ const rule = (file: RuleSetFile): RuleSet => {
     );
   }
 
+  // VAR 검토 범주 복사
   const varCategories = Object.freeze(
     file.varCategories.map((category) =>
       Object.freeze({
@@ -46,11 +50,13 @@ const rule = (file: RuleSetFile): RuleSet => {
     ),
   );
 
+  // 검토 시간 예외 복사
   const timeWindowExceptions = Object.freeze({
     mistakenIdentity: file.timeWindowExceptions.mistakenIdentity,
     sendOffCategories: Object.freeze([...file.timeWindowExceptions.sendOffCategories]),
   });
 
+  // 규정 계층 충돌 복사
   const layerConflicts = Object.freeze(file.layerConflicts.map((conflict) => Object.freeze(conflict)));
 
   return Object.freeze({

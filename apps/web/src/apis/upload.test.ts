@@ -5,6 +5,7 @@ const SESSION_ID = "11111111-1111-4111-8111-111111111111";
 const INTENT_ID = "22222222-2222-4222-8222-222222222222";
 const VIDEO_ID = "33333333-3333-4333-8333-333333333333";
 
+// 업로드 API 의존성 모형
 const dependencies = (): UploadApiDependencies => ({
   issue: async () => ({ sessionId: SESSION_ID, token: "session-token" }),
   resolve: async () => ({ sessionId: SESSION_ID }),
@@ -20,6 +21,7 @@ const dependencies = (): UploadApiDependencies => ({
 
 describe("upload API", () => {
   it("issues an HttpOnly session cookie only when a new session is needed", async () => {
+    // 새 익명 세션 업로드 요청 구성
     const response = await upload(
       new Request("http://localhost/api/uploads", {
         method: "POST",
@@ -36,6 +38,7 @@ describe("upload API", () => {
   });
 
   it("does not issue a session or call the use case for invalid JSON", async () => {
+    // 잘못된 본문 요청 구성
     let called = false;
     const deps = { ...dependencies(), upload: async () => { called = true; return { kind: "SESSION_UNAVAILABLE" as const }; } };
 
@@ -52,6 +55,7 @@ describe("upload API", () => {
 
 describe("complete API", () => {
   it("returns unauthorized without a valid session", async () => {
+    // 세션 없는 완료 요청 구성
     const deps = { ...dependencies(), resolve: async () => null };
 
     const response = await completion(
@@ -65,6 +69,7 @@ describe("complete API", () => {
   });
 
   it("returns an accepted completion response without adding layout concerns to the API", async () => {
+    // 세션 있는 완료 요청 구성
     const response = await completion(
       new Request("http://localhost/api/uploads/intent/complete", {
         method: "POST",

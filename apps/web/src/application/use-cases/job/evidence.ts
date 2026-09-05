@@ -41,13 +41,17 @@ export type EvidenceDependencies = Readonly<{
 }>;
 
 const validItems = (items: readonly EvidenceItem[]): boolean => {
+  // 증거 항목 개수 확인
   if (items.length === 0 || items.length > MAX_ITEMS) return false;
+  // 전체 증거 용량 초기화
   let total = 0;
+  // 증거 항목별 형식과 크기 확인
   for (const item of items) {
     if (!NAME.test(item.name) || !TYPES.includes(item.contentType)) return false;
     if (!Number.isSafeInteger(item.sizeBytes) || item.sizeBytes <= 0 || item.sizeBytes > MAX_ITEM_BYTES) return false;
     total += item.sizeBytes;
   }
+  // 전체 증거 용량 제한 확인
   return total <= MAX_TOTAL_BYTES;
 };
 
@@ -66,6 +70,7 @@ export const evidence =
     }
     if (!validItems(input.items)) return { kind: "INVALID_INPUT", reason: "ITEMS" };
 
+    // Lease 권한 확인
     const access = await repository.access({
       jobId: input.jobId.toLowerCase(),
       workerId,
@@ -73,7 +78,9 @@ export const evidence =
       leaseTokenHash: Uint8Array.from(await hasher.sha256(input.leaseToken)),
       now: clock.now().toISOString(),
     });
+    // 권한이 없으면 저장소 접근 차단
     if (access.kind !== "AUTHORIZED") return access;
+    // 증거 업로드 주소 병렬 발급
     const items = await Promise.all(input.items.map(async (item) => ({
       name: item.name,
       ...await storage.evidence({
@@ -84,5 +91,6 @@ export const evidence =
         sizeBytes: item.sizeBytes,
       }),
     })));
+    // 증거 업로드 주소 반환
     return { kind: "GRANTED", items };
   };

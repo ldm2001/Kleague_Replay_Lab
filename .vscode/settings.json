@@ -1,0 +1,14 @@
+{
+  "python.analysis.extraPaths": [
+    "${workspaceFolder}/apps/video-worker/src"
+  ],
+  "python.testing.pytestEnabled": true,
+  "python.testing.pytestArgs": [
+    "-c",
+    "apps/video-worker/pyproject.toml",
+    "apps/video-worker/tests"
+  ],
+  "python.testing.cwd": "${workspaceFolder}",
+  "typescript.tsdk": "${workspaceFolder}/node_modules/typescript/lib",
+  "python-envs.defaultEnvManager": "ms-python.python:system"
+}

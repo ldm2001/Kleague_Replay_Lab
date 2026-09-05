@@ -30,12 +30,18 @@ const json = (body: unknown, status: number, headers?: Record<string, string>): 
 
 // 세션 쿠키 조회
 const cookie = (request: Request): string | null => {
+  // 요청 쿠키 헤더 조회
   const value = request.headers.get("cookie");
+  // 쿠키가 없으면 빈 결과 반환
   if (!value) return null;
+  // 세션 쿠키 항목 탐색
   for (const item of value.split(";")) {
+    // 쿠키 이름과 값 분리
     const [name, ...parts] = item.trim().split("=");
+    // 세션 쿠키 반환
     if (name === COOKIE) return decodeURIComponent(parts.join("="));
   }
+  // 세션 쿠키 없음 반환
   return null;
 };
 
@@ -46,25 +52,31 @@ const headerCookie = (token: string): string =>
 // 요청 본문 읽기
 const body = async (request: Request): Promise<Record<string, unknown> | null> => {
   try {
+    // 요청 JSON 본문 조회
     const value: unknown = await request.json();
+    // 객체 본문만 반환
     return typeof value === "object" && value !== null && !Array.isArray(value)
       ? value as Record<string, unknown>
       : null;
   } catch {
+    // JSON 해석 실패 반환
     return null;
   }
 };
 
 // 업로드 입력 변환
 const payload = (value: Record<string, unknown>): Omit<UploadInput, "anonymousSessionId"> | null => {
+  // 업로드 필수 필드 확인
   if (
     typeof value.expectedSizeBytes !== "number" ||
     !Number.isSafeInteger(value.expectedSizeBytes) ||
     typeof value.declaredContentType !== "string" ||
     typeof value.rightsConfirmed !== "boolean"
   ) {
+    // 형식이 맞지 않으면 입력 거부
     return null;
   }
+  // 업로드 입력 반환
   return {
     expectedSizeBytes: value.expectedSizeBytes,
     declaredContentType: value.declaredContentType,
@@ -76,6 +88,7 @@ const payload = (value: Record<string, unknown>): Omit<UploadInput, "anonymousSe
 
 // 업로드 상태 코드
 const uploadStatus = (result: UploadResult): number => {
+  // 업로드 생성 결과를 HTTP 상태로 변환
   switch (result.kind) {
     case "CREATED": return 201;
     case "SESSION_UNAVAILABLE": return 401;
@@ -85,6 +98,7 @@ const uploadStatus = (result: UploadResult): number => {
 
 // 완료 상태 코드
 const completionStatus = (result: CompletionResult): number => {
+  // 업로드 완료 결과를 HTTP 상태로 변환
   switch (result.kind) {
     case "COMPLETED": return 202;
     case "UPLOAD_NOT_FOUND": return 404;
@@ -122,6 +136,7 @@ export const upload = async (
     record = issued;
   }
 
+  // 익명 세션을 포함한 업로드 입력 구성
   // 업로드 유스케이스 호출
   const result = await dependencies.upload({ ...input, anonymousSessionId: record.sessionId });
   // 업로드 결과 응답
@@ -142,6 +157,7 @@ export const completion = async (
     return json({ kind: "UNAUTHORIZED" }, 401);
   }
 
+  // 완료 요청에 세션 식별자 연결
   // 완료 유스케이스 호출
   const result = await dependencies.complete({
     anonymousSessionId: record.sessionId,

@@ -23,6 +23,7 @@ const message: Record<Phase, string> = {
 };
 
 const size = (bytes: number): string => {
+  // 바이트 단위 파일 크기 표시
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
@@ -35,26 +36,36 @@ const transfer = (
   progress: (value: number) => void,
   attach: (request: XMLHttpRequest) => void,
 ): Promise<void> => new Promise((resolve, reject) => {
+  // 업로드 요청 생성
   const request = new XMLHttpRequest();
+  // 요청 외부 참조 연결
   attach(request);
+  // 저장소 업로드 주소 설정
   request.open("PUT", url);
+  // 파일 MIME 타입 설정
   request.setRequestHeader("Content-Type", file.type);
+  // 업로드 진행률 전달
   request.upload.onprogress = (event) => {
     if (event.lengthComputable && event.total > 0) {
       progress(Math.min(100, Math.round((event.loaded / event.total) * 100)));
     }
   };
+  // 업로드 응답 처리
   request.onload = () => {
     if (request.status >= 200 && request.status < 300) resolve();
     else reject(new Error("upload-failed"));
   };
+  // 업로드 오류 처리
   request.onerror = () => reject(new Error("upload-failed"));
+  // 업로드 취소 처리
   request.onabort = () => reject(new Error("upload-aborted"));
+  // 파일 전송 시작
   request.send(file);
 });
 
 // API 응답 본문 확인
 const body = async (response: Response): Promise<Record<string, unknown>> => {
+  // JSON 응답 파싱
   const value: unknown = await response.json();
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error("invalid-response");
@@ -92,7 +103,9 @@ export function UploadPanel({ onView }: UploadPanelProps = {}) {
   const [low, lowState] = useState(true);
   // 파일 선택 오류 안내
   const [notice, noticeState] = useState("");
+  // 선택한 대회 상태
   const [competition, setCompetition] = useState("K리그1");
+  // 선택한 시즌 상태
   const [season, setSeason] = useState("2026");
 
   // 진행률 갱신 중지
@@ -124,6 +137,7 @@ export function UploadPanel({ onView }: UploadPanelProps = {}) {
 
   // 상태 조회 중지
   const stopPoll = () => {
+    // 상태 조회 예약 취소
     if (poll.current !== null) {
       globalThis.clearTimeout(poll.current);
       poll.current = null;
@@ -132,6 +146,7 @@ export function UploadPanel({ onView }: UploadPanelProps = {}) {
 
   // 컴포넌트 종료 정리
   useEffect(() => {
+    // 컴포넌트 활성 상태 설정
     alive.current = true;
     return () => {
       alive.current = false;
@@ -143,30 +158,38 @@ export function UploadPanel({ onView }: UploadPanelProps = {}) {
   }, []);
 
   useEffect(() => {
+    // 부모 화면에 분석 상태 전달
     onView?.(view, low);
   }, [onView, view, low]);
 
   // 분석 상태 조회
   const watch = async (videoAssetId: string): Promise<void> => {
+    // 영상 상태 조회
     try {
+      // 상태 API 호출
       const response = await fetch(`/api/uploads/${videoAssetId}`, { cache: "no-store" });
       if (!response.ok) throw new Error("status-failed");
+      // 상태 본문 변환
       const next = await response.json() as MediaView;
       if (!alive.current) return;
+      // 상태 변경 여부 계산
       const signature = JSON.stringify(next);
       if (snapshot.current !== signature) {
         snapshot.current = signature;
         setView(next);
       }
+      // 실패 상태 표시
       if (next.videoStatus === "REJECTED" || next.analysis?.status === "FAILED") {
         setPhase("error");
         return;
       }
+      // 후보 준비 완료 상태 표시
       if (next.analysis?.status === "CANDIDATES_READY") {
         setValue(100);
         setPhase("candidateReady");
         return;
       }
+      // 전체 평가 완료 상태 표시
       if (next.analysis?.status === "COMPLETED") {
         setValue(100);
         setPhase("completed");
@@ -179,6 +202,7 @@ export function UploadPanel({ onView }: UploadPanelProps = {}) {
         setValue(5);
         setPhase("validating");
       }
+      // 다음 상태 조회 예약
       poll.current = globalThis.setTimeout(() => { void watch(videoAssetId); }, 800);
     } catch {
       if (alive.current) setPhase("error");
@@ -187,6 +211,7 @@ export function UploadPanel({ onView }: UploadPanelProps = {}) {
 
   // 파일 업로드 흐름
   const upload = async (file: File) => {
+    // 업로드 상태 초기화
     try {
       // 진행률 초기화
       progress.current = 0;
@@ -199,7 +224,7 @@ export function UploadPanel({ onView }: UploadPanelProps = {}) {
       // 진행률 갱신 시작
       start();
 
-      // 업로드 의도 요청
+      // 업로드 의도 생성 요청
       const createdResponse = await fetch("/api/uploads", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -212,7 +237,7 @@ export function UploadPanel({ onView }: UploadPanelProps = {}) {
         throw new Error("upload-grant-failed");
       }
 
-      // Object Storage 직접 업로드
+      // 저장소 파일 전송
       await transfer(created.uploadUrl, file, (next) => { progress.current = next; }, (active) => { request.current = active; });
       // 전송 완료 반영
       progress.current = 100;
@@ -220,7 +245,7 @@ export function UploadPanel({ onView }: UploadPanelProps = {}) {
       // 완료 확인 단계 전환
       setPhase("completing");
 
-      // 업로드 완료 요청
+      // 업로드 완료 등록
       const completedResponse = await fetch(`/api/uploads/${created.uploadIntentId}/complete`, { method: "POST" });
       // 완료 응답 해석
       const completed = await body(completedResponse);
@@ -253,9 +278,12 @@ export function UploadPanel({ onView }: UploadPanelProps = {}) {
       return;
     }
     noticeState("");
+    // 기존 미리보기 주소 해제
     if (preview.current) URL.revokeObjectURL(preview.current);
+    // 새 미리보기 주소 생성
     const url = URL.createObjectURL(file);
     preview.current = url;
+    // 선택 파일 저장
     setSelection({ file, url });
     setPhase("selected");
     setValue(0);
@@ -264,15 +292,20 @@ export function UploadPanel({ onView }: UploadPanelProps = {}) {
     stopPoll();
   };
 
+  // 현재 업로드가 진행 중인지 확인
   const busy = ["uploading", "completing", "validating", "analyzing"].includes(phase);
+  // 분석이 끝난 상태인지 확인
   const finished = phase === "completed" || phase === "candidateReady";
+  // 하단 버튼 동작 선택
   const action = () => {
+    // 완료 상태는 새 파일 선택
     // 빠른 중복 클릭 차단
     if (busy) return;
     if (finished) {
       input.current?.click();
       return;
     }
+    // 선택 상태는 업로드 시작
     if (selection) void upload(selection.file);
   };
 
@@ -286,21 +319,31 @@ export function UploadPanel({ onView }: UploadPanelProps = {}) {
         <label>대회<select aria-label="대회" value={competition} onChange={(event) => setCompetition(event.target.value)}><option value="K리그1">K리그1</option><option value="K리그2">K리그2</option></select></label>
         <label>시즌<select aria-label="시즌" value={season} onChange={(event) => setSeason(event.target.value)}><option value="2026">2026</option></select></label>
       </div>
+      {/* 파일을 놓으면 선택 단계만 수행 */}
       <div className={`file-picker${selection ? " has-file" : ""}`}
         onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = busy ? "none" : "copy"; }}
         onDrop={(event) => {
+          // 기본 브라우저 파일 열기 동작 차단
           event.preventDefault();
+          // 첫 번째 파일 선택
           const file = event.dataTransfer.files[0];
+          // 선택된 파일 검증
           if (file) choice(file);
         }}>
+        {/* 실제 파일 입력은 화면 버튼으로 제어 */}
         <input ref={input} id="video-file" aria-label="영상 파일" type="file" accept="video/mp4,video/quicktime,video/webm" disabled={busy} onChange={(event) => {
+          // 파일 입력 이벤트에서 첫 파일 추출
           const file = event.currentTarget.files?.[0];
+          // 같은 파일 재선택 허용
           event.currentTarget.value = "";
+          // 선택된 파일 검증
           if (file) choice(file);
         }} />
         {selection ? (
           <div className="file-preview">
+            {/* 선택 영상 미리보기 */}
             <video aria-label="선택 영상 미리보기" src={selection.url} controls muted playsInline preload="auto" />
+            {/* 선택 파일 이름과 크기 표시 */}
             <div className="file-meta">
               <span><strong>{selection.file.name}</strong><small>{size(selection.file.size)} · {selection.file.type || "영상 파일"}</small></span>
               <label className="file-button" htmlFor="video-file">영상 변경</label>
@@ -308,6 +351,7 @@ export function UploadPanel({ onView }: UploadPanelProps = {}) {
           </div>
         ) : (
           <>
+            {/* 파일 선택 안내 아이콘 */}
             <span className="file-icon" aria-hidden="true">▷</span>
             <strong>영상 파일 선택</strong>
             <small>파일을 드래그하거나 버튼을 클릭하세요</small>

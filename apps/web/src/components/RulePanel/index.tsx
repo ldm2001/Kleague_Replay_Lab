@@ -17,6 +17,7 @@ const Citations = ({ citations }: Readonly<{ citations: JudgmentView["citations"
   ? <p className="rule-empty">연결된 조항 없음</p>
   : <ul className="citation-list">{citations.map((citation) => (
       <li key={citation.ruleId}>
+        {/* 조항 식별자와 원문 요약 표시 */}
         <strong>{citation.law} {citation.section}</strong>
         <p>{citation.quoteSnapshot}</p>
         {citation.sourceUrl ? <a href={citation.sourceUrl} target="_blank" rel="noreferrer">원문 보기</a> : null}
@@ -50,6 +51,7 @@ export function RulePanel({ analysis, candidate }: Readonly<{ analysis: Analysis
         <span>{analysis.rule ? `${analysis.rule.competition} ${analysis.rule.season} · IFAB ${analysis.rule.ifabEdition}` : "규정 판본 미확인"}</span>
       </header>
       <div className="rule-grid">
+        {/* 영상에서 확인된 사실 표시 */}
         <section aria-label="확인된 사실">
           <h3>확인된 사실</h3>
           <dl className="fact-grid">
@@ -59,7 +61,9 @@ export function RulePanel({ analysis, candidate }: Readonly<{ analysis: Analysis
             <div><dt>관측 속도</dt><dd>{facts.severity.observedAtSpeed}</dd></div>
           </dl>
         </section>
+        {/* IFAB 규정 인용 표시 */}
         <section aria-label="IFAB 규정"><h3>IFAB 규정</h3><Citations citations={ifab} /></section>
+        {/* K리그 대회요강 인용 표시 */}
         <section aria-label="K리그 대회요강"><h3>K리그 대회요강</h3><Citations citations={kleague} /></section>
         <section className="var-panel" aria-label="VAR 검토">
           <h3>VAR 검토</h3>

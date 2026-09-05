@@ -10,6 +10,8 @@ export async function POST(
   request: Request,
   context: { params: Promise<{ id: string }> },
 ): Promise<Response> {
+  // 업로드 의도 식별자 해석
   const { id } = await context.params;
+  // 업로드 완료 API 호출
   return completion(request, { intentId: id }, container());
 }

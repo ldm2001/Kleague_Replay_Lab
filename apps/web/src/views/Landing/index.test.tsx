@@ -8,11 +8,16 @@ import { afterEach, describe, expect, it } from "vitest";
 import { LandingView } from "./index.js";
 
 describe("LandingView", () => {
-  afterEach(() => cleanup());
+  afterEach(() => {
+    // 테스트 DOM 정리
+    cleanup();
+  });
 
   it("presents the adopted cloud-style landing structure with product-specific copy", () => {
+    // 랜딩 화면 렌더링
     render(<LandingView />);
 
+    // 랜딩 이미지 자산 존재 확인
     expect(existsSync(resolve("apps/web/src/assets/image/hero/kleague-ball.jpg"))).toBe(true);
     expect(existsSync(resolve("apps/web/src/assets/image/review/foul.jpg"))).toBe(true);
     expect(existsSync(resolve("apps/web/src/assets/image/review/handball.jpg"))).toBe(true);
@@ -20,6 +25,7 @@ describe("LandingView", () => {
     expect(existsSync(resolve("apps/web/src/assets/image/review/goal.jpg"))).toBe(true);
     expect(existsSync(resolve("apps/web/src/assets/image/brand/kleague-logo.png"))).toBe(true);
     expect(existsSync(resolve("apps/web/src/assets/image/brand/kleague-logo-light.png"))).toBe(true);
+    // 랜딩 제목과 메뉴 확인
     expect(screen.getByRole("heading", { name: "경기 판정의 새로운 근거를 열다" })).toBeInTheDocument();
     expect(screen.getByTestId("hero-art")).toHaveAttribute("src", "/apps/web/src/assets/image/hero/kleague-ball.jpg");
     expect(screen.getByTestId("site-logo")).toHaveAttribute("src", "/apps/web/src/assets/image/brand/kleague-logo-light.png");

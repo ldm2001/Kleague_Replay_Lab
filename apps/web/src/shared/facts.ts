@@ -21,12 +21,14 @@ export type Observed<T> = {
   shotIds: string[];
 };
 
+// 관측 사실 객체 생성
 export const observation = <T>(
   value: T,
   observedAtSpeed: ObservationSpeed,
   shotIds: string[] = [],
 ): Observed<T> => ({ value, observedAtSpeed, shotIds });
 
+// 밀기 사실 묶음
 export type PushFacts = {
   contactDetected: Observed<boolean>;
   severity: Observed<ObservedSeverity>;
@@ -35,6 +37,7 @@ export type PushFacts = {
   cameraSufficiency: CameraSufficiency;
 };
 
+// VAR 사실 묶음
 export type VarFacts = {
   // 중계에서 관측한 판정 상황
   reviewScenario: ReviewScenario;
@@ -50,6 +53,7 @@ export type VarFacts = {
   seriousMissedIncident: boolean;
 };
 
+// 관측 판정 묶음
 export type ObservedDecision = {
   restartType: RestartType;
   restartBeneficiary: RestartBeneficiary;
@@ -58,6 +62,7 @@ export type ObservedDecision = {
   source: ObservedSource;
 };
 
+// 전체 평가 사실 묶음
 export type EvaluationFacts = {
   push: PushFacts;
   variable: VarFacts;
@@ -65,4 +70,5 @@ export type EvaluationFacts = {
 };
 
 // 대회 채택 옵션과 판본 분리
+// 대회별 규정 옵션
 export type CompetitionOptions = Readonly<Record<string, boolean | undefined>>;

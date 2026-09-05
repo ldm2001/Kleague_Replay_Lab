@@ -228,9 +228,11 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
   }
 
   public async result(command: JobResultCommand): Promise<JobResult> {
+    // Worker 결과 유형별 저장 분기
     const lease = Buffer.from(command.leaseTokenHash);
     let rows: unknown[];
     if (command.payload.kind === "VALIDATED") {
+      // 영상 검증 결과 저장과 분석 작업 생성
       const payload = command.payload;
       rows = await this.client.db.transaction(async (transaction) => transaction.execute(sql`
           with target as materialized (
@@ -332,6 +334,7 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
           end as kind
         `));
     } else if (command.payload.kind === "ANALYZED") {
+      // 영상 분석 결과와 증거 저장
       const payload = command.payload;
       rows = await this.client.db.transaction(async (transaction) => {
         const selected = await transaction.execute(sql`
@@ -352,8 +355,11 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
           lease_until: string | null;
           analysis_id: string | null;
         }>;
+        // 작업 대상이 없으면 결과 저장 중단
         if (!target) return [{ kind: "NOT_FOUND" }];
+        // 완료된 작업은 중복 결과 차단
         if (target.status !== "PROCESSING") return [{ kind: "ALREADY_FINISHED" }];
+        // 현재 Worker Lease 확인
         const validLease =
           target.job_type === "ANALYZE_VIDEO" &&
           target.analysis_id !== null &&
@@ -365,6 +371,7 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
           new Date(target.lease_until).getTime() > new Date(command.now).getTime();
         if (!validLease) return [{ kind: "STALE_LEASE" }];
 
+        // 샷 목록 저장
         for (const item of payload.shots) {
           await transaction.execute(sql`
             insert into shots (
@@ -376,6 +383,7 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
           `);
         }
 
+        // 후보 장면 목록 저장
         for (const item of payload.candidates) {
           await transaction.execute(sql`
             insert into incident_candidates (
@@ -391,6 +399,7 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
           `);
         }
 
+        // 후보별 증거 자산 저장
         for (const item of payload.evidence ?? []) {
           const prefix = `evidence/${target.analysis_id}/${target.id}/`;
           if (!item.objectKey.startsWith(prefix)) {
@@ -419,6 +428,7 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
           `);
         }
 
+        // 분석 상태를 후보 준비 완료로 전환
         await transaction.execute(sql`
           update analyses
           set status = 'CANDIDATES_READY',
@@ -428,6 +438,7 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
               completed_at = null
           where id = ${target.analysis_id}
         `);
+        // 분석 작업 완료 처리
         await transaction.execute(sql`
           update processing_jobs
           set status = 'SUCCEEDED', stage = 'SUCCEEDED', progress_percent = 100,
@@ -435,6 +446,7 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
               lease_until = null, failure_code = null, retryable = null, updated_at = ${command.now}
           where id = ${target.id}
         `);
+        // 작업 완료 이벤트 기록
         await transaction.execute(sql`
           insert into processing_job_events (
             job_id, job_revision, attempt, event_type, stage, progress_percent, created_at
@@ -446,6 +458,7 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
         return [{ kind: "ACCEPTED" }];
       });
     } else {
+      // Worker 실패 결과 저장
       const payload = command.payload;
       rows = await this.client.db.transaction(async (transaction) => transaction.execute(sql`
           with target as materialized (
@@ -509,10 +522,12 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
     }
 
     const [row] = rows as unknown as Array<{ kind: JobResult["kind"] }>;
+    // 저장 결과 반환
     return row ?? { kind: "NOT_FOUND" };
   }
 
   public async access(command: EvidenceAccessCommand): Promise<EvidenceAccess> {
+    // 현재 Lease가 증거 업로드 권한을 가지는지 확인
     const rows = await this.client.db.execute(sql`
       select analysis_id
       from processing_jobs
@@ -527,12 +542,16 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
       limit 1
     `);
     const [row] = rows as unknown as Array<{ analysis_id: string }>;
+    // 유효한 Lease면 분석 식별자 반환
     if (row) return { kind: "AUTHORIZED", analysisId: row.analysis_id };
+    // 작업 상태 확인
     const jobs = await this.client.db.execute(sql`
       select status from processing_jobs where id = ${command.jobId} limit 1
     `);
     const [job] = jobs as unknown as Array<{ status: string }>;
+    // 작업이 없으면 접근 실패
     if (!job) return { kind: "NOT_FOUND" };
+    // 처리 중이면 Lease 만료 결과 반환
     return job.status === "PROCESSING" ? { kind: "STALE_LEASE" } : { kind: "ALREADY_FINISHED" };
   }
 }
