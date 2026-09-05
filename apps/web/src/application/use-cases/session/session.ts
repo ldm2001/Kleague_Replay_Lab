@@ -1,19 +1,19 @@
 import type { Clock } from "../../ports/clock/clock";
 import type { Hasher } from "../../ports/hashing/hasher";
-import type { SessionRepository, SessionRecord } from "../../ports/repositories/session-repository";
+import type { SessionStore, SessionRecord } from "../../ports/repositories/session-store";
 
 export type SessionPolicy = Readonly<{ ttlMs: number }>;
 
 export type SessionDependencies = Readonly<{
   clock: Clock;
   policy: SessionPolicy;
-  repository: SessionRepository;
+  repository: SessionStore;
 }>;
 
 export type RecordDependencies = Readonly<{
   clock: Clock;
   hasher: Hasher;
-  repository: SessionRepository;
+  repository: SessionStore;
 }>;
 
 // 익명 세션 발급

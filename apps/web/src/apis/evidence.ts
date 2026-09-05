@@ -6,6 +6,7 @@ export type EvidenceApiDependencies = Readonly<{
   body: (objectKey: string) => Promise<EvidenceBody>;
 }>;
 
+// 세션 쿠키 추출
 const token = (request: Request): string | null => {
   const value = request.headers.get("cookie");
   if (!value) return null;
@@ -16,6 +17,7 @@ const token = (request: Request): string | null => {
   return null;
 };
 
+// 오류 응답 생성
 const error = (kind: string, status: number): Response =>
   new Response(JSON.stringify({ kind }), {
     status,
@@ -25,6 +27,7 @@ const error = (kind: string, status: number): Response =>
     },
   });
 
+// 증거 스트림 생성
 const stream = (body: AsyncIterable<Uint8Array>): ReadableStream<Uint8Array> => {
   const iterator = body[Symbol.asyncIterator]();
   return new ReadableStream<Uint8Array>({

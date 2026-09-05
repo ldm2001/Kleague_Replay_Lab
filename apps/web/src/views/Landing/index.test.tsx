@@ -5,13 +5,13 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { LandingPage } from "./index.js";
+import { LandingView } from "./index.js";
 
-describe("LandingPage", () => {
+describe("LandingView", () => {
   afterEach(() => cleanup());
 
   it("presents the adopted cloud-style landing structure with product-specific copy", () => {
-    render(<LandingPage />);
+    render(<LandingView />);
 
     expect(existsSync(resolve("apps/web/src/assets/image/hero/kleague-ball.jpg"))).toBe(true);
     expect(existsSync(resolve("apps/web/src/assets/image/review/foul.jpg"))).toBe(true);

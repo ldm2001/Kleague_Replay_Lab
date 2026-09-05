@@ -1,8 +1,8 @@
 import type {
-  CompleteUploadInput,
-  CompleteUploadResult,
-  CreateUploadInput,
-  CreateUploadResult,
+  CompletionInput,
+  CompletionResult,
+  UploadInput,
+  UploadResult,
   SessionGrant,
   SessionRecord,
 } from "@replay/application";
@@ -10,8 +10,8 @@ import type {
 export type UploadApiDependencies = Readonly<{
   issue: () => Promise<SessionGrant>;
   resolve: (token: string) => Promise<SessionRecord | null>;
-  upload: (input: CreateUploadInput) => Promise<CreateUploadResult>;
-  complete: (input: CompleteUploadInput) => Promise<CompleteUploadResult>;
+  upload: (input: UploadInput) => Promise<UploadResult>;
+  complete: (input: CompletionInput) => Promise<CompletionResult>;
 }>;
 
 const COOKIE = "replay_session";
@@ -56,7 +56,7 @@ const body = async (request: Request): Promise<Record<string, unknown> | null> =
 };
 
 // 업로드 입력 변환
-const payload = (value: Record<string, unknown>): Omit<CreateUploadInput, "anonymousSessionId"> | null => {
+const payload = (value: Record<string, unknown>): Omit<UploadInput, "anonymousSessionId"> | null => {
   if (
     typeof value.expectedSizeBytes !== "number" ||
     !Number.isSafeInteger(value.expectedSizeBytes) ||
@@ -75,7 +75,7 @@ const payload = (value: Record<string, unknown>): Omit<CreateUploadInput, "anony
 };
 
 // 업로드 상태 코드
-const uploadCode = (result: CreateUploadResult): number => {
+const uploadStatus = (result: UploadResult): number => {
   switch (result.kind) {
     case "CREATED": return 201;
     case "SESSION_UNAVAILABLE": return 401;
@@ -84,7 +84,7 @@ const uploadCode = (result: CreateUploadResult): number => {
 };
 
 // 완료 상태 코드
-const completionCode = (result: CompleteUploadResult): number => {
+const completionStatus = (result: CompletionResult): number => {
   switch (result.kind) {
     case "COMPLETED": return 202;
     case "UPLOAD_NOT_FOUND": return 404;
@@ -125,7 +125,7 @@ export const upload = async (
   // 업로드 유스케이스 호출
   const result = await dependencies.upload({ ...input, anonymousSessionId: record.sessionId });
   // 업로드 결과 응답
-  return json(result, uploadCode(result), issued ? { "set-cookie": headerCookie(issued.token) } : undefined);
+  return json(result, uploadStatus(result), issued ? { "set-cookie": headerCookie(issued.token) } : undefined);
 };
 
 // 업로드 완료 요청
@@ -148,5 +148,5 @@ export const completion = async (
     uploadIntentId: params.intentId,
   });
   // 완료 결과 응답
-  return json(result, completionCode(result));
+  return json(result, completionStatus(result));
 };

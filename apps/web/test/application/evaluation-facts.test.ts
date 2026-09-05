@@ -1,5 +1,6 @@
+// 사실 유스케이스 테스트
 import { describe, expect, it } from "vitest";
-import { facts, type Clock, type EvaluationRepo, type Hasher } from "@replay/application";
+import { facts, type Clock, type EvaluationStore, type Hasher } from "@replay/application";
 import { observation, type EvaluationFacts } from "@replay/shared-types";
 
 const SESSION = "11111111-1111-4111-8111-111111111111";
@@ -39,9 +40,9 @@ class HashFake implements Hasher {
   }
 }
 
-class RepoFake implements EvaluationRepo {
+class EvaluationDouble implements EvaluationStore {
   calls: unknown[] = [];
-  async patch(input: Parameters<EvaluationRepo["patch"]>[0]) {
+  async patch(input: Parameters<EvaluationStore["patch"]>[0]) {
     this.calls.push(input);
     return { kind: "CREATED" as const, factRevisionId: CANDIDATE, revision: 1 };
   }
@@ -53,7 +54,7 @@ const clock: Clock = { now: () => NOW };
 
 describe("facts", () => {
   it("keeps valid observed facts in a user revision command", async () => {
-    const repository = new RepoFake();
+    const repository = new EvaluationDouble();
     const result = await facts({ clock, hasher: new HashFake(), repository })({
       anonymousSessionId: SESSION,
       analysisId: ANALYSIS,
@@ -73,7 +74,7 @@ describe("facts", () => {
   });
 
   it("rejects facts that are outside the shared vocabulary", async () => {
-    const repository = new RepoFake();
+    const repository = new EvaluationDouble();
     const result = await facts({ clock, hasher: new HashFake(), repository })({
       anonymousSessionId: SESSION,
       analysisId: ANALYSIS,
@@ -87,7 +88,7 @@ describe("facts", () => {
   });
 
   it("rejects a non string expected fact revision", async () => {
-    const repository = new RepoFake();
+    const repository = new EvaluationDouble();
     const result = await facts({ clock, hasher: new HashFake(), repository })({
       anonymousSessionId: SESSION,
       analysisId: ANALYSIS,

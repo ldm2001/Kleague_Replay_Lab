@@ -1,7 +1,7 @@
 import {
   hash,
-  sessionRepo,
-  uploadRepo,
+  sessionStore,
+  uploadStore,
 } from "@replay/adapters";
 import {
   completion,
@@ -12,7 +12,7 @@ import {
 } from "@replay/application";
 import { client } from "@replay/database";
 import type { UploadApiDependencies } from "../apis/upload";
-import { mediaPolicy, sessionPolicy } from "../constant/media-policy";
+import { mediaPolicy, sessionPolicy } from "../constant/media";
 import { storage as objectStorage } from "./storage";
 
 const clock: Clock = { now: () => new Date() };
@@ -36,9 +36,9 @@ export const container = (): UploadApiDependencies => {
   // Object Storage 어댑터 생성
   const storage = objectStorage();
   // 세션 저장소 생성
-  const sessions = sessionRepo(database);
+  const sessions = sessionStore(database);
   // 업로드 저장소 생성
-  const uploads = uploadRepo(database);
+  const uploads = uploadStore(database);
   // 해시 어댑터 생성
   const hasher = hash();
   // 세션 발급 유스케이스 생성

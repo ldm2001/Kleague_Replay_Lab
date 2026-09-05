@@ -1,9 +1,0 @@
-export type UploadPolicy = Readonly<{
-  maxBytes: number;
-  allowedContentTypes: readonly string[];
-  uploadIntentTtlMs: number;
-  sourceTtlMs: number;
-  mediaPolicyVersion: string;
-  validationJobPayloadVersion: number;
-  validationMaxAttempts: number;
-}>;

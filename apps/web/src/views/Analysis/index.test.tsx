@@ -3,7 +3,7 @@ import "@testing-library/jest-dom/vitest";
 import * as React from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AnalysisPage } from "./index.js";
+import { AnalysisView } from "./index.js";
 
 const { push } = vi.hoisted(() => ({ push: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
@@ -21,11 +21,13 @@ class UploadRequest {
   abort() { this.onabort?.(); }
 }
 
-describe("AnalysisPage", () => {
+// 분석 화면 테스트
+describe("AnalysisView", () => {
   afterEach(() => { cleanup(); vi.restoreAllMocks(); push.mockReset(); });
 
+  // 업로드 화면 확인
   it("presents the upload flow on its own analysis page", () => {
-    render(<AnalysisPage />);
+    render(<AnalysisView />);
 
     expect(screen.getByRole("link", { name: "K리그 판정 보조 홈" })).toHaveAttribute("href", "/");
     expect(screen.getByTestId("site-logo")).toHaveAttribute("src", "/apps/web/src/assets/image/brand/kleague-logo.png");
@@ -36,7 +38,8 @@ describe("AnalysisPage", () => {
     expect(screen.getByRole("button", { name: "분석 시작" })).toBeInTheDocument();
   });
 
-  it("moves to the result page after processing", async () => {
+  // 완료 후 결과 이동 확인
+  it.each([true, false])("결과 이동과 표시 옵션 %s", async (low) => {
     vi.stubGlobal("XMLHttpRequest", UploadRequest);
     Object.defineProperty(URL, "createObjectURL", { configurable: true, value: vi.fn(() => "blob:match.mp4") });
     Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: vi.fn() });
@@ -60,10 +63,11 @@ describe("AnalysisPage", () => {
         },
       }), { status: 200 }));
 
-    render(<AnalysisPage />);
+    render(<AnalysisView />);
+    if (!low) fireEvent.click(screen.getByRole("checkbox", { name: "낮은 확신도 장면도 표시" }));
     fireEvent.change(screen.getByLabelText("영상 파일"), { target: { files: [new File([new Uint8Array(128)], "match.mp4", { type: "video/mp4" })] } });
     fireEvent.click(screen.getByRole("button", { name: "분석 시작" }));
 
-    await waitFor(() => expect(push).toHaveBeenCalledWith("/results/44444444-4444-4444-8444-444444444444"));
+    await waitFor(() => expect(push).toHaveBeenCalledWith(`\/results/44444444-4444-4444-8444-444444444444${low ? "" : "?low=0"}`));
   });
 });

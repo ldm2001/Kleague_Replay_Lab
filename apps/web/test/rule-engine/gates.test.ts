@@ -1,3 +1,4 @@
+// 규정 게이트 테스트
 import type { PushFacts } from "@replay/shared-types";
 import { observation } from "@replay/shared-types";
 import { ruleSet } from "@replay/rule-data";

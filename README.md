@@ -2116,8 +2116,8 @@ Replay_Lab/
 │   │   │   │   ├── Header/style.css
 │   │   │   │   ├── Footer/index.tsx
 │   │   │   │   ├── Footer/style.css
-│   │   │   │   ├── UploadBox/index.tsx
-│   │   │   │   └── UploadBox/style.css
+│   │   │   │   ├── UploadPanel/index.tsx
+│   │   │   │   └── UploadPanel/style.css
 │   │   │   ├── apis/                   # Route Handler가 호출하는 API 조립
 │   │   │   ├── application/            # Use Case와 Port
 │   │   │   ├── adapters/               # PostgreSQL과 Object Storage 구현

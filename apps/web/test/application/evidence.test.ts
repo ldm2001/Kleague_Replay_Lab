@@ -4,7 +4,7 @@ import {
   type Clock,
   type EvidenceAccess,
   type EvidenceAccessCommand,
-  type EvidenceAccessRepo,
+  type EvidenceStore,
   type EvidenceGrant,
   type EvidenceGrantInput,
   type EvidenceStorage,
@@ -12,7 +12,7 @@ import {
 
 const NOW = new Date("2026-08-31T00:00:00.000Z");
 
-class AccessRepo implements EvidenceAccessRepo {
+class EvidenceStoreFake implements EvidenceStore {
   commands: EvidenceAccessCommand[] = [];
   response: EvidenceAccess = {
     kind: "AUTHORIZED",
@@ -39,7 +39,7 @@ class Storage implements EvidenceStorage {
 
 describe("evidence grants", () => {
   it("authorizes a lease and grants only bounded evidence files", async () => {
-    const repository = new AccessRepo();
+    const repository = new EvidenceStoreFake();
     const storage = new Storage();
     const result = await evidence({
       clock: { now: () => NOW } satisfies Clock,
@@ -69,7 +69,7 @@ describe("evidence grants", () => {
   });
 
   it("rejects unsupported evidence before storage", async () => {
-    const repository = new AccessRepo();
+    const repository = new EvidenceStoreFake();
     const storage = new Storage();
     const operation = evidence({
       clock: { now: () => NOW },
@@ -90,7 +90,7 @@ describe("evidence grants", () => {
   });
 
   it("accepts evidence for every baseline candidate", async () => {
-    const repository = new AccessRepo();
+    const repository = new EvidenceStoreFake();
     const storage = new Storage();
     const operation = evidence({
       clock: { now: () => NOW },

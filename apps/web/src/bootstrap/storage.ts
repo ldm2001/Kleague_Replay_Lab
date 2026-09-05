@@ -1,3 +1,4 @@
+// 객체 저장소 연결
 import { S3Client } from "@aws-sdk/client-s3";
 import { s3, type S3Storage } from "@replay/adapters";
 

@@ -1,8 +1,9 @@
 import type { Clock } from "../../ports/clock/clock";
-import type { LatestMediaRepo } from "../../ports/repositories/status-repo";
+import type { LatestMediaStore } from "../../ports/repositories/status-store";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+// 최근 영상 입력
 export type LatestInput = Readonly<{ anonymousSessionId: string }>;
 
 export type LatestResult =
@@ -12,7 +13,7 @@ export type LatestResult =
 
 export type LatestDependencies = Readonly<{
   clock: Clock;
-  repository: LatestMediaRepo;
+  repository: LatestMediaStore;
 }>;
 
 export const latest =

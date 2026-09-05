@@ -1,17 +1,18 @@
+// 저장소 어댑터 공개 목록
 export {
-  AnalysisRepo,
-  analysisRepo,
-} from "./analysis-repo";
+  AnalysisStore,
+  analysisStore,
+} from "./analysis-store";
 export {
-  UploadRepo,
-  uploadRepo,
-} from "./upload-repo";
+  UploadStore,
+  uploadStore,
+} from "./upload-store";
 export {
-  SessionRepo,
-  sessionRepo,
-} from "./session-repo";
-export { S3Storage, s3, type S3ObjectClient, type S3UploadStorageOptions } from "./s3-upload-storage";
-export { Sha256Hasher, hash } from "./hashing/node-sha256-hasher";
-export { JobRepo, jobRepo } from "./job-repo";
-export { StatusRepo, statusRepo } from "./status-repo";
-export { EvaluationRepo, evaluationRepo } from "./evaluation-repo";
+  SessionStore,
+  sessionStore,
+} from "./session-store";
+export { S3Storage, s3, type S3ObjectClient, type StorageOptions } from "./storage";
+export { Sha256, hash } from "./hashing/sha256";
+export { JobStore, jobStore } from "./job-store";
+export { StatusStore, statusStore } from "./status-store";
+export { EvaluationStore, evaluationStore } from "./evaluation-store";

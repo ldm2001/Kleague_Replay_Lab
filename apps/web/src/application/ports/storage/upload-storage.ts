@@ -1,10 +1,11 @@
+// 업로드 저장 포트
 export type UploadGrant = Readonly<{
   objectKey: string;
   uploadUrl: string;
   expiresAt: string;
 }>;
 
-export type CreateUploadStorage = Readonly<{
+export type UploadStorage = Readonly<{
   grant: (input: Readonly<{
     anonymousSessionId: string;
     expectedSizeBytes: number;
@@ -19,7 +20,7 @@ export type UploadedObjectHead = Readonly<{
   contentSha256: Uint8Array;
 }>;
 
-export type CompleteUploadStorage = Readonly<{
+export type CompletionStorage = Readonly<{
   head: (objectKey: string) => Promise<UploadedObjectHead | null>;
 }>;
 

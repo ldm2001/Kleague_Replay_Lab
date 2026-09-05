@@ -6,11 +6,15 @@ import hashlib
 import tempfile
 import threading
 import time
+import logging
 from pathlib import Path
 from typing import Protocol
 
 from .http import Api
 from .worker import job
+
+# 오류 종류만 기록해 재시도와 종료 원인 추적
+logger = logging.getLogger(__name__)
 
 
 class WorkerApi(Protocol):
@@ -46,21 +50,21 @@ class Pulse:
         with self.lock:
             self.stage = stage
             self.percent = percent
-        try:
-            self.api.progress(self.item, stage, percent, message)
-        except Exception:
-            pass
+            # heartbeat와 단계 보고의 요청 완료 순서를 동일 잠금으로 보장
+            try:
+                self.api.progress(self.item, stage, percent, message)
+            except Exception as error:
+                logger.warning("progress-failed type=%s", type(error).__name__)
 
     # 갱신 반복
     def beat(self) -> None:
         while not self.stop.wait(self.interval):
             with self.lock:
-                stage = self.stage
-                percent = self.percent
-            try:
-                self.api.progress(self.item, stage, percent, "worker-heartbeat")
-            except Exception:
-                self.stop.set()
+                try:
+                    self.api.progress(self.item, self.stage, self.percent, "worker-heartbeat")
+                except Exception as error:
+                    logger.warning("heartbeat-failed type=%s", type(error).__name__)
+                    self.stop.set()
 
     # 갱신 시작
     def __enter__(self) -> Pulse:
@@ -195,9 +199,17 @@ def cycle(api: WorkerApi, kind: str, root: Path) -> bool:
 # Worker 반복 실행
 def loop(api: WorkerApi, root: Path, delay: float) -> None:
     while True:
-        worked = cycle(api, "VALIDATE_VIDEO", root)
-        worked = cycle(api, "ANALYZE_VIDEO", root) or worked
-        if not worked:
+        # 한 종류의 작업 조회 실패가 전체 워커를 중단하지 않도록 격리
+        worked = False
+        failure = False
+        for kind in ("VALIDATE_VIDEO", "ANALYZE_VIDEO"):
+            try:
+                worked = cycle(api, kind, root) or worked
+            except Exception as error:
+                logger.warning("claim-failed job=%s type=%s", kind, type(error).__name__)
+                failure = True
+        # 실패 반복 중 요청 과열 방지
+        if failure or not worked:
             time.sleep(delay)
 
 

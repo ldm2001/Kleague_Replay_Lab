@@ -12,12 +12,14 @@ export type EvaluationApiDependencies = Readonly<{
   decision: (input: DecisionInput) => Promise<DecisionResult>;
 }>;
 
+// JSON 응답 생성
 const json = (body: unknown, status: number): Response =>
   new Response(JSON.stringify(body), {
     status,
     headers: { "cache-control": "no-store", "content-type": "application/json; charset=utf-8" },
   });
 
+// 세션 쿠키 추출
 const cookie = (request: Request): string | null => {
   const value = request.headers.get("cookie");
   if (!value) return null;
@@ -28,6 +30,7 @@ const cookie = (request: Request): string | null => {
   return null;
 };
 
+// 요청 본문 해석
 const body = async (request: Request): Promise<Record<string, unknown> | null> => {
   try {
     const value: unknown = await request.json();
@@ -37,7 +40,8 @@ const body = async (request: Request): Promise<Record<string, unknown> | null> =
   }
 };
 
-const factPayload = (value: Record<string, unknown>): Pick<FactInput, "expectedFactRevisionId" | "facts" | "idempotencyKey"> | null => {
+// 사실 입력 검증
+const factInput = (value: Record<string, unknown>): Pick<FactInput, "expectedFactRevisionId" | "facts" | "idempotencyKey"> | null => {
   const key = value.idempotencyKey;
   if (typeof key !== "string" || typeof value.facts !== "object" || value.facts === null || Array.isArray(value.facts)) return null;
   if (value.expectedFactRevisionId !== undefined && value.expectedFactRevisionId !== null && typeof value.expectedFactRevisionId !== "string") return null;
@@ -48,6 +52,7 @@ const factPayload = (value: Record<string, unknown>): Pick<FactInput, "expectedF
   };
 };
 
+// 사실 응답 상태 계산
 const factCode = (result: FactResult): number => {
   if (result.kind === "CREATED" || result.kind === "REPLAYED") return result.kind === "CREATED" ? 201 : 200;
   if (result.kind === "STALE_FACT_REVISION" || result.kind === "IDEMPOTENCY_KEY_REUSED") return 409;
@@ -55,6 +60,7 @@ const factCode = (result: FactResult): number => {
   return 400;
 };
 
+// 판정 응답 상태 계산
 const decisionCode = (result: DecisionResult): number => {
   switch (result.kind) {
     case "CREATED": return 201;
@@ -62,6 +68,8 @@ const decisionCode = (result: DecisionResult): number => {
     case "NOT_FOUND":
     case "NO_FACTS": return 404;
     case "FACT_NOT_FOUND":
+    case "STALE_FACT_REVISION":
+    case "STALE_ANALYSIS":
     case "RULE_VERSION_UNAVAILABLE":
     case "RULE_VERSION_UNKNOWN": return 409;
     case "EVALUATION_FAILED": return 422;
@@ -77,7 +85,7 @@ export const facts = async (
   const session = await dependencies.resolve(cookie(request) ?? "");
   if (!session) return json({ kind: "UNAUTHORIZED" }, 401);
   const value = await body(request);
-  const payload = value ? factPayload(value) : null;
+  const payload = value ? factInput(value) : null;
   if (!payload) return json({ kind: "INVALID_REQUEST" }, 400);
   const result = await dependencies.facts({
     ...payload,

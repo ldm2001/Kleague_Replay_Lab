@@ -8,13 +8,14 @@ import type {
   JobFailurePayload,
   JobResult,
   JobResultPayload,
-  JobResultRepository,
+  JobResultStore,
   ValidationPayload,
-} from "../../ports/repositories/job-repo";
+} from "../../ports/repositories/job-store";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CODE = /^[A-Z0-9_]{1,64}$/;
 
+// 작업 결과 입력
 export type ResultInput = Readonly<{
   jobId: string;
   workerId: string;
@@ -38,7 +39,7 @@ export type ResultResult = JobResult | Readonly<{
 export type ResultDependencies = Readonly<{
   clock: Clock;
   hasher: Hasher;
-  repository: JobResultRepository;
+  repository: JobResultStore;
 }>;
 
 const validation = (payload: ValidationPayload): boolean =>
@@ -122,6 +123,7 @@ const payload = (value: JobResultPayload): boolean =>
 export const result =
   ({ clock, hasher, repository }: ResultDependencies) =>
   async (input: ResultInput): Promise<ResultResult> => {
+    // 작업 결과 검증
     if (!UUID.test(input.jobId)) {
       return { kind: "INVALID_INPUT", reason: "JOB_ID" };
     }

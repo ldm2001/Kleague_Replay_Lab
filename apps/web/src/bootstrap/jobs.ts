@@ -1,5 +1,5 @@
 import { claim, evidence as evidenceCase, progress as progressCase, result as resultCase, type Clock } from "@replay/application";
-import { hash, jobRepo } from "@replay/adapters";
+import { hash, jobStore } from "@replay/adapters";
 import { client } from "@replay/database";
 import type { JobApiDependencies } from "../apis/job";
 import { storage } from "./storage";
@@ -31,7 +31,7 @@ export const jobs = (): JobApiDependencies => {
   // 데이터베이스 연결 생성
   const database = client(env("DATABASE_URL"));
   // 작업 저장소 생성
-  const repository = jobRepo(database);
+  const repository = jobStore(database);
   // Object Storage 생성
   const source = storage();
   // 해시 어댑터 생성

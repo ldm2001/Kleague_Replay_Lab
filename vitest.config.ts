@@ -16,6 +16,8 @@ export default defineConfig({
     },
   },
   test: {
+    // 같은 테스트 DB의 작업 큐를 서로 다른 파일이 선점하지 않도록 순차 실행
+    fileParallelism: !process.env.DATABASE_URL,
     include: ["apps/web/test/**/*.test.ts", "apps/web/src/**/*.test.{ts,tsx}"],
   },
 });

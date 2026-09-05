@@ -1,6 +1,6 @@
 import type { Hasher } from "../../ports/hashing/hasher";
 import type { Clock } from "../../ports/clock/clock";
-import type { EvaluationRepo, FactPatchResult } from "../../ports/repositories/evaluation-repo";
+import type { EvaluationStore, FactPatchResult } from "../../ports/repositories/evaluation-store";
 import type { EvaluationFacts } from "@replay/shared-types";
 import {
   CAMERA_SUFFICIENCY_LEVELS,
@@ -21,6 +21,7 @@ import {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const KEY_MAX = 200;
 
+// 사실 입력
 export type FactInput = Readonly<{
   anonymousSessionId: string;
   analysisId: string;
@@ -35,7 +36,7 @@ export type FactResult = FactPatchResult | Readonly<{ kind: "INVALID_INPUT"; rea
 export type FactDependencies = Readonly<{
   clock: Clock;
   hasher: Hasher;
-  repository: EvaluationRepo;
+  repository: EvaluationStore;
 }>;
 
 const object = (value: unknown): value is Record<string, unknown> =>
@@ -81,6 +82,7 @@ const ids = (input: FactInput): boolean =>
 export const facts =
   ({ clock, hasher, repository }: FactDependencies) =>
   async (input: FactInput): Promise<FactResult> => {
+    // 입력 식별자 검증
     if (!ids(input)) return { kind: "INVALID_INPUT", reason: "ID" };
     const expected = input.expectedFactRevisionId;
     if (expected !== undefined && expected !== null && (typeof expected !== "string" || !UUID.test(expected))) {

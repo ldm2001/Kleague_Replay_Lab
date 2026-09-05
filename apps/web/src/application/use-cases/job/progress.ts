@@ -2,9 +2,9 @@ import type { Clock } from "../../ports/clock/clock";
 import type { Hasher } from "../../ports/hashing/hasher";
 import type {
   JobProgress,
-  JobProgressRepository,
+  JobProgressStore,
   JobStage,
-} from "../../ports/repositories/job-repo";
+} from "../../ports/repositories/job-store";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const STAGES = [
@@ -42,7 +42,7 @@ export type ProgressResult = JobProgress | Readonly<{
 export type ProgressDependencies = Readonly<{
   clock: Clock;
   hasher: Hasher;
-  repository: JobProgressRepository;
+  repository: JobProgressStore;
   leaseMs: number;
 }>;
 

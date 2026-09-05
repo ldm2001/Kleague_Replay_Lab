@@ -1,5 +1,5 @@
 import type { Clock } from "../../ports/clock/clock";
-import type { JobClaim, JobRepository, JobType } from "../../ports/repositories/job-repo";
+import type { JobClaim, JobStore, JobType } from "../../ports/repositories/job-store";
 import type { JobSourceStorage } from "../../ports/storage/upload-storage";
 
 const TYPES = ["VALIDATE_VIDEO", "ANALYZE_VIDEO"] as const satisfies readonly JobType[];
@@ -18,7 +18,7 @@ export type ClaimResult = JobClaim | null | Readonly<{
 
 export type ClaimDependencies = Readonly<{
   clock: Clock;
-  repository: JobRepository;
+  repository: JobStore;
   source: JobSourceStorage;
   leaseMs: number;
 }>;

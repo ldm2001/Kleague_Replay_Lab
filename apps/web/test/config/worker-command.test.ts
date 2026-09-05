@@ -1,3 +1,4 @@
+// 워커 실행 설정 테스트
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 

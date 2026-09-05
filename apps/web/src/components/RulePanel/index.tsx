@@ -1,6 +1,7 @@
 import * as React from "react";
 import type { AnalysisView, CandidateView, JudgmentView } from "@replay/application";
 
+// 판정 문구 변환
 const decision = (value: JudgmentView["decision"]): string => {
   switch (value) {
     case "FOUL": return "파울 가능성 있음";
@@ -11,7 +12,8 @@ const decision = (value: JudgmentView["decision"]): string => {
   }
 };
 
-const CitationList = ({ citations }: Readonly<{ citations: JudgmentView["citations"] }>) => citations.length === 0
+// 규정 인용 목록 표시
+const Citations = ({ citations }: Readonly<{ citations: JudgmentView["citations"] }>) => citations.length === 0
   ? <p className="rule-empty">연결된 조항 없음</p>
   : <ul className="citation-list">{citations.map((citation) => (
       <li key={citation.ruleId}>
@@ -22,8 +24,10 @@ const CitationList = ({ citations }: Readonly<{ citations: JudgmentView["citatio
     ))}</ul>;
 
 export function RulePanel({ analysis, candidate }: Readonly<{ analysis: AnalysisView; candidate: CandidateView }>) {
+  // 선택 장면 판정 조회
   const judgment = candidate.judgment;
   if (!judgment) {
+    // 사실 추출 대기 화면 표시
     return (
       <section className="rule-panel pending" aria-label="규정 대조">
         <div><p>규정 대조</p><h2>영상 사실 추출 대기</h2></div>
@@ -32,8 +36,11 @@ export function RulePanel({ analysis, candidate }: Readonly<{ analysis: Analysis
     );
   }
 
+  // IFAB 인용 분리
   const ifab = judgment.citations.filter((citation) => citation.authority === "IFAB");
+  // K리그 인용 분리
   const kleague = judgment.citations.filter((citation) => citation.authority === "KLEAGUE");
+  // 사실 묶음 선택
   const facts = judgment.facts.push;
 
   return (
@@ -52,8 +59,8 @@ export function RulePanel({ analysis, candidate }: Readonly<{ analysis: Analysis
             <div><dt>관측 속도</dt><dd>{facts.severity.observedAtSpeed}</dd></div>
           </dl>
         </section>
-        <section aria-label="IFAB 규정"><h3>IFAB 규정</h3><CitationList citations={ifab} /></section>
-        <section aria-label="K리그 대회요강"><h3>K리그 대회요강</h3><CitationList citations={kleague} /></section>
+        <section aria-label="IFAB 규정"><h3>IFAB 규정</h3><Citations citations={ifab} /></section>
+        <section aria-label="K리그 대회요강"><h3>K리그 대회요강</h3><Citations citations={kleague} /></section>
         <section className="var-panel" aria-label="VAR 검토">
           <h3>VAR 검토</h3>
           <dl className="var-grid">

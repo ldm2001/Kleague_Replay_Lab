@@ -1,4 +1,5 @@
-import { hash, sessionRepo, statusRepo } from "@replay/adapters";
+// 증거 어댑터 연결
+import { hash, sessionStore, statusStore } from "@replay/adapters";
 import { asset, record, type Clock } from "@replay/application";
 import { client } from "@replay/database";
 import type { EvidenceApiDependencies } from "../apis/evidence";
@@ -17,8 +18,8 @@ const env = (name: string): string => {
 export const mediaEvidence = (): EvidenceApiDependencies => {
   if (cached) return cached;
   const database = client(env("DATABASE_URL"));
-  const sessions = sessionRepo(database);
-  const repository = statusRepo(database);
+  const sessions = sessionStore(database);
+  const repository = statusStore(database);
   const source = storage();
   cached = {
     resolve: record({ clock, hasher: hash(), repository: sessions }),
