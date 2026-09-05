@@ -10,6 +10,7 @@ import pytest
 from replay_video.http import Api, HttpError
 
 
+# HTTP 응답 모형
 class Reply:
     def __init__(self, status: int, payload: bytes = b"") -> None:
         self.status = status
@@ -25,6 +26,7 @@ class Reply:
         return self.payload.read(size)
 
 
+# HTTP 호출 모형
 class Open:
     def __init__(self, replies: list[Reply | Exception]) -> None:
         self.replies = replies
@@ -38,7 +40,8 @@ class Open:
         return reply
 
 
-def test_claim_maps_no_content_and_job() -> None:
+# 작업 선점 응답 확인
+def test_claim() -> None:
     payload = {
         "jobId": "job-1",
         "jobType": "VALIDATE_VIDEO",
@@ -53,7 +56,8 @@ def test_claim_maps_no_content_and_job() -> None:
     assert api.claim("VALIDATE_VIDEO") == payload
 
 
-def test_result_posts_worker_lease() -> None:
+# 작업 결과 요청 확인
+def test_result() -> None:
     opener = Open([Reply(200, b'{"kind":"ACCEPTED"}')])
     api = Api("http://web.test", "secret", "worker-1", opener=opener)
     job = {"jobId": "job-1", "jobRevision": 2, "leaseToken": "lease"}
@@ -69,7 +73,8 @@ def test_result_posts_worker_lease() -> None:
     assert body["leaseToken"] == "lease"
 
 
-def test_media_downloads_bytes(tmp_path: Path) -> None:
+# 원본 영상 수신 확인
+def test_media(tmp_path: Path) -> None:
     opener = Open([Reply(200, b"video-bytes")])
     api = Api("http://web.test", "secret", "worker-1", opener=opener)
     target = tmp_path / "source.mp4"
@@ -79,7 +84,8 @@ def test_media_downloads_bytes(tmp_path: Path) -> None:
     assert target.read_bytes() == b"video-bytes"
 
 
-def test_http_error_keeps_status() -> None:
+# HTTP 오류 상태 확인
+def test_error() -> None:
     error = HTTPError("http://web.test", 401, "unauthorized", {}, None)
     api = Api("http://web.test", "secret", "worker-1", opener=Open([error]))
 
@@ -87,7 +93,8 @@ def test_http_error_keeps_status() -> None:
         api.claim("VALIDATE_VIDEO")
 
 
-def test_evidence_grants_and_upload(tmp_path: Path) -> None:
+# 증거 업로드 요청 확인
+def test_evidence(tmp_path: Path) -> None:
     grant = {
         "kind": "GRANTED",
         "items": [{

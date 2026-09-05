@@ -15,6 +15,7 @@ export type EvidenceStorage = Readonly<{
   evidence: (input: EvidenceGrantInput) => Promise<EvidenceGrant>;
 }>;
 
+// 증거 저장 포트
 export type EvidenceBody = Readonly<{
   body: AsyncIterable<Uint8Array>;
 }>;

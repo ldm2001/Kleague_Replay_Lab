@@ -1,3 +1,4 @@
+// 사실 서명 테스트
 import { describe, expect, it } from "vitest";
 import { factSignature, FORBIDDEN_SIGNATURE_KEY_PATTERN } from "@replay/rule-engine";
 

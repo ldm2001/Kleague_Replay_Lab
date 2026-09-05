@@ -64,7 +64,7 @@ const payload = (value: Record<string, unknown>): ClaimInput | null => {
 };
 
 // 진행 요청 변환
-const progressPayload = (value: Record<string, unknown>, jobId: string): ProgressInput | null => {
+const progressInput = (value: Record<string, unknown>, jobId: string): ProgressInput | null => {
   if (
     typeof value.workerId !== "string" ||
     typeof value.jobRevision !== "number" ||
@@ -87,7 +87,7 @@ const progressPayload = (value: Record<string, unknown>, jobId: string): Progres
   };
 };
 
-const resultPayload = (value: Record<string, unknown>, jobId: string): ResultInput | null => {
+const resultInput = (value: Record<string, unknown>, jobId: string): ResultInput | null => {
   if (
     typeof value.workerId !== "string" ||
     typeof value.jobRevision !== "number" ||
@@ -107,7 +107,7 @@ const resultPayload = (value: Record<string, unknown>, jobId: string): ResultInp
   };
 };
 
-const evidencePayload = (value: Record<string, unknown>, jobId: string): EvidenceInput | null => {
+const evidenceInput = (value: Record<string, unknown>, jobId: string): EvidenceInput | null => {
   if (
     typeof value.workerId !== "string" ||
     typeof value.jobRevision !== "number" ||
@@ -141,7 +141,7 @@ const evidencePayload = (value: Record<string, unknown>, jobId: string): Evidenc
 };
 
 // 진행 상태 코드
-const progressCode = (result: JobProgress): number => {
+const progressStatus = (result: JobProgress): number => {
   switch (result.kind) {
     case "UPDATED": return 200;
     case "NOT_FOUND": return 404;
@@ -149,7 +149,7 @@ const progressCode = (result: JobProgress): number => {
   }
 };
 
-const resultCode = (value: ResultResult): number => {
+const resultStatus = (value: ResultResult): number => {
   switch (value.kind) {
     case "ACCEPTED": return 200;
     case "NOT_FOUND": return 404;
@@ -159,7 +159,7 @@ const resultCode = (value: ResultResult): number => {
   }
 };
 
-const evidenceCode = (value: EvidenceResult): number => {
+const evidenceStatus = (value: EvidenceResult): number => {
   switch (value.kind) {
     case "GRANTED": return 200;
     case "NOT_FOUND": return 404;
@@ -215,7 +215,7 @@ export const progress = async (
   // 요청 본문 조회
   const value = await body(request);
   // 진행 요청 변환
-  const input = value ? progressPayload(value, params.jobId) : null;
+  const input = value ? progressInput(value, params.jobId) : null;
   // 요청 형식 확인
   if (!input) {
     // 잘못된 요청 응답
@@ -228,7 +228,7 @@ export const progress = async (
     return json(result, 400);
   }
   // 진행 결과 응답
-  return json(result, progressCode(result));
+  return json(result, progressStatus(result));
 };
 
 export const result = async (
@@ -240,12 +240,12 @@ export const result = async (
     return json({ kind: "UNAUTHORIZED" }, 401);
   }
   const value = await body(request);
-  const input = value ? resultPayload(value, params.jobId) : null;
+  const input = value ? resultInput(value, params.jobId) : null;
   if (!input) {
     return json({ kind: "INVALID_REQUEST" }, 400);
   }
   const response = await dependencies.result(input);
-  return json(response, resultCode(response));
+  return json(response, resultStatus(response));
 };
 
 export const evidence = async (
@@ -257,8 +257,8 @@ export const evidence = async (
     return json({ kind: "UNAUTHORIZED" }, 401);
   }
   const value = await body(request);
-  const input = value ? evidencePayload(value, params.jobId) : null;
+  const input = value ? evidenceInput(value, params.jobId) : null;
   if (!input) return json({ kind: "INVALID_REQUEST" }, 400);
   const response = await dependencies.evidence(input);
-  return json(response, evidenceCode(response));
+  return json(response, evidenceStatus(response));
 };

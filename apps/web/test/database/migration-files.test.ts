@@ -1,3 +1,4 @@
+// 마이그레이션 파일 테스트
 import { describe, expect, it } from "vitest";
 import { migrations } from "../../../../scripts/database/migrations.mjs";
 

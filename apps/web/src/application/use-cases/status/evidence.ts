@@ -1,8 +1,9 @@
 import type { Clock } from "../../ports/clock/clock";
-import type { EvidenceMedia, EvidenceMediaRepo } from "../../ports/repositories/status-repo";
+import type { EvidenceMedia, EvidenceMediaStore } from "../../ports/repositories/status-store";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+// 증거 조회 입력
 export type AssetInput = Readonly<{
   anonymousSessionId: string;
   analysisId: string;
@@ -13,7 +14,7 @@ export type AssetResult = EvidenceMedia | null | Readonly<{ kind: "INVALID_INPUT
 
 export type AssetDependencies = Readonly<{
   clock: Clock;
-  repository: EvidenceMediaRepo;
+  repository: EvidenceMediaStore;
 }>;
 
 export const asset =

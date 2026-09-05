@@ -1,10 +1,11 @@
 import type { Clock } from "../../ports/clock/clock";
-import type { EvaluationRepo, DecisionSaveResult } from "../../ports/repositories/evaluation-repo";
+import type { EvaluationStore, DecisionSaveResult } from "../../ports/repositories/evaluation-store";
 import type { EvaluationResult } from "@replay/shared-types";
-import type { EvaluateInput, EvaluateResult } from "./evaluate";
+import type { AssessmentInput, AssessmentResult } from "./assessment";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+// 판정 입력
 export type DecisionInput = Readonly<{
   anonymousSessionId: string;
   analysisId: string;
@@ -13,8 +14,8 @@ export type DecisionInput = Readonly<{
 
 export type DecisionDependencies = Readonly<{
   clock: Clock;
-  repository: EvaluationRepo;
-  run: (input: EvaluateInput) => Promise<EvaluateResult>;
+  repository: EvaluationStore;
+  run: (input: AssessmentInput) => Promise<AssessmentResult>;
 }>;
 
 export type DecisionResult =
@@ -25,6 +26,7 @@ export type DecisionResult =
 export const decision =
   ({ clock, repository, run }: DecisionDependencies) =>
   async (input: DecisionInput): Promise<DecisionResult> => {
+    // 입력 식별자 검증
     if (![input.anonymousSessionId, input.analysisId, input.candidateId].every((value) => UUID.test(value))) {
       return { kind: "INVALID_INPUT", reason: "ID" };
     }

@@ -1,3 +1,4 @@
+// 데이터베이스 연결 테스트
 import { describe, expect, it } from "vitest";
 import { client } from "@replay/database";
 

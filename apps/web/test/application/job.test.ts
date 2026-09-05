@@ -8,17 +8,17 @@ import {
   type JobClaimCommand,
   type JobProgress,
   type JobProgressCommand,
-  type JobProgressRepository,
-  type JobRepository,
+  type JobProgressStore,
+  type JobStore,
   type JobResult,
   type JobResultCommand,
-  type JobResultRepository,
+  type JobResultStore,
 } from "@replay/application";
 
 const NOW = new Date("2026-08-29T00:00:00.000Z");
 const clock: Clock = { now: () => NOW };
 
-class JobFake implements JobRepository {
+class JobStoreFake implements JobStore {
   readonly commands: JobClaimCommand[] = [];
   result: JobClaim | null = {
     jobId: "11111111-1111-4111-8111-111111111111",
@@ -43,7 +43,7 @@ class JobFake implements JobRepository {
 
 describe("claim", () => {
   it("creates a bounded lease command for a supported job type", async () => {
-    const repository = new JobFake();
+    const repository = new JobStoreFake();
     const result = await claim({
       clock,
       repository,
@@ -64,7 +64,7 @@ describe("claim", () => {
   });
 
   it("rejects an unsupported worker or job type before the repository", async () => {
-    const repository = new JobFake();
+    const repository = new JobStoreFake();
     const operation = claim({
       clock,
       repository,
@@ -84,7 +84,7 @@ describe("claim", () => {
   });
 });
 
-class ProgressFake implements JobProgressRepository {
+class ProgressStoreFake implements JobProgressStore {
   readonly commands: JobProgressCommand[] = [];
   result: JobProgress = {
     kind: "UPDATED",
@@ -102,7 +102,7 @@ class ProgressFake implements JobProgressRepository {
 
 describe("progress", () => {
   it("hashes the lease token and records a bounded progress update", async () => {
-    const repository = new ProgressFake();
+    const repository = new ProgressStoreFake();
     const hasher = { sha256: async () => Uint8Array.from([1, 2, 3]) };
     const result = await progress({ clock, hasher, repository, leaseMs: 30_000 })({
       jobId: "11111111-1111-4111-8111-111111111111",
@@ -129,7 +129,7 @@ describe("progress", () => {
   });
 
   it("rejects an invalid lease or progress before the repository", async () => {
-    const repository = new ProgressFake();
+    const repository = new ProgressStoreFake();
     const operation = progress({
       clock,
       hasher: { sha256: async () => Uint8Array.from([1]) },
@@ -157,7 +157,7 @@ describe("progress", () => {
   });
 });
 
-class ResultFake implements JobResultRepository {
+class ResultStoreFake implements JobResultStore {
   readonly commands: JobResultCommand[] = [];
   response: JobResult = { kind: "ACCEPTED" };
 
@@ -169,7 +169,7 @@ class ResultFake implements JobResultRepository {
 
 describe("result", () => {
   it("hashes the lease token and submits validated video metadata", async () => {
-    const repository = new ResultFake();
+    const repository = new ResultStoreFake();
     const operation = result({
       clock,
       hasher: { sha256: async () => Uint8Array.from([1, 2, 3]) },
@@ -205,7 +205,7 @@ describe("result", () => {
   });
 
   it("submits a nonretryable worker failure", async () => {
-    const repository = new ResultFake();
+    const repository = new ResultStoreFake();
     const operation = result({
       clock,
       hasher: { sha256: async () => Uint8Array.from([4, 5, 6]) },
@@ -232,7 +232,7 @@ describe("result", () => {
   });
 
   it("submits baseline analysis shots and candidates", async () => {
-    const repository = new ResultFake();
+    const repository = new ResultStoreFake();
     const operation = result({
       clock,
       hasher: { sha256: async () => Uint8Array.from([7, 8, 9]) },
@@ -274,7 +274,7 @@ describe("result", () => {
   });
 
   it("rejects malformed completion data before the repository", async () => {
-    const repository = new ResultFake();
+    const repository = new ResultStoreFake();
     const operation = result({
       clock,
       hasher: { sha256: async () => Uint8Array.from([1]) },

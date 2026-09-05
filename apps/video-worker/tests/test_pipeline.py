@@ -18,6 +18,7 @@ from replay_video.infrastructure.evidence import evidence
 from replay_video.infrastructure.signals import Signal
 
 
+# 테스트 영상 생성
 def fixture(path: Path) -> None:
     writer = cv2.VideoWriter(
         str(path),
@@ -39,7 +40,8 @@ def fixture(path: Path) -> None:
         writer.release()
 
 
-def test_probe_metadata(tmp_path: Path) -> None:
+# 영상 메타데이터 확인
+def test_probe(tmp_path: Path) -> None:
     source = tmp_path / "sample.mp4"
     fixture(source)
 
@@ -53,7 +55,8 @@ def test_probe_metadata(tmp_path: Path) -> None:
     assert metadata.codec
 
 
-def test_shots_cut(tmp_path: Path) -> None:
+# 샷 경계 확인
+def test_shots(tmp_path: Path) -> None:
     source = tmp_path / "sample.mp4"
     fixture(source)
 
@@ -65,7 +68,8 @@ def test_shots_cut(tmp_path: Path) -> None:
     assert result[1].end_ms == pytest.approx(4000, abs=150)
 
 
-def test_pipeline_assets(tmp_path: Path) -> None:
+# 파이프라인 산출물 확인
+def test_assets(tmp_path: Path) -> None:
     source = tmp_path / "sample.mp4"
     output = tmp_path / "result"
     fixture(source)
@@ -93,12 +97,14 @@ def test_pipeline_assets(tmp_path: Path) -> None:
         assert item.path.stat().st_size > 0
 
 
-def test_probe_missing(tmp_path: Path) -> None:
+# 없는 영상 오류 확인
+def test_missing(tmp_path: Path) -> None:
     with pytest.raises(MediaError, match="media-not-found"):
         probe(tmp_path / "missing.mp4")
 
 
-def test_pipeline_ports(tmp_path: Path) -> None:
+# 포트 조립 확인
+def test_ports(tmp_path: Path) -> None:
     # 가짜 포트 준비
     source = tmp_path / "input.mp4"
     output = tmp_path / "result"
@@ -123,7 +129,8 @@ def test_pipeline_ports(tmp_path: Path) -> None:
     assert "infrastructure" not in (Path(__file__).parents[1] / "src/replay_video/application/pipeline.py").read_text()
 
 
-def test_pipeline_reports_stage_boundaries(tmp_path: Path) -> None:
+# 단계 보고 확인
+def test_stages(tmp_path: Path) -> None:
     source = tmp_path / "input.mp4"
     output = tmp_path / "result"
     metadata = VideoMetadata(source, 1000, 320, 180, 10.0, 10, "test")
@@ -140,7 +147,8 @@ def test_pipeline_reports_stage_boundaries(tmp_path: Path) -> None:
     assert [stage for stage, _percent in events] == ["SEGMENTING", "DETECTING", "EXTRACTING_FACTS", "BUILDING_EVIDENCE", "APPLYING_RULES"]
 
 
-def test_candidate_count_is_bounded(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+# 후보 개수 제한 확인
+def test_candidates(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     source = tmp_path / "long.mp4"
     metadata = VideoMetadata(source, 400_000, 320, 180, 10.0, 4000, "test")
     shot_list = (Shot(0, 0, 400_000),)
@@ -152,7 +160,8 @@ def test_candidate_count_is_bounded(monkeypatch: pytest.MonkeyPatch, tmp_path: P
     assert len(result) == 40
 
 
-def test_evidence_count_is_bounded(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+# 증거 개수 제한 확인
+def test_evidence(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     source = tmp_path / "source.mp4"
     source.write_bytes(b"source")
     metadata = VideoMetadata(source, 60_000, 1920, 1080, 30.0, 1800, "h264")

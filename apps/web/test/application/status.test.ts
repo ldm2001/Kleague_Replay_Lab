@@ -1,5 +1,6 @@
+// 상태 유스케이스 테스트
 import { describe, expect, it } from "vitest";
-import { asset, latest, status, type Clock, type EvidenceMedia, type EvidenceMediaCommand, type EvidenceMediaRepo, type LatestMediaCommand, type LatestMediaRepo, type MediaStatusCommand, type MediaStatusRepo, type MediaView } from "@replay/application";
+import { asset, latest, status, type Clock, type EvidenceMedia, type EvidenceMediaCommand, type EvidenceMediaStore, type LatestMediaCommand, type LatestMediaStore, type MediaStatusCommand, type MediaStatusStore, type MediaView } from "@replay/application";
 
 const NOW = new Date("2026-08-30T00:00:00.000Z");
 const view: MediaView = {
@@ -28,7 +29,7 @@ const view: MediaView = {
   },
 };
 
-class Repo implements MediaStatusRepo {
+class StatusDouble implements MediaStatusStore {
   commands: MediaStatusCommand[] = [];
 
   async status(command: MediaStatusCommand): Promise<MediaView | null> {
@@ -39,7 +40,7 @@ class Repo implements MediaStatusRepo {
 
 describe("media status", () => {
   it("loads an owned video and analysis view", async () => {
-    const repository = new Repo();
+    const repository = new StatusDouble();
     const result = await status({ clock: { now: () => NOW } satisfies Clock, repository })({
       anonymousSessionId: "33333333-3333-4333-8333-333333333333",
       videoAssetId: "11111111-1111-4111-8111-111111111111",
@@ -54,7 +55,7 @@ describe("media status", () => {
   });
 
   it("rejects malformed ownership identifiers", async () => {
-    const repository = new Repo();
+    const repository = new StatusDouble();
     await expect(status({ clock: { now: () => NOW }, repository })({
       anonymousSessionId: "bad",
       videoAssetId: "11111111-1111-4111-8111-111111111111",
@@ -64,7 +65,7 @@ describe("media status", () => {
 
   it("loads an owned evidence object reference", async () => {
     const commands: EvidenceMediaCommand[] = [];
-    const repository: EvidenceMediaRepo = {
+    const repository: EvidenceMediaStore = {
       media: async (command) => {
         commands.push(command);
         return {
@@ -88,7 +89,7 @@ describe("media status", () => {
 
   it("loads the latest owned video identifier", async () => {
     const commands: LatestMediaCommand[] = [];
-    const repository: LatestMediaRepo = {
+    const repository: LatestMediaStore = {
       latest: async (command) => {
         commands.push(command);
         return "11111111-1111-4111-8111-111111111111";

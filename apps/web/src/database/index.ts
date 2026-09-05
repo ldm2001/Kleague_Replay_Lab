@@ -1,3 +1,4 @@
+// 데이터베이스 공개 모듈
 import * as schema from "./schema/tables";
 
 export { client } from "./client/index";

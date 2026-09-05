@@ -1,8 +1,9 @@
+// 결과 유스케이스 테스트
 import { describe, expect, it } from "vitest";
 import {
   report,
   type AnalysisResultCommand,
-  type AnalysisResultRepo,
+  type AnalysisResultStore,
   type AnalysisView,
 } from "@replay/application";
 
@@ -22,7 +23,7 @@ const view = {
   candidates: [],
 } satisfies AnalysisView;
 
-class Repo implements AnalysisResultRepo {
+class ResultDouble implements AnalysisResultStore {
   commands: AnalysisResultCommand[] = [];
 
   async analysis(command: AnalysisResultCommand) {
@@ -33,7 +34,7 @@ class Repo implements AnalysisResultRepo {
 
 describe("analysis result", () => {
   it("loads only an analysis owned by the active anonymous session", async () => {
-    const repository = new Repo();
+    const repository = new ResultDouble();
     const value = await report({ clock: { now: () => NOW }, repository })({
       anonymousSessionId: SESSION,
       analysisId: ANALYSIS,
@@ -44,7 +45,7 @@ describe("analysis result", () => {
   });
 
   it("rejects malformed identifiers before the repository", async () => {
-    const repository = new Repo();
+    const repository = new ResultDouble();
     await expect(report({ clock: { now: () => NOW }, repository })({ anonymousSessionId: SESSION, analysisId: "bad" })).resolves.toEqual({ kind: "INVALID_INPUT" });
     expect(repository.commands).toHaveLength(0);
   });

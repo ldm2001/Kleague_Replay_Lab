@@ -1,3 +1,4 @@
+// 공용 타입 테스트
 import { describe, expect, expectTypeOf, it } from "vitest";
 import type {
   EvaluationResult,

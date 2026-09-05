@@ -7,7 +7,8 @@ from test_pipeline import fixture
 from replay_video.worker import job
 
 
-def test_validate_video_job_returns_verified_metadata(tmp_path: Path) -> None:
+# 검증 작업 결과 확인
+def test_validation(tmp_path: Path) -> None:
     source = tmp_path / "sample.mp4"
     fixture(source)
 

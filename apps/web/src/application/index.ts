@@ -1,34 +1,35 @@
+// 애플리케이션 공개 API
 export type { Hasher } from "./ports/hashing/hasher";
 export type {
-  SubmitAnalysisCommand,
-  SubmitAnalysisRepository,
-  SubmitAnalysisRepositoryResult,
-} from "./ports/repositories/analysis-repo";
-export { analysis } from "./use-cases/submit-analysis/submit-analysis";
+  AnalysisCommand,
+  AnalysisStore,
+  AnalysisResult,
+} from "./ports/repositories/analysis-store";
+export { analysis } from "./use-cases/analysis";
 export type {
-  SubmitAnalysisDependencies,
-  SubmitAnalysisInput,
-  SubmitAnalysisInvalidInputReason,
-  SubmitAnalysisPolicy,
-  SubmitAnalysisResult,
-} from "./use-cases/submit-analysis/submit-analysis";
+  AnalysisDependencies,
+  AnalysisInput,
+  AnalysisError,
+  AnalysisPolicy,
+  AnalysisOutcome,
+} from "./use-cases/analysis";
 export type { Clock } from "./ports/clock/clock";
 export type {
-  CompleteUploadCommand,
-  CompleteUploadRepository,
-  CompleteUploadRepositoryResult,
-  CreateUploadCommand,
-  CreateUploadRepository,
-  CreateUploadRepositoryResult,
+  CompletionCommand,
+  UploadCompletionStore,
+  UploadCompletionResult,
+  UploadCommand,
+  UploadIntentStore,
+  UploadIntentResult,
   UploadIntentRecord,
-} from "./ports/repositories/upload-repository";
+} from "./ports/repositories/upload-store";
 export type {
   SessionGrant,
   SessionIssue,
   SessionLookup,
   SessionRecord,
-  SessionRepository,
-} from "./ports/repositories/session-repository";
+  SessionStore,
+} from "./ports/repositories/session-store";
 export type {
   AnalysisCandidate,
   AnalysisEvidence,
@@ -38,23 +39,23 @@ export type {
   JobClaimCommand,
   JobProgress,
   JobProgressCommand,
-  JobProgressRepository,
-  JobRepository,
+  JobProgressStore,
+  JobStore,
   JobFailurePayload,
   JobResult,
   JobResultCommand,
   JobResultPayload,
-  JobResultRepository,
+  JobResultStore,
   JobStage,
   JobType,
   ValidationPayload,
-} from "./ports/repositories/job-repo";
-export type { CompleteUploadStorage, CreateUploadStorage, JobSourceStorage, UploadGrant, UploadedObjectHead } from "./ports/storage/upload-storage";
-export { completion } from "./use-cases/upload/complete-upload";
-export type { CompleteUploadDependencies, CompleteUploadInput, CompleteUploadResult } from "./use-cases/upload/complete-upload";
-export { upload } from "./use-cases/upload/create-upload";
-export type { CreateUploadDependencies, CreateUploadInput, CreateUploadResult } from "./use-cases/upload/create-upload";
-export type { UploadPolicy } from "./use-cases/upload/upload-policy";
+} from "./ports/repositories/job-store";
+export type { CompletionStorage, UploadStorage, JobSourceStorage, UploadGrant, UploadedObjectHead } from "./ports/storage/upload-storage";
+export { completion } from "./use-cases/upload/completion";
+export type { CompletionDependencies, CompletionInput, CompletionResult } from "./use-cases/upload/completion";
+export { upload } from "./use-cases/upload/upload";
+export type { UploadDependencies, UploadInput, UploadResult } from "./use-cases/upload/upload";
+export type { UploadPolicy } from "./use-cases/upload/policy";
 export { record, session } from "./use-cases/session/session";
 export type {
   RecordDependencies,
@@ -84,21 +85,21 @@ export type {
 } from "./use-cases/job/result";
 export type {
   AnalysisResultCommand,
-  AnalysisResultRepo,
+  AnalysisResultStore,
   AnalysisView,
   CandidateView,
   EvidenceView,
   EvidenceMedia,
   EvidenceMediaCommand,
-  EvidenceMediaRepo,
+  EvidenceMediaStore,
   LatestMediaCommand,
-  LatestMediaRepo,
+  LatestMediaStore,
   MediaStatusCommand,
-  MediaStatusRepo,
+  MediaStatusStore,
   MediaView,
   RuleView,
   JudgmentView,
-} from "./ports/repositories/status-repo";
+} from "./ports/repositories/status-store";
 export { report } from "./use-cases/status/report";
 export type { ReportDependencies, ReportInput, ReportResult } from "./use-cases/status/report";
 export { status } from "./use-cases/status/status";
@@ -107,8 +108,8 @@ export { asset } from "./use-cases/status/evidence";
 export type { AssetDependencies, AssetInput, AssetResult } from "./use-cases/status/evidence";
 export { latest } from "./use-cases/status/latest";
 export type { LatestDependencies, LatestInput, LatestResult } from "./use-cases/status/latest";
-export { evaluate } from "./use-cases/evaluation/evaluate";
-export type { EvaluateDependencies, EvaluateInput, EvaluateResult } from "./use-cases/evaluation/evaluate";
+export { assessment } from "./use-cases/evaluation/assessment";
+export type { AssessmentDependencies, AssessmentInput, AssessmentResult } from "./use-cases/evaluation/assessment";
 export { facts } from "./use-cases/evaluation/facts";
 export type { FactDependencies, FactInput, FactResult } from "./use-cases/evaluation/facts";
 export { decision } from "./use-cases/evaluation/decision";
@@ -119,11 +120,11 @@ export type {
   EvaluationContext,
   EvaluationContextCommand,
   EvaluationContextResult,
-  EvaluationRepo,
+  EvaluationStore,
   FactPatchCommand,
   FactPatchResult,
-} from "./ports/repositories/evaluation-repo";
-export type { EvidenceAccess, EvidenceAccessCommand, EvidenceAccessRepo } from "./ports/repositories/evidence-repo";
+} from "./ports/repositories/evaluation-store";
+export type { EvidenceAccess, EvidenceAccessCommand, EvidenceStore } from "./ports/repositories/evidence-store";
 export type { EvidenceBody, EvidenceBodyStorage, EvidenceGrant, EvidenceGrantInput, EvidenceStorage } from "./ports/storage/evidence-storage";
 export { evidence } from "./use-cases/job/evidence";
 export type { EvidenceDependencies, EvidenceInput, EvidenceItem, EvidenceResult } from "./use-cases/job/evidence";

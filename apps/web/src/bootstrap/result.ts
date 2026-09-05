@@ -1,4 +1,5 @@
-import { hash, sessionRepo, statusRepo } from "@replay/adapters";
+// 결과 어댑터 연결
+import { hash, sessionStore, statusStore } from "@replay/adapters";
 import { record, report, type Clock } from "@replay/application";
 import { client } from "@replay/database";
 import type { ResultApiDependencies } from "../apis/result";
@@ -16,8 +17,8 @@ const env = (name: string): string => {
 export const resultView = (): ResultApiDependencies => {
   if (cached) return cached;
   const database = client(env("DATABASE_URL"));
-  const sessions = sessionRepo(database);
-  const repository = statusRepo(database);
+  const sessions = sessionStore(database);
+  const repository = statusStore(database);
   cached = {
     resolve: record({ clock, hasher: hash(), repository: sessions }),
     report: report({ clock, repository }),

@@ -36,7 +36,8 @@ const help = [
 ] as const;
 
 // 랜딩 화면 구성
-export function LandingPage() {
+// 랜딩 화면 표시
+export function LandingView() {
   // 랜딩 전체 화면 반환
   return (
     <div className="site-shell">

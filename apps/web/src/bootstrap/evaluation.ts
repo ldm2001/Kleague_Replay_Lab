@@ -1,5 +1,6 @@
-import { evaluationRepo, hash, sessionRepo } from "@replay/adapters";
-import { decision, facts, evaluate, record, type Clock } from "@replay/application";
+// 평가 어댑터 연결
+import { evaluationStore, hash, sessionStore } from "@replay/adapters";
+import { decision, facts, assessment, record, type Clock } from "@replay/application";
 import { pushResult, varResult } from "@replay/rule-engine";
 import { ruleSet } from "@replay/rule-data";
 import { client } from "@replay/database";
@@ -18,11 +19,11 @@ const env = (name: string): string => {
 export const evaluation = (): EvaluationApiDependencies => {
   if (cached) return cached;
   const database = client(env("DATABASE_URL"));
-  const sessions = sessionRepo(database);
+  const sessions = sessionStore(database);
   const hasher = hash();
   const resolve = record({ clock, hasher, repository: sessions });
-  const repository = evaluationRepo(database);
-  const run = evaluate({ rule: ruleSet, push: pushResult, variable: varResult, hash: (value) => hasher.sha256(value) });
+  const repository = evaluationStore(database);
+  const run = assessment({ rule: ruleSet, push: pushResult, variable: varResult, hash: (value) => hasher.sha256(value) });
   cached = {
     resolve,
     facts: facts({ clock, hasher, repository }),

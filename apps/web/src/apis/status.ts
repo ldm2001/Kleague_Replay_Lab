@@ -6,6 +6,7 @@ export type StatusApiDependencies = Readonly<{
   latest: (input: LatestInput) => Promise<LatestResult>;
 }>;
 
+// JSON 응답 생성
 const json = (body: unknown, status: number): Response =>
   new Response(JSON.stringify(body), {
     status,
@@ -15,6 +16,7 @@ const json = (body: unknown, status: number): Response =>
     },
   });
 
+// 세션 쿠키 추출
 const token = (request: Request): string | null => {
   const value = request.headers.get("cookie");
   if (!value) return null;

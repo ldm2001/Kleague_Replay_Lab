@@ -1,6 +1,6 @@
 import type { Clock } from "../../ports/clock/clock";
 import type { Hasher } from "../../ports/hashing/hasher";
-import type { EvidenceAccess, EvidenceAccessRepo } from "../../ports/repositories/evidence-repo";
+import type { EvidenceAccess, EvidenceStore } from "../../ports/repositories/evidence-store";
 import type { EvidenceStorage } from "../../ports/storage/evidence-storage";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -10,6 +10,7 @@ const MAX_ITEMS = 128;
 const MAX_ITEM_BYTES = 50 * 1024 * 1024;
 const MAX_TOTAL_BYTES = 200 * 1024 * 1024;
 
+// 증거 파일 입력
 export type EvidenceItem = Readonly<{
   name: string;
   contentType: (typeof TYPES)[number];
@@ -35,7 +36,7 @@ export type EvidenceResult =
 export type EvidenceDependencies = Readonly<{
   clock: Clock;
   hasher: Hasher;
-  repository: EvidenceAccessRepo;
+  repository: EvidenceStore;
   storage: EvidenceStorage;
 }>;
 
@@ -53,6 +54,7 @@ const validItems = (items: readonly EvidenceItem[]): boolean => {
 export const evidence =
   ({ clock, hasher, repository, storage }: EvidenceDependencies) =>
   async (input: EvidenceInput): Promise<EvidenceResult> => {
+    // 작업 입력 검증
     if (!UUID.test(input.jobId)) return { kind: "INVALID_INPUT", reason: "JOB" };
     const workerId = typeof input.workerId === "string" ? input.workerId.trim() : "";
     if (!workerId || workerId.length > 128) return { kind: "INVALID_INPUT", reason: "WORKER" };

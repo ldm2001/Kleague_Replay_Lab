@@ -1,4 +1,6 @@
+// 업로드 의존성 조립
 import { container } from "../../../bootstrap/container";
+// 업로드 API 연결
 import { upload } from "../../../apis/upload";
 
 export const runtime = "nodejs";

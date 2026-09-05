@@ -1,3 +1,4 @@
+// 데이터베이스 스키마 테스트
 import { describe, expect, it } from "vitest";
 import { schema } from "@replay/database";
 

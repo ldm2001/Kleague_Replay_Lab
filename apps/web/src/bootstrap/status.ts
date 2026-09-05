@@ -1,4 +1,5 @@
-import { hash, sessionRepo, statusRepo } from "@replay/adapters";
+// 상태 어댑터 연결
+import { hash, sessionStore, statusStore } from "@replay/adapters";
 import { latest as latestCase, record, status, type Clock } from "@replay/application";
 import { client } from "@replay/database";
 import type { StatusApiDependencies } from "../apis/status";
@@ -16,8 +17,8 @@ const env = (name: string): string => {
 export const mediaStatus = (): StatusApiDependencies => {
   if (cached) return cached;
   const database = client(env("DATABASE_URL"));
-  const sessions = sessionRepo(database);
-  const repository = statusRepo(database);
+  const sessions = sessionStore(database);
+  const repository = statusStore(database);
   const resolve = record({ clock, hasher: hash(), repository: sessions });
   cached = {
     resolve,
