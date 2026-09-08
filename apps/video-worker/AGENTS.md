@@ -7,6 +7,8 @@
 - `src/replay_video/infrastructure/` OpenCV 기반 probe와 shot과 candidate와 evidence 구현
 - `src/replay_video/runner.py` API 작업 선점과 결과 제출
 - `tests/` Worker 단위 테스트
+- `src/replay_video/inspect.py` 세트피스 원시 신호의 독립 개발 진단
+- `src/replay_video/domain/setpieces.py` 근거 입력을 받는 재개 상태 전이
 - `README.md` 실행 계약과 산출물 형식
 
 ## 실행과 테스트
