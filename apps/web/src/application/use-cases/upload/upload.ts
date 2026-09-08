@@ -49,10 +49,10 @@ export const upload =
     }
 
     // 대회와 시즌 기본값 적용
-    const competition = input.competition?.trim() || "K리그1";
-    const season = input.season?.trim() || "2026";
+    const competition = input.competition?.trim() || "UNKNOWN";
+    const season = input.season?.trim() || "UNKNOWN";
     // 대회와 시즌 허용값 확인
-    if (!COMPETITIONS.has(competition) || !SEASONS.has(season)) {
+    if ((competition !== "UNKNOWN" || season !== "UNKNOWN") && (!COMPETITIONS.has(competition) || !SEASONS.has(season))) {
       return { kind: "INVALID_INPUT", reason: "COMPETITION" };
     }
 

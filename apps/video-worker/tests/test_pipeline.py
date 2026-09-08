@@ -148,6 +148,17 @@ def test_ports(tmp_path: Path) -> None:
     assert "infrastructure" not in (Path(__file__).parents[1] / "src/replay_video/application/pipeline.py").read_text()
 
 
+def test_pipeline_never_loads_a_model(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("VISION_MODEL", "gemma3:12b")
+    ports = media()
+    assert not hasattr(ports, "observations")
+    source = tmp_path / "sample.mp4"
+    fixture(source)
+    result = pipeline(source, tmp_path / "output", ports=ports)
+    payload = json.loads(result.report_path.read_text())
+    assert all("observation" not in item for item in payload["candidates"])
+
+
 # 단계 보고 확인
 def test_stages(tmp_path: Path) -> None:
     # 단계 보고용 입력 준비
@@ -166,7 +177,7 @@ def test_stages(tmp_path: Path) -> None:
     pipeline(source, output, ports=ports, progress=lambda stage, percent, _message: events.append((stage, percent)))
 
     # 단계 순서 확인
-    assert [stage for stage, _percent in events] == ["SEGMENTING", "DETECTING", "EXTRACTING_FACTS", "BUILDING_EVIDENCE", "APPLYING_RULES"]
+    assert [stage for stage, _percent in events] == ["SEGMENTING", "DETECTING", "EXTRACTING_FACTS", "BUILDING_EVIDENCE"]
 
 
 # 후보 개수 제한 확인

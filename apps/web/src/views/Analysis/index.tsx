@@ -10,18 +10,18 @@ import { UploadPanel } from "../../components/UploadPanel";
 
 // 분석 화면 구성
 export function AnalysisView() {
+  // 이 화면은 영상 제출만 담당하고 실제 후보와 필터 결과는 결과 화면에서 읽는다
   // 결과 이동 라우터
   const router = useRouter();
   // 분석 완료 결과 이동
-  const result = useCallback((view: MediaView | null, low: boolean) => {
+  const result = useCallback((view: MediaView | null) => {
     // 업로드 결과 분석 읽기
     const analysis = view?.analysis;
     // 분석 결과 없는 상태 종료
     if (!analysis) return;
-    // 후보 준비 완료 시 결과 화면 이동
+    // 서버 파이프라인이 끝나면 사용자 설정 없이 결과 화면으로 이동
     if (analysis.status === "CANDIDATES_READY" || analysis.status === "COMPLETED") {
-      // 표시 조건을 결과 주소에 보존
-      router.push(`/results/${analysis.analysisId}${low ? "" : "?low=0"}`);
+      router.push(`/results/${analysis.analysisId}`);
     }
   }, [router]);
   // 분석 화면 반환

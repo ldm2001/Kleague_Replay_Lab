@@ -1,6 +1,8 @@
 import { sql } from "drizzle-orm";
 import type { AnalysisResultCommand, AnalysisResultStore as ResultPort, AnalysisView, CandidateView, EvidenceMedia, EvidenceMediaCommand, EvidenceMediaStore as EvidencePort, LatestMediaCommand, LatestMediaStore as LatestPort, MediaStatusCommand, MediaStatusStore as StatusPort, MediaView } from "@replay/application";
 import type { DatabaseClient } from "@replay/database";
+import { pipelineFilter } from "@replay/rule-engine";
+import { ruleSet } from "@replay/rule-data";
 
 type DatabaseHandle = Pick<DatabaseClient, "db">;
 
@@ -19,9 +21,13 @@ type MediaRow = Readonly<{
   ifab_edition: string | null;
   verification_status: string | null;
   source_document: string | null;
+  match_id: string | null;
 }>;
 
 type CandidateRow = Readonly<{
+  category: string;
+  observation: CandidateView["observation"];
+  linked_shots: NonNullable<CandidateView["shots"]> | null;
   id: string;
   candidate_index: number;
   start_ms: number;
@@ -80,7 +86,8 @@ export class StatusStore implements StatusPort, ResultPort, EvidencePort, Latest
              rule.season,
              rule.ifab_edition,
              rule.verification_status,
-             rule.source_document
+             rule.source_document,
+             analysis.match_id
       from video_assets as video
       join anonymous_sessions as session on session.id = video.anonymous_session_id
       left join analyses as analysis on analysis.video_asset_id = video.id
@@ -116,7 +123,7 @@ export class StatusStore implements StatusPort, ResultPort, EvidencePort, Latest
 
     // 후보와 최신 판정 조회
     const candidates = await this.client.db.execute(sql`
-      select candidate.id, candidate.candidate_index, candidate.start_ms, candidate.end_ms, candidate.anchor_ms,
+      select candidate.id, candidate.review_scenario::text as category, candidate.candidate_index, candidate.start_ms, candidate.end_ms, candidate.anchor_ms,
              candidate.detection_confidence as signal_score, candidate.camera_sufficiency::text as camera_sufficiency,
              candidate.reasons, fact.id as fact_revision_id, fact.source::text as fact_source,
              fact.facts as fact_snapshot, decision.foul_decision::text as foul_decision,
@@ -132,7 +139,12 @@ export class StatusStore implements StatusPort, ResultPort, EvidencePort, Latest
              decision.var_window_exception::text as var_window_exception,
              decision.var_review_procedure::text as var_review_procedure,
              decision.evaluation_snapshot #>> '{varAssessment,explanation}' as var_explanation,
-             decision.citations as decision_citations
+             decision.citations as decision_citations,
+             candidate.observation,
+             (select jsonb_agg(jsonb_build_object('id', shot.id, 'index', shot.shot_index,
+                       'startMs', shot.start_ms, 'endMs', shot.end_ms) order by shot.shot_index)
+              from shots as shot where shot.analysis_id = candidate.analysis_id
+                and shot.end_ms >= candidate.start_ms and shot.start_ms <= candidate.end_ms) as linked_shots
       from incident_candidates as candidate
       left join fact_revisions as fact on fact.id = candidate.current_fact_revision_id
       left join lateral (
@@ -169,7 +181,20 @@ export class StatusStore implements StatusPort, ResultPort, EvidencePort, Latest
       grouped.set(item.candidate_index, entries);
     }
     // 후보 데이터 화면 모델 변환
+    // 검증된 경기 연결이 없는 업로드는 추정 판본을 적용하지 않는다
+    const rules = row.match_id && row.verification_status === "VERIFIED" && row.ifab_edition
+      ? ruleSet(`ifab-${row.ifab_edition}`) : null;
     const views: CandidateView[] = (candidates as unknown as CandidateRow[]).map((item) => ({
+      filter: pipelineFilter({
+        startMs: item.start_ms, endMs: item.end_ms, anchorMs: item.anchor_ms,
+        category: item.category ?? "OTHER",
+        evidenceIds: (grouped.get(item.candidate_index) ?? []).map((entry) => entry.evidenceId),
+      }, rules),
+      // 보정과 재평가에 필요한 현재 사실 및 영상 근거
+      factRevisionId: item.fact_revision_id ?? null,
+      facts: (item.fact_snapshot ?? null) as import("@replay/shared-types").EvaluationFacts | null,
+      shots: item.linked_shots ?? [],
+      observation: item.observation ?? null,
       id: item.id,
       index: item.candidate_index,
       startMs: item.start_ms,
@@ -220,7 +245,7 @@ export class StatusStore implements StatusPort, ResultPort, EvidencePort, Latest
         analysisId: row.analysis_id,
         mode: allJudged ? "ADJUDICATED" : "VISUAL_CHANGE_BASELINE",
         judgmentStatus: allJudged ? "EVALUATED" : evaluated > 0 ? "PARTIAL" : "NOT_EVALUATED",
-        status: row.analysis_status === "COMPLETED" && !allJudged ? "CANDIDATES_READY" : row.analysis_status,
+        status: row.analysis_status,
         stage: row.stage,
         progressPercent: row.progress_percent,
         failureCode: row.failure_code,
@@ -235,7 +260,12 @@ export class StatusStore implements StatusPort, ResultPort, EvidencePort, Latest
             }
           : null,
         evaluatedCount: evaluated,
-        candidates: views,
+        filterSummary: {
+          checkedCount: views.length,
+          excludedCount: views.filter((candidate) => candidate.filter?.status === "EXCLUDED").length,
+          undeterminedCount: views.filter((candidate) => candidate.filter?.status === "UNDETERMINED").length,
+        },
+        candidates: views.filter((candidate) => candidate.filter?.status !== "EXCLUDED"),
       },
     };
   }

@@ -7,6 +7,14 @@ export type EvidenceView = Readonly<{
 
 // 후보 화면 모델
 export type CandidateView = Readonly<{
+  filter?: import("@replay/shared-types").PipelineFilterResult;
+  // 최신 사실은 판정이 없어도 보정과 재시도에 사용
+  factRevisionId?: string | null;
+  facts?: EvaluationFacts | null;
+  // 실제 샷의 식별자와 시간 범위
+  shots?: readonly Readonly<{ id: string; index: number; startMs: number; endMs: number }>[];
+  // 자동 추출한 관찰 후보
+  observation?: import("@replay/shared-types").SceneObservation | null;
   id: string;
   index: number;
   startMs: number;
@@ -37,6 +45,7 @@ export type JudgmentView = Readonly<{
 
 // 분석 화면 모델
 export type AnalysisView = Readonly<{
+  filterSummary?: Readonly<{ checkedCount: number; excludedCount: number; undeterminedCount: number }>;
   analysisId: string;
   mode: "VISUAL_CHANGE_BASELINE" | "ADJUDICATED";
   judgmentStatus: "NOT_EVALUATED" | "PARTIAL" | "EVALUATED";

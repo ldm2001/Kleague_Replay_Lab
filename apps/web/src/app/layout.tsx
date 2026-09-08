@@ -7,6 +7,8 @@ import "../components/UploadPanel/style.css";
 import "../components/SceneView/style.css";
 import "../components/SceneList/style.css";
 import "../components/RulePanel/style.css";
+// 장면별 사실 확인 스타일
+import "../components/FactPanel/style.css";
 import "../components/Reveal/style.css";
 import "../components/HeroMotion/style.css";
 import "../components/SolutionDeck/style.css";

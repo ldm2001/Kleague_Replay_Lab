@@ -98,7 +98,7 @@ describeDatabase("PostgreSQL evaluation repository", () => {
     expect(context.kind).toBe("READY");
     if (context.kind !== "READY") return;
     const run = assessment({ rule: ruleSet, push: pushResult, variable: varResult, hash: async (input) => Uint8Array.from(digest("sha256").update(input).digest()) });
-    const judged = await run({ ruleVersionId: context.value.ruleVersionId, push: facts.push, variable: facts.variable, options: context.value.competitionOptions });
+    const judged = await run({ ruleVersionId: context.value.ruleVersionId, push: facts.push, variable: facts.variable, observed: facts.observed, options: context.value.competitionOptions });
     expect(judged.kind).toBe("EVALUATED");
     if (judged.kind !== "EVALUATED") return;
     const decision = await repository.save({ anonymousSessionId: sessionId, analysisId, candidateId, factRevisionId: saved.factRevisionId, ruleVersionId: context.value.ruleVersionDbId, analysisStateVersion: context.value.analysisStateVersion, facts, evaluation: judged.value, ruleEngineVersion: "rule-engine-v1", evaluationSchemaVersion: 1, now: NOW });
@@ -167,7 +167,7 @@ describeDatabase("PostgreSQL evaluation repository", () => {
     expect(context.value.analysisStateVersion).toBe(0);
     await database.sql`update analyses set status = 'FAILED', state_version = 1 where id = ${analysisId}`;
     const run = assessment({ rule: ruleSet, push: pushResult, variable: varResult, hash: async (input) => Uint8Array.from(digest("sha256").update(input).digest()) });
-    const judged = await run({ ruleVersionId: context.value.ruleVersionId, push: facts.push, variable: facts.variable, options: context.value.competitionOptions });
+    const judged = await run({ ruleVersionId: context.value.ruleVersionId, push: facts.push, variable: facts.variable, observed: facts.observed, options: context.value.competitionOptions });
     expect(judged.kind).toBe("EVALUATED");
     if (judged.kind !== "EVALUATED") return;
 

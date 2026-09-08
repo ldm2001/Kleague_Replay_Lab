@@ -15,6 +15,7 @@ const source = (analysisId: string, evidenceId: string) =>
   `/api/analyses/${analysisId}/evidence/${evidenceId}`;
 
 export function SceneView({ analysis }: Readonly<{ analysis: AnalysisView }>) {
+  // 제외 후보는 서버에서 목록을 만들 때 제거되며 이 컴포넌트는 남은 결과만 재생한다
   // 현재 장면 위치 관리
   const [index, setIndex] = useState(0);
   // 마지막 후보 위치 계산

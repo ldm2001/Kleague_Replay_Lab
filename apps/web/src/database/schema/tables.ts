@@ -240,6 +240,8 @@ export const incidentCandidates = pgTable(
     reasons: jsonb().$type<string[]>().notNull().default(sql`'[]'::jsonb`),
     shotIndices: jsonb("shot_indices").$type<number[]>().notNull().default(sql`'[]'::jsonb`),
     currentFactRevisionId: uuid("current_fact_revision_id"),
+    // 과거 관찰 payload 보존용 필드 현재 Worker는 채우지 않음
+    observation: jsonb().$type<import("@replay/shared-types").SceneObservation>(),
     reviewStatus: candidateReviewStatus("review_status").notNull(),
     createdAt: stamp(),
   },

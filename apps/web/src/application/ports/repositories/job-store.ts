@@ -112,6 +112,8 @@ export type AnalysisCandidate = Readonly<{
   cameraSufficiency: "LOW" | "MEDIUM" | "HIGH";
   reasons: readonly string[];
   shotIndices: readonly number[];
+  // 판정 전 검증이 필요한 영상 관찰 후보
+  observation?: import("@replay/shared-types").SceneObservation | null;
 }>;
 
 // 분석 증거 결과

@@ -75,13 +75,12 @@ def pipeline(
     # 움직임 후보 계산
     candidate_list = ports.candidates(metadata.source, metadata, shot_list)
     if progress:
-        progress("EXTRACTING_FACTS", 55, "facts-model-pending")
+        progress("EXTRACTING_FACTS", 55, "candidate-metadata")
     if progress:
         progress("BUILDING_EVIDENCE", 70, "candidate-evidence")
     # 프레임과 클립 생성
     evidence_list = ports.evidence(metadata.source, root, metadata, candidate_list)
-    if progress:
-        progress("APPLYING_RULES", 90, "facts-required")
+    # 규정 필터는 저장된 산출물을 읽는 서버에서 실행
     # 파이프라인 결과 조립
     result = PipelineResult(1, pipeline_version, metadata, shot_list, candidate_list, evidence_list, root / "report.json")
     # 결과 보고서 구성

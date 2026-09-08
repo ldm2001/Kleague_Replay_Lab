@@ -23,6 +23,11 @@ const variable: VarFacts = {
   seriousMissedIncident: false,
 };
 
+const observed = {
+  restartType: "UNKNOWN", restartBeneficiary: "UNKNOWN", card: null,
+  goalDecision: "UNKNOWN", source: "USER_INPUT",
+} as const;
+
 // 규정 평가 유스케이스 테스트
 describe("assessment", () => {
   it("combines pushing rules and VAR gates with citations", async () => {
@@ -32,7 +37,7 @@ describe("assessment", () => {
       push: pushResult,
       variable: varResult,
       hash: async () => new Uint8Array(32).fill(1),
-    })({ ruleVersionId: "ifab-2025-26", push, variable, options: {} satisfies CompetitionOptions });
+    })({ ruleVersionId: "ifab-2025-26", push, variable, observed, options: {} satisfies CompetitionOptions });
 
     // 평가 성공 확인
     expect(result.kind).toBe("EVALUATED");
@@ -49,8 +54,39 @@ describe("assessment", () => {
       push: pushResult,
       variable: varResult,
       hash: async () => new Uint8Array(32),
-    })({ ruleVersionId: "ifab-missing", push, variable, options: {} })).resolves.toEqual({
+    })({ ruleVersionId: "ifab-missing", push, variable, observed, options: {} })).resolves.toEqual({
       kind: "RULE_VERSION_UNKNOWN",
     });
+  });
+
+  it.each([
+    ["DIRECT_FREE_KICK", "CAUTION", "MATCH"],
+    ["DIRECT_FREE_KICK", null, "UNDETERMINED"],
+    ["PLAY_CONTINUED", "NONE", "MISMATCH"],
+    ["UNKNOWN", null, "UNDETERMINED"],
+  ] as const)("관측 판정 %s 비교", async (restartType, card, match) => {
+    // 관측 판정과 규정 결과를 별도 비교
+    const operation = assessment({
+      rule: (id) => ruleSet(id),
+      push: pushResult,
+      variable: varResult,
+      hash: async () => new Uint8Array(32).fill(1),
+    });
+    const input = { ruleVersionId: "ifab-2025-26", push, variable, options: {}, observed: {
+      restartType, restartBeneficiary: "DEFENDING_TEAM", card,
+      goalDecision: "NOT_APPLICABLE", source: "USER_INPUT",
+    } } as Parameters<typeof operation>[0] & { observed: import("@replay/shared-types").ObservedDecision };
+    const result = await operation(input);
+    expect(result).toMatchObject({ kind: "EVALUATED", value: { decisionMatch: match } });
+  });
+
+  it("파울 없음과 카드 없음 관측 일치", async () => {
+    // 규정 결과의 null 징계와 관측의 카드 없음은 같은 의미
+    const result = await assessment({
+      rule: (id) => ruleSet(id), push: pushResult, variable: varResult,
+      hash: async () => new Uint8Array(32).fill(1),
+    })({ ruleVersionId: "ifab-2025-26", push: { ...push, contactDetected: { ...push.contactDetected, value: false } },
+      variable, options: {}, observed: { ...observed, restartType: "PLAY_CONTINUED", card: "NONE" } });
+    expect(result).toMatchObject({ kind: "EVALUATED", value: { decisionMatch: "MATCH" } });
   });
 });

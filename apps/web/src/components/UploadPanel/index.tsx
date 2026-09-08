@@ -6,7 +6,7 @@ import type { MediaView } from "@replay/application";
 
 // 업로드 단계 값
 type Phase = "idle" | "selected" | "uploading" | "completing" | "validating" | "analyzing" | "candidateReady" | "completed" | "error";
-type UploadPanelProps = Readonly<{ onView?: (view: MediaView | null, low: boolean) => void }>;
+type UploadPanelProps = Readonly<{ onView?: (view: MediaView | null) => void }>;
 type Selection = Readonly<{ file: File; url: string }>;
 
 // 단계별 안내 문구
@@ -75,6 +75,7 @@ const body = async (response: Response): Promise<Record<string, unknown>> => {
 
 // 업로드 상태와 진행률 화면
 export function UploadPanel({ onView }: UploadPanelProps = {}) {
+  // 사용자는 파일만 선택한다 대회와 시즌과 분석 조건은 서버 정책으로 처리한다
   // 파일 입력 참조
   const input = useRef<HTMLInputElement>(null);
   // 현재 전송 참조
@@ -99,14 +100,8 @@ export function UploadPanel({ onView }: UploadPanelProps = {}) {
   const [view, setView] = useState<MediaView | null>(null);
   // 선택 영상 상태
   const [selection, setSelection] = useState<Selection | null>(null);
-  // 분석 완료 후에도 유지할 표시 조건
-  const [low, lowState] = useState(true);
   // 파일 선택 오류 안내
   const [notice, noticeState] = useState("");
-  // 선택한 대회 상태
-  const [competition, setCompetition] = useState("K리그1");
-  // 선택한 시즌 상태
-  const [season, setSeason] = useState("2026");
 
   // 진행률 갱신 중지
   const stop = () => {
@@ -159,11 +154,12 @@ export function UploadPanel({ onView }: UploadPanelProps = {}) {
 
   useEffect(() => {
     // 부모 화면에 분석 상태 전달
-    onView?.(view, low);
-  }, [onView, view, low]);
+    onView?.(view);
+  }, [onView, view]);
 
   // 분석 상태 조회
   const watch = async (videoAssetId: string): Promise<void> => {
+    // 업로드 뒤에는 서버가 갱신하는 파이프라인 상태만 읽고 별도 분석 설정을 받지 않는다
     // 영상 상태 조회
     try {
       // 상태 API 호출
@@ -211,6 +207,7 @@ export function UploadPanel({ onView }: UploadPanelProps = {}) {
 
   // 파일 업로드 흐름
   const upload = async (file: File) => {
+    // 업로드 완료 후 검증과 후보 생성이 끝날 때까지 자동으로 상태를 추적한다
     // 업로드 상태 초기화
     try {
       // 진행률 초기화
@@ -228,7 +225,7 @@ export function UploadPanel({ onView }: UploadPanelProps = {}) {
       const createdResponse = await fetch("/api/uploads", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ expectedSizeBytes: file.size, declaredContentType: file.type, rightsConfirmed: true, competition, season }),
+        body: JSON.stringify({ expectedSizeBytes: file.size, declaredContentType: file.type, rightsConfirmed: true }),
       });
       // 업로드 의도 응답 해석
       const created = await body(createdResponse);
@@ -315,10 +312,6 @@ export function UploadPanel({ onView }: UploadPanelProps = {}) {
         <div><p className="module-kicker">영상 준비</p><h2>경기 영상 업로드</h2></div>
         <span className="module-index" aria-hidden="true">01</span>
       </div>
-      <div className="select-row">
-        <label>대회<select aria-label="대회" value={competition} onChange={(event) => setCompetition(event.target.value)}><option value="K리그1">K리그1</option><option value="K리그2">K리그2</option></select></label>
-        <label>시즌<select aria-label="시즌" value={season} onChange={(event) => setSeason(event.target.value)}><option value="2026">2026</option></select></label>
-      </div>
       {/* 파일을 놓으면 선택 단계만 수행 */}
       <div className={`file-picker${selection ? " has-file" : ""}`}
         onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = busy ? "none" : "copy"; }}
@@ -361,8 +354,6 @@ export function UploadPanel({ onView }: UploadPanelProps = {}) {
         )}
       </div>
       {notice ? <p className="upload-status" role="alert">{notice}</p> : null}
-      <label className="confidence-toggle"><input type="checkbox" checked={low} disabled={busy} onChange={(event) => lowState(event.target.checked)} /> <span>낮은 확신도 장면도 표시</span></label>
-      {!low ? <p className="upload-status">미평가 장면은 변화 신호 50% 이상 표시 · 파울 확률과 무관</p> : null}
       <div className="upload-status" aria-live="polite">{message[phase]}</div>
       <div className="progress-track"><progress className="progress-fill" value={value} max={100} aria-valuemin={0} aria-valuemax={100} aria-valuenow={value} /></div>
       <button className="primary-action" type="button" onClick={action} disabled={busy || (!selection && !finished)}><span aria-hidden="true">▷</span> {finished ? "다른 영상 분석" : "분석 시작"}</button>

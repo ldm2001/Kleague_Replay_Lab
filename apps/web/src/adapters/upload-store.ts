@@ -79,7 +79,7 @@ export class UploadStore implements IntentPort, CompletionPort {
           ${command.anonymousSessionId}, ${command.objectKey}, ${command.expectedSizeBytes},
           ${command.declaredContentType}, ${command.rightsConfirmedAt}, 'CREATED',
           ${command.expiresAt}, ${command.mediaPolicyVersion},
-          ${command.competition ?? "K리그1"}, ${command.season ?? "2026"}
+          ${command.competition ?? "UNKNOWN"}, ${command.season ?? "UNKNOWN"}
         )
         returning id
       `);

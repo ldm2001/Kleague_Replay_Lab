@@ -48,6 +48,7 @@ export const decision =
       ruleVersionId: context.value.ruleVersionId,
       push: context.value.facts.push,
       variable: context.value.facts.variable,
+      observed: context.value.facts.observed,
       options: context.value.competitionOptions,
     });
     // 규정 엔진 결과 확인

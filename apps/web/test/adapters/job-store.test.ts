@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { JobStore } from "@replay/adapters";
 import type { EvidenceAccessCommand, JobClaimCommand, JobProgressCommand, JobResultCommand } from "@replay/application";
+import { PgDialect } from "drizzle-orm/pg-core";
+import type { SQL } from "drizzle-orm";
 
 const command: JobClaimCommand = {
   workerId: "worker-1",
@@ -50,6 +52,39 @@ const database = (rows: unknown[]) => ({
 
 // 작업 저장소 테스트
 describe("JobStore", () => {
+  it("does not infer a match rule edition from the upload clock", async () => {
+    const queries: string[] = [];
+    const repository = new JobStore({ db: { transaction: async (operation: (tx: unknown) => unknown) => operation({
+      execute: async (statement: SQL) => {
+        queries.push(new PgDialect().sqlToQuery(statement).sql);
+        return [{ kind: "ACCEPTED" }];
+      },
+    }) } } as never);
+    await repository.result(result);
+    expect(queries[0]).toContain("NULL::uuid as applied_rule_version_id");
+    expect(queries[0]).not.toContain("from competition_rule_versions");
+  });
+
+  it("completes an empty pipeline output without waiting for user facts", async () => {
+    const queries: string[] = [];
+    const repository = new JobStore({ db: { transaction: async (operation: (tx: unknown) => unknown) => operation({
+      execute: async (statement: SQL) => {
+        queries.push(new PgDialect().sqlToQuery(statement).sql);
+        return queries.length === 1 ? [{
+          id: result.jobId, status: "PROCESSING", job_type: "ANALYZE_VIDEO",
+          job_revision: result.jobRevision, attempt: 1, lease_owner: result.workerId,
+          lease_token_hash: Buffer.from(result.leaseTokenHash), lease_until: "2030-01-01T00:00:00Z",
+          analysis_id: "22222222-2222-4222-8222-222222222222",
+        }] : [];
+      },
+    }) } } as never);
+    await expect(repository.result({ ...result, payload: {
+      kind: "ANALYZED", pipelineVersion: "video-baseline-v1", limitations: [], shots: [], candidates: [], evidence: [],
+    } })).resolves.toEqual({ kind: "ACCEPTED" });
+    const update = queries.find((query) => query.includes("update analyses"));
+    expect(update).toContain("status = 'COMPLETED'");
+    expect(update).not.toContain("completed_at = null");
+  });
   it("maps a claimed row and returns an opaque lease token", async () => {
     const repository = new JobStore({ db: database([{
       id: "11111111-1111-4111-8111-111111111111",

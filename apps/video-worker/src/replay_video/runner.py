@@ -9,16 +9,13 @@ import time
 import logging
 from pathlib import Path
 from typing import Protocol
-
 from .http import Api
 from .worker import job
 
-# 오류 종류만 기록해 재시도와 종료 원인 추적
 logger = logging.getLogger(__name__)
 
-
+# Worker API 계약
 class WorkerApi(Protocol):
-    # Worker API 계약
     def claim(self, kind: str) -> dict[str, object] | None: ...
     def media(self, url: str, target: Path) -> None: ...
     def progress(
@@ -32,9 +29,8 @@ class WorkerApi(Protocol):
     def evidence(self, item: dict[str, object], entries: list[dict[str, object]]) -> dict[str, object] | None: ...
     def put(self, url: str, source: Path, content_type: str) -> None: ...
 
-
+# 작업 Lease 갱신
 class Pulse:
-    # 작업 Lease 갱신
     def __init__(self, api: WorkerApi, item: dict[str, object], stage: str, interval: float = 10.0) -> None:
         # API와 작업 정보 저장
         self.api = api
@@ -77,7 +73,6 @@ class Pulse:
     def __exit__(self, *_args: object) -> None:
         self.stop.set()
         self.thread.join(timeout=1)
-
 
 # 증거 파일 업로드
 def artifacts(api: WorkerApi, item: dict[str, object], root: Path, entries: list[dict[str, object]]) -> list[dict[str, object]]:
@@ -132,7 +127,6 @@ def artifacts(api: WorkerApi, item: dict[str, object], root: Path, entries: list
         })
     return result
 
-
 # 파이프라인 보고서 변환
 def report(api: WorkerApi, item: dict[str, object], path: Path) -> dict[str, object]:
     # 파이프라인 보고서 읽기
@@ -167,7 +161,6 @@ def report(api: WorkerApi, item: dict[str, object], path: Path) -> dict[str, obj
         "candidates": candidates,
         "evidence": artifacts(api, item, path.parent, value["evidence"]),
     }
-
 
 # 작업 한 건 처리
 def cycle(api: WorkerApi, kind: str, root: Path) -> bool:
@@ -209,7 +202,6 @@ def cycle(api: WorkerApi, kind: str, root: Path) -> bool:
                 else:
                     # 분석 보고서 API payload 변환
                     payload = report(api, item, Path(str(local.payload["report_path"])))
-                    pulse.progress("APPLYING_RULES", 95, "facts-required")
             api.result(item, payload)
             # 작업 완료 반환
             return True
@@ -222,7 +214,6 @@ def cycle(api: WorkerApi, kind: str, root: Path) -> bool:
             pass
         # 작업은 처리되었으므로 다음 작업 진행
         return True
-
 
 # Worker 반복 실행
 def loop(api: WorkerApi, root: Path, delay: float) -> None:
@@ -241,14 +232,12 @@ def loop(api: WorkerApi, root: Path, delay: float) -> None:
         if failure or not worked:
             time.sleep(delay)
 
-
 # 환경값 조회
 def env(name: str) -> str:
     value = os.environ.get(name, "").strip()
     if not value:
         raise RuntimeError(f"{name}-required")
     return value
-
 
 # Worker 진입점
 def main() -> None:
@@ -260,7 +249,6 @@ def main() -> None:
     root = Path(os.environ.get("WORKER_TEMP_DIR", "/tmp/replay-lab-worker"))
     delay = max(0.1, float(os.environ.get("WORKER_POLL_MS", "1000")) / 1000)
     loop(api, root, delay)
-
 
 if __name__ == "__main__":
     main()

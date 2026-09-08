@@ -7,3 +7,4 @@ export { factSignature, FORBIDDEN_SIGNATURE_KEY_PATTERN } from "./signatures/fac
 export type { FactSignature } from "./signatures/fact-signature";
 export { pushResult } from "./evaluators/pushing/decision";
 export { varResult } from "./var/assessment";
+export { pipelineFilter } from "./gates/pipeline-filter";
