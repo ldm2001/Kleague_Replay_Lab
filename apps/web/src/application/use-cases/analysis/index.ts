@@ -124,11 +124,11 @@ export const analysis =
     const sourcePlatform = optionalText(snapshot.sourcePlatform);
     // 요청 해시 입력 구성
     const requestHashInput = JSON.stringify({
-      anonymousSessionId: anonymousSessionId,
-      videoAssetId: videoAssetId,
-      matchId: matchId,
-      sourceUrl: sourceUrl,
-      sourcePlatform: sourcePlatform,
+      anonymousSessionId,
+      videoAssetId,
+      matchId,
+      sourceUrl,
+      sourcePlatform,
       pipelineVersion: snapshot.pipelineVersion,
       mediaPolicyVersion: snapshot.mediaPolicyVersion,
     });
