@@ -45,7 +45,7 @@ describe("AnalysisView", () => {
   });
 
   // 완료 후 결과 이동 확인
-  it.each([true, false])("결과 이동과 표시 옵션 %s", async (low) => {
+  it.each(["CANDIDATES_READY", "COMPLETED"])("설정 없이 결과 이동 %s", async (status) => {
     // 업로드 모형 구성
     vi.stubGlobal("XMLHttpRequest", UploadRequest);
     Object.defineProperty(URL, "createObjectURL", { configurable: true, value: vi.fn(() => "blob:match.mp4") });
@@ -61,7 +61,7 @@ describe("AnalysisView", () => {
           analysisId: "44444444-4444-4444-8444-444444444444",
           mode: "VISUAL_CHANGE_BASELINE",
           judgmentStatus: "NOT_EVALUATED",
-          status: "CANDIDATES_READY",
+          status,
           stage: "SUCCEEDED",
           progressPercent: 100,
           failureCode: null,
@@ -72,12 +72,12 @@ describe("AnalysisView", () => {
 
     // 분석 화면 렌더링
     render(<AnalysisView />);
-    if (!low) fireEvent.click(screen.getByRole("checkbox", { name: "낮은 확신도 장면도 표시" }));
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
     // 영상 선택 이벤트 전달
     fireEvent.change(screen.getByLabelText("영상 파일"), { target: { files: [new File([new Uint8Array(128)], "match.mp4", { type: "video/mp4" })] } });
     // 분석 시작 이벤트 전달
     fireEvent.click(screen.getByRole("button", { name: "분석 시작" }));
 
-    await waitFor(() => expect(push).toHaveBeenCalledWith(`\/results/44444444-4444-4444-8444-444444444444${low ? "" : "?low=0"}`));
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/results/44444444-4444-4444-8444-444444444444"));
   });
 });

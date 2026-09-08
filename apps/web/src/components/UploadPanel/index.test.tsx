@@ -96,7 +96,10 @@ describe("UploadPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "분석 시작" }));
 
     await waitFor(() => expect(screen.getAllByText("기초 장면 탐색 완료").length).toBeGreaterThan(0));
-    expect(onView).toHaveBeenCalledWith(expect.objectContaining({ videoAssetId: "33333333-3333-4333-8333-333333333333" }), true);
+    expect(onView).toHaveBeenCalledWith(expect.objectContaining({ videoAssetId: "33333333-3333-4333-8333-333333333333" }));
+    const uploaded = JSON.parse(String(vi.mocked(fetch).mock.calls[0]?.[1]?.body));
+    expect(uploaded).not.toHaveProperty("competition");
+    expect(uploaded).not.toHaveProperty("season");
     expect(screen.queryByText("후보 장면 01")).not.toBeInTheDocument();
     expect(fetch).toHaveBeenCalledTimes(3);
     expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "100");
@@ -107,9 +110,8 @@ describe("UploadPanel", () => {
     render(<UploadPanel />);
 
     expect(screen.getByRole("heading", { name: "경기 영상 업로드" })).toBeInTheDocument();
-    expect(screen.getByLabelText("대회")).toBeInTheDocument();
-    expect(screen.getByLabelText("시즌")).toBeInTheDocument();
-    expect(screen.getByText("낮은 확신도 장면도 표시")).toBeInTheDocument();
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "분석 시작" })).toBeDisabled();
   });
 

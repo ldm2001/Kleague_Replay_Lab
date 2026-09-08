@@ -54,10 +54,10 @@ const SceneRow = memo(function SceneRow({ analysisId, candidate, index, active, 
         <span className="rail-copy">
           <strong>후보 장면 {String(index + 1).padStart(2, "0")}</strong>
           <small>{time(candidate.startMs)}부터 {time(candidate.endMs)}</small>
-          <em>{candidate.judgment ? "규정 대조 완료" : "영상 사실 추출 대기"}</em>
+          <em>{candidate.filter ? candidate.filter.status === "EXCLUDED" ? "표시 대상 제외" : "규정 판단 근거 부족" : "파이프라인 후보"}</em>
         </span>
         {/* 변화 신호 점수 표시 */}
-        <span className="rail-score">{candidate.signalScore === null ? "—" : `${Math.round(candidate.signalScore * 100)}%`}</span>
+        <span className="rail-score" aria-label="화면 변화 점수이며 파울 확률이 아님">{candidate.signalScore === null ? "—" : `${Math.round(candidate.signalScore * 100)}%`}</span>
       </button>
     </li>
   );

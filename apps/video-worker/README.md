@@ -34,10 +34,9 @@ apps/video-worker/
 │           ├── evidence.py
 │           ├── probe.py
 │           ├── shots.py
-│           └── signals.py
+│           ├── signals.py
 └── tests/
     ├── test_http.py
-    ├── test_pipeline.py
     ├── test_runner.py
     └── test_worker.py
 ```
@@ -63,6 +62,8 @@ PYTHONPATH=src python3 -m replay_video.cli \
 
 사이트 연결 Worker 실행
 
+AI 모델 호출과 모델 환경설정은 사용하지 않는다
+
 ```bash
 cd ../..
 npm run dev:worker
@@ -72,7 +73,9 @@ npm run dev:worker
 
 결과 디렉터리에는 `report.json`과 후보별 `frames`와 `clips`가 생성된다
 
-현재 후보 범주는 `OTHER`로 기록한다 이 단계는 샷과 시간 근거를 만드는 기준선이며 파울과 핸드볼과 차징과 득점 취소를 분류하는 모델은 아직 연결하지 않는다 분석 상태는 `CANDIDATES_READY`로 저장하고 `report.json`의 `limitations`에도 이 한계를 기록한다
+기초 후보 범주는 `OTHER`로 기록한다 화면 변화 점수는 접촉과 강도의 근거가 아니다
+서버는 저장된 후보와 근거에 rules 필터를 적용하고 부족한 근거를 확인 불가로 반환한다
+사용자 사실 입력이나 확인 단계는 없다
 
 Application 파이프라인은 `PipelinePorts`만 사용
 실제 미디어 구현은 `infrastructure.ports.media`에서 조립
@@ -83,4 +86,4 @@ Job 경계는 `replay_video.worker.job`으로 제공한다 현재 `VALIDATE_VIDE
 
 후보는 최대 40건까지 저장하고 모든 후보의 프레임과 변화 신호가 높은 8건의 짧은 클립을 Object Storage에 업로드한다
 
-다음 단계에서 선수와 공과 포즈 추적과 사건별 분류기를 추가한다
+후속 작업에서 선수와 공 추적을 검토할 수 있지만 AI 모델 도입이나 자동 판정 추가는 별도 설계 승인 없이는 하지 않는다

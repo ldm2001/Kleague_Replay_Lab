@@ -1,0 +1,22 @@
+/* 장면 사실 확인 카드 */
+.fact-panel { margin-top: 22px; padding: 26px; border: 1px solid #d8e2f2; border-radius: 14px; background: white; color: var(--navy); }
+.fact-panel header > p:first-child { color: var(--accent); font-size: 12px; font-weight: 800; }
+.fact-panel h2 { margin: 6px 0 10px; font-size: 23px; }
+.fact-panel p { line-height: 1.7; font-size: 14px; }
+.fact-observation { margin: 18px 0; padding: 18px; border-left: 3px solid var(--blue); background: #f3f7ff; }
+.fact-observation small, .fact-hint { color: var(--muted); }
+/* 영상 사실과 VAR 조건 묶음 */
+.fact-panel fieldset { min-width: 0; margin: 20px 0; padding: 18px; border: 1px solid #e3e9f2; border-radius: 10px; }
+.fact-panel legend { padding: 0 7px; font-size: 15px; font-weight: 800; }
+.fact-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.fact-fields label { display: grid; gap: 8px; min-width: 0; font-size: 14px; }
+.fact-fields select { width: 100%; min-height: 44px; padding: 10px; border: 1px solid #ccd8ea; border-radius: 7px; background: #fff; color: var(--navy); font: inherit; }
+.fact-check { display: flex; align-items: center; gap: 9px; margin: 12px 0; line-height: 1.5; font-size: 14px; }
+.fact-check input { width: 18px; height: 18px; flex-shrink: 0; accent-color: var(--blue); }
+/* 제출과 재시도 상태 */
+.fact-actions { display: flex; flex-wrap: wrap; gap: 12px; }
+.fact-actions button { min-height: 44px; padding: 12px 20px; border: 1px solid #c9d6ec; border-radius: 8px; color: var(--navy); background: white; font: inherit; cursor: pointer; }
+.fact-actions button[type="submit"] { background: var(--blue); border-color: var(--blue); color: white; font-weight: 800; }
+.fact-panel button:disabled { opacity: .5; cursor: default; }
+.fact-panel :focus-visible { outline: 3px solid #80b9ff; outline-offset: 3px; }
+@media (max-width: 820px) { .fact-panel { padding: 18px; } .fact-fields { grid-template-columns: 1fr; } }

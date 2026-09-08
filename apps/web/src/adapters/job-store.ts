@@ -277,16 +277,7 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
                       video.id as video_asset_id, video.anonymous_session_id,
                       video.content_sha256, video.expires_at,
                       video.competition, video.season,
-                      (
-                        select version.id
-                        from competition_rule_versions as version
-                        where version.competition = video.competition
-                          and version.season = video.season
-                          and ${command.now}::date between version.effective_from
-                            and coalesce(version.effective_to, 'infinity'::date)
-                        order by version.effective_from desc
-                        limit 1
-                      ) as applied_rule_version_id
+                      NULL::uuid as applied_rule_version_id
           ), new_analysis as (
             insert into analyses (
               anonymous_session_id, video_asset_id, status, retention_class,
@@ -388,12 +379,13 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
           await transaction.execute(sql`
             insert into incident_candidates (
               analysis_id, candidate_index, review_scenario, start_ms, end_ms, anchor_ms,
-              detection_confidence, camera_sufficiency, reasons, shot_indices, review_status, created_at
+              detection_confidence, camera_sufficiency, reasons, shot_indices, observation, review_status, created_at
             ) values (
               ${target.analysis_id}, ${item.index}, ${item.category}::review_scenario,
               ${item.startMs}, ${item.endMs}, ${item.anchorMs}, ${item.confidence},
               ${item.cameraSufficiency}::camera_sufficiency,
               ${JSON.stringify(item.reasons)}::jsonb, ${JSON.stringify(item.shotIndices)}::jsonb,
+              ${item.observation ? JSON.stringify(item.observation) : null}::jsonb,
               'UNREVIEWED', ${command.now}
             )
           `);
@@ -428,14 +420,14 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
           `);
         }
 
-        // 분석 상태를 후보 준비 완료로 전환
+        // 처리 완료는 규정 판단 가능 여부와 독립적이다
         await transaction.execute(sql`
           update analyses
-          set status = 'CANDIDATES_READY',
+          set status = 'COMPLETED',
               pipeline_version = ${payload.pipelineVersion},
               limitations = ${JSON.stringify(payload.limitations)}::jsonb,
               state_version = state_version + 1,
-              completed_at = null
+              completed_at = ${command.now}
           where id = ${target.analysis_id}
         `);
         // 분석 작업 완료 처리

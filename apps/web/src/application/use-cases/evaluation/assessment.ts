@@ -1,6 +1,7 @@
 import type {
   CompetitionOptions,
   EvaluationResult,
+  ObservedDecision,
   PushFacts,
   RuleSet,
   VarFacts,
@@ -17,6 +18,7 @@ export type AssessmentInput = Readonly<{
   push: PushFacts;
   variable: VarFacts;
   options: CompetitionOptions;
+  observed: ObservedDecision;
 }>;
 
 export type AssessmentResult =
@@ -48,6 +50,22 @@ const citations = (value: EvaluationResult, variable: Extract<VarOutcome, { ok: 
 // 바이트 해시 변환
 const hex = (value: Uint8Array): string => Array.from(value, (item) => item.toString(16).padStart(2, "0")).join("");
 
+// 규정 재개와 관측 원심 비교
+const comparison = (value: EvaluationResult, observed: ObservedDecision): EvaluationResult["decisionMatch"] => {
+  // 관측되지 않은 재개 방식은 비교 보류
+  if (observed.restartType === "UNKNOWN" || value.restart === null) return "UNDETERMINED";
+  // 재개 방식이 다르면 불일치
+  if (observed.restartType !== value.restart) return "MISMATCH";
+  // 카드 관측이 없으면 전체 비교 보류
+  if (observed.card === null) return "UNDETERMINED";
+  // 징계 null은 명시적인 카드 없음과 같은 의미
+  const disciplinary = value.disciplinary ?? "NONE";
+  // 확인된 카드가 다르면 불일치
+  if (observed.card !== disciplinary) return "MISMATCH";
+  // 비교 가능한 항목이 모두 같으면 일치
+  return "MATCH";
+};
+
 // 밀기와 VAR 평가
 export const assessment =
   ({ rule, push, variable, hash }: AssessmentDependencies) =>
@@ -73,6 +91,7 @@ export const assessment =
       kind: "EVALUATED",
       value: {
         ...pushing,
+        decisionMatch: comparison(pushing, input.observed),
         varAssessment: varValue.assessment,
         factSignature,
         factSignatureInput,

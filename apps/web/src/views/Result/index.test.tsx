@@ -33,13 +33,12 @@ describe("ResultView", () => {
     expect(screen.getByRole("link", { name: "분석 페이지로 이동" })).toHaveAttribute("href", "/analyze");
   });
 
-  it("낮은 확신도 필터", async () => {
+  it("shows results without configuration or fact entry", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response(JSON.stringify(view)));
-    render(<ResultView analysisId={ANALYSIS} low={false} />);
-    // 평가 완료 HIGH 장면은 영상 변화 점수가 낮아도 유지
-    await waitFor(() => expect(screen.getByText("01 / 01")).toBeInTheDocument());
-    expect(screen.getByRole("checkbox", { name: "낮은 확신도 장면도 표시" })).not.toBeChecked();
-    fireEvent.click(screen.getByRole("checkbox", { name: "낮은 확신도 장면도 표시" }));
-    expect(screen.getByText("01 / 03")).toBeInTheDocument();
+    render(<ResultView analysisId={ANALYSIS} />);
+    await waitFor(() => expect(screen.getByText("01 / 03")).toBeInTheDocument());
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    expect(screen.queryByText(/아래에서 장면의 접촉/)).not.toBeInTheDocument();
   });
 });

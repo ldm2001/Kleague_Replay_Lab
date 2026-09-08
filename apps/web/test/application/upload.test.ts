@@ -119,6 +119,8 @@ describe("upload", () => {
       rightsConfirmedAt: "2026-08-24T00:00:00.000Z",
       expiresAt: "2026-08-24T00:15:00.000Z",
       mediaPolicyVersion: "media-v1",
+      competition: "UNKNOWN",
+      season: "UNKNOWN",
     });
     expect(storage.requests[0]?.expiresAt).toBe("2026-08-24T00:15:00.000Z");
   });

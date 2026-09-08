@@ -20,6 +20,7 @@ describe("migration discovery", () => {
       "0010_baseline_state",
       "0011_competition_context",
       "0012_kleague_rule_scope",
+      "0013_observations",
     ]);
     expect(list[0]?.checksum).toMatch(/^[a-f0-9]{64}$/);
     expect(list[0]?.sql).toContain("CREATE TABLE analyses");

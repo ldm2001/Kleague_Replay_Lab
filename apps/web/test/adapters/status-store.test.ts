@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { StatusStore } from "@replay/adapters";
+import { PgDialect } from "drizzle-orm/pg-core";
+import type { SQL } from "drizzle-orm";
 
 const rows = [
   [{
@@ -32,6 +34,36 @@ const rows = [
 
 // 상태 저장소 테스트
 describe("StatusStore", () => {
+  it("excludes invalid candidates from playback while retaining filter counts", async () => {
+    const queue = [rows[0], [{ ...rows[1]![0], start_ms: -1 }], rows[2]];
+    const repository = new StatusStore({ db: { execute: async () => queue.shift() ?? [] } } as never);
+    const result = await repository.status({ anonymousSessionId: "33333333-3333-4333-8333-333333333333",
+      videoAssetId: "11111111-1111-4111-8111-111111111111", now: "2026-08-30T00:00:00.000Z" });
+    expect(result?.analysis?.candidates).toEqual([]);
+    expect(result?.analysis?.filterSummary).toEqual({ checkedCount: 1, excludedCount: 1, undeterminedCount: 0 });
+  });
+  it("selects the stored review scenario rather than a nonexistent category column", async () => {
+    const queries: string[] = [];
+    const queue = [...rows];
+    const repository = new StatusStore({ db: { execute: async (statement: SQL) => {
+      queries.push(new PgDialect().sqlToQuery(statement).sql);
+      return queue.shift() ?? [];
+    } } } as never);
+    await repository.status({ anonymousSessionId: "33333333-3333-4333-8333-333333333333",
+      videoAssetId: "11111111-1111-4111-8111-111111111111", now: "2026-08-30T00:00:00.000Z" });
+    expect(queries[1]).toContain("candidate.review_scenario::text as category");
+    expect(queries[1]).not.toContain("candidate.category");
+  });
+  it("keeps processing completed when no football decision is possible", async () => {
+    const queue = [[{ ...rows[0]![0], analysis_status: "COMPLETED" }], ...rows.slice(1)];
+    const repository = new StatusStore({ db: { execute: async () => queue.shift() ?? [] } } as never);
+    const result = await repository.status({
+      anonymousSessionId: "33333333-3333-4333-8333-333333333333",
+      videoAssetId: "11111111-1111-4111-8111-111111111111", now: "2026-08-30T00:00:00.000Z",
+    });
+    expect(result?.analysis?.status).toBe("COMPLETED");
+    expect(result?.analysis?.judgmentStatus).toBe("NOT_EVALUATED");
+  });
   it("maps an owned media analysis view", async () => {
     const queue = [...rows];
     const repository = new StatusStore({
@@ -50,6 +82,10 @@ describe("StatusStore", () => {
         candidates: [{
           index: 1,
           signalScore: 0.42,
+          filter: {
+            status: "UNDETERMINED",
+            reasonCodes: expect.arrayContaining(["RULE_CONTEXT_UNVERIFIED", "CONTACT_UNOBSERVED"]),
+          },
           evidence: [{ evidenceId: "55555555-5555-4555-8555-555555555555", kind: "FRAME" }],
         }],
       },

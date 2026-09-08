@@ -65,7 +65,6 @@ class ApiFake:
         # 증거 업로드 파일 기록
         self.uploads.append(source.name)
 
-
 # 영상 검증 작업 확인
 def test_validation(tmp_path: Path) -> None:
     # 검증 입력 준비
@@ -82,7 +81,6 @@ def test_validation(tmp_path: Path) -> None:
         "height": 180,
     }]
     assert api.progresses[0] == ("VALIDATING", 10)
-
 
 # 영상 분석 작업 확인
 def test_analysis(tmp_path: Path) -> None:
@@ -105,11 +103,10 @@ def test_analysis(tmp_path: Path) -> None:
     assert isinstance(payload["candidates"], list)
     assert payload["candidates"]
     assert api.progresses[0] == ("SEGMENTING", 10)
-    assert {stage for stage, _percent in api.progresses} >= {"SEGMENTING", "DETECTING", "EXTRACTING_FACTS", "BUILDING_EVIDENCE", "APPLYING_RULES"}
+    assert {stage for stage, _percent in api.progresses} >= {"SEGMENTING", "DETECTING", "EXTRACTING_FACTS", "BUILDING_EVIDENCE"}
     assert isinstance(payload["evidence"], list)
     assert len(payload["evidence"]) == 2
     assert len(api.uploads) == 2
-
 
 # 오래된 결과 처리 확인
 def test_stale(tmp_path: Path) -> None:
@@ -122,7 +119,6 @@ def test_stale(tmp_path: Path) -> None:
             raise HttpError("http-409")
 
     assert cycle(Stale(source), "VALIDATE_VIDEO", tmp_path / "work") is True
-
 
 # 진행률 heartbeat 확인
 def test_pulse(tmp_path: Path) -> None:
@@ -142,7 +138,6 @@ def test_pulse(tmp_path: Path) -> None:
     assert api.progresses[0] == ("SEGMENTING", 10)
     assert api.progresses[1] == ("DETECTING", 40)
     assert api.progresses[-1] == ("DETECTING", 40)
-
 
 # 첫 조회 실패 뒤 다음 반복에서 정상 작업 처리
 def test_recovery(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -171,7 +166,6 @@ def test_recovery(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # 실패 뒤 작업 처리와 지연 확인
     assert api.results[0]["kind"] == "VALIDATED"
     assert delays
-
 
 # 진행 전송이 겹쳐도 이전 heartbeat가 뒤늦게 저장되지 않음
 def test_order(tmp_path: Path) -> None:
