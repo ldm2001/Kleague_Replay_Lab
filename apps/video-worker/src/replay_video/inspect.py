@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import hashlib
 from dataclasses import asdict
 from pathlib import Path
 
@@ -11,6 +12,8 @@ import cv2
 from .infrastructure.context import frame_context
 from .infrastructure.probe import probe
 from .infrastructure.signals import histogram
+from .domain.ball import BallTracker
+from .infrastructure.ball import ball_candidates
 
 
 def inspect_video(source: Path | str, output: Path | str) -> Path:
@@ -28,7 +31,8 @@ def inspect_video(source: Path | str, output: Path | str) -> Path:
         capture.release()
         raise RuntimeError("video-open-failed")
 
-    stride = max(1, round(metadata.fps / 5.0))
+    # 빠른 팬과 공 이동이 긴 샘플 간격에서 끊기지 않도록 약 15Hz로 측정한다
+    stride = max(1, round(metadata.fps / 15.0))
     index = 0
     count = 0
     registered = 0
@@ -38,6 +42,9 @@ def inspect_video(source: Path | str, output: Path | str) -> Path:
     last_time = -1
     last_source_index = None
     nominal_times = 0
+    tracker = BallTracker()
+    ball_tracked_samples = 0
+    motion_onsets: list[dict[str, object]] = []
     try:
         with samples_path.open("x", encoding="utf-8") as stream:
             while capture.grab():
@@ -69,11 +76,27 @@ def inspect_video(source: Path | str, output: Path | str) -> Path:
                 context = frame_context(image, previous)
                 if context.camera_dx is not None:
                     registered += 1
+                # 후보 추적은 진단용이며 실제 경기 중단과 킥 의미는 아직 부여하지 않는다
+                candidates = ball_candidates(image)
+                motion = tracker.update(
+                    timestamp_ms, continuity_id, context.width, context.height, candidates,
+                    context.camera_affine if time_source == "DECODER" else None,
+                )
+                if motion.candidate is not None:
+                    ball_tracked_samples += 1
+                if motion.motion_onset_ms is not None:
+                    motion_onsets.append({
+                        "timestamp_ms": motion.motion_onset_ms, "confirmed_at_ms": timestamp_ms,
+                        "track_id": motion.track_id, "continuity_id": continuity_id,
+                        "meaning": "CANDIDATE_STILL_TO_MOVING",
+                    })
                 sample = {
                     "frame_index": frame_index, "timestamp_ms": timestamp_ms,
                     "time_source": time_source, "previous_frame_index": last_source_index,
                     "continuity_id": continuity_id, "cut_candidate": bool(cut),
                     **asdict(context),
+                    "ball_candidates": [asdict(candidate) for candidate in candidates],
+                    "ball_track": asdict(motion),
                     # 아래 의미 정보는 원시 영상 차이로 대체하지 않는다
                     "ball_position": None, "player_positions": None,
                     "dead_ball": None, "ball_restarted": None, "is_replay": None,
@@ -90,14 +113,19 @@ def inspect_video(source: Path | str, output: Path | str) -> Path:
 
     if count == 0:
         raise RuntimeError("context-no-frames")
+    with metadata.source.open("rb") as source_file:
+        source_sha256 = hashlib.file_digest(source_file, "sha256").hexdigest()
     # 프레임 수 메타데이터와 읽은 프레임 수가 다르면 전체 검사 완료라고 주장하지 않는다
     summary = {
-        "schema_version": 1, "extractor_version": "context-baseline-v1",
+        "schema_version": 1, "extractor_version": "context-ball-baseline-v3",
         "source_name": metadata.source.name, "duration_ms": metadata.duration_ms,
+        "source_sha256": source_sha256,
         "decoded_frames": index, "expected_frames": metadata.frame_count,
         "coverage_status": "MATCHES_METADATA" if index == metadata.frame_count else "UNVERIFIED",
         "sample_stride": stride, "sample_count": count, "registered_pairs": registered,
         "nominal_timestamp_count": nominal_times,
+        "ball_tracked_samples": ball_tracked_samples,
+        "candidate_motion_onsets": motion_onsets,
         "set_piece_status": "UNKNOWN",
         "missing_inputs": ["ball_position", "player_positions", "dead_ball", "ball_restarted", "is_replay", "restart_candidates"],
         "samples_file": samples_path.name,

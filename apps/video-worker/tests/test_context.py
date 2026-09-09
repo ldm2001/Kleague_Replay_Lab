@@ -79,7 +79,7 @@ def test_diagnostic_video_records_raw_signals_without_semantic_invention(tmp_pat
     report = inspect_video(source, tmp_path / "output")
     summary = json.loads(report.read_text())
     samples = [json.loads(line) for line in (report.parent / "context.jsonl").read_text().splitlines()]
-    assert summary["sample_count"] == 10
+    assert summary["sample_count"] == 20
     assert summary["set_piece_status"] == "UNKNOWN"
     assert summary["coverage_status"] == "MATCHES_METADATA"
     assert any(sample["cut_candidate"] for sample in samples)
