@@ -101,7 +101,8 @@ PYTHONPATH=apps/video-worker/src python3 -m replay_video.inspect /path/to/match.
 - `context-summary.json` 읽은 프레임 수와 측정 가능 건수 및 미확인 항목
 - 기존 결과 폴더에 같은 파일이 있으면 덮어쓰지 않고 중단
 
-공과 선수 위치 및 중단과 재개 상태는 현재 추출하지 않으므로 null로 기록한다
+공 후보의 화면 좌표와 추적 상태는 ball_candidates와 ball_track에 기록한다
+축구공으로 검증된 위치와 선수 위치 및 경기 중단과 재개 상태는 아직 null로 기록한다
 색상 변화가 큰 구간에서는 프레임 간 움직임 비교를 초기화한다
 시간은 디코더 값을 우선하고 이를 사용할 수 없는 샘플은 NOMINAL_FPS로 표시한다
 좌표는 축소 영상의 픽셀 기준이며 실제 경기장 거리나 접촉 강도가 아니다
@@ -112,3 +113,40 @@ PYTHONPATH=apps/video-worker/src python3 -m replay_video.inspect /path/to/match.
 합성 테스트 통과는 K리그 세트피스 인식 정확도를 의미하지 않는다
 
 설계와 논문 근거는 [세트피스 설계](../../docs/design/세트피스.md)를 본다
+
+## 공 후보 추적과 정지 후 움직임
+
+진단 버전 context-ball-baseline-v3는 작은 밝은 원형 물체를 후보로 추출한다
+분석 해상도에서 크기와 원형도 및 주변 잔디색을 검사해 선분과 큰 물체를 제외한다
+잔디색 비율이 20%보다 낮으면 새 후보를 만들지 않는다
+공중볼 후보를 포함하도록 잔디 영역 위아래의 탐색 띠를 영상 높이의 15%만큼 확장한다
+색이 어두운 공과 선 위에 겹친 공 및 가려진 공을 놓칠 수 있다
+단일 후보라도 공임을 보장하지 않으며 신발과 그래픽 등과의 혼동은 실영상 평가 대상이다
+
+camera_affine은 이전 분석 프레임에서 현재 분석 프레임으로의 전역 변환이다
+추적은 이 변환으로 카메라 이동과 확대를 보정한 뒤 후보의 잔여 이동을 계산한다
+후보가 여럿이거나 가림 및 장면 전환과 시간 공백이 생기면 이전 정지 이력을 초기화한다
+초당 약 15개 샘플을 사용하며 빠르게 움직이는 공은 여전히 연결 범위를 벗어날 수 있다
+
+기준선은 600ms 정지 관찰 뒤 두 연속 샘플의 움직임을 확인한다
+candidate_motion_onsets는 해당 후보의 정지 후 움직임 시각과 확인 시각을 기록한다
+이 시각은 실제 경기 재개나 코너킥 판정이 아니므로 ball_restarted를 채우지 않는다
+크기와 거리 및 시간 기준은 개발 기본값이며 실영상 최적값은 아직 검증하지 않았다
+
+## 공 후보 정답 평가
+
+진단 결과와 동일한 영상의 개발용 라벨을 준비한 뒤 실행한다
+원본 해시는 context-summary.json의 source_sha256을 사용한다
+
+```sh
+PYTHONPATH=apps/video-worker/src python3 -m replay_video.evaluate_ball /tmp/replay-context-result/context-summary.json /path/to/ball-labels.json
+```
+
+라벨은 source_sha256과 frames 배열을 가진 JSON이다
+각 항목은 frame_index와 visibility를 가지며 VISIBLE이면 ball의 x와 y를 0부터 1 사이 좌표로 기록한다
+ABSENT는 공이 없는 프레임이고 UNOBSERVABLE은 가림 등으로 확인할 수 없는 프레임이다
+진단이 샘플링한 프레임만 평가하며 라벨 없는 프레임은 정답 없음으로 계산하지 않는다
+
+평가기는 선택 후보의 정밀도와 재현율 및 좌표 오차와 측정 가능 프레임 수를 반환한다
+좌표 일치 기준은 영상 대각선 길이의 2%이며 출력에도 기록한다
+이 평가는 공 후보 좌표만 다루며 세트피스 종류나 원심 판정의 정확도를 측정하지 않는다

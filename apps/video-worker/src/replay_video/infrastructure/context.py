@@ -19,6 +19,7 @@ class FrameContext:
     residual_motion: float | None
     inlier_ratio: float | None
     quality_reason: str | None
+    camera_affine: tuple[float, ...] | None = None
 
 
 def _image(frame: np.ndarray) -> np.ndarray:
@@ -93,4 +94,5 @@ def frame_context(frame: np.ndarray, previous: np.ndarray | None = None) -> Fram
         **values, "camera_dx": round(float(matrix[0, 2]), 4),
         "camera_dy": round(float(matrix[1, 2]), 4),
         "residual_motion": round(residual, 6), "inlier_ratio": round(ratio, 6),
+        "camera_affine": tuple(float(value) for value in matrix.reshape(-1)),
     })

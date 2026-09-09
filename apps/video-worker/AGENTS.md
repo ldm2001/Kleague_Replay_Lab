@@ -9,6 +9,8 @@
 - `tests/` Worker 단위 테스트
 - `src/replay_video/inspect.py` 세트피스 원시 신호의 독립 개발 진단
 - `src/replay_video/domain/setpieces.py` 근거 입력을 받는 재개 상태 전이
+- `src/replay_video/domain/ball.py` 공 후보의 카메라 보정 추적과 움직임 시작 신호
+- `src/replay_video/evaluate_ball.py` 원본 해시가 일치하는 개발 라벨과 후보 좌표 평가
 - `README.md` 실행 계약과 산출물 형식
 
 ## 실행과 테스트
