@@ -1,5 +1,6 @@
 import type {
   CompetitionOptions,
+  CompetitionRuleSelection,
   EvaluationResult,
   ObservedDecision,
   PushFacts,
@@ -9,12 +10,14 @@ import type {
 } from "@replay/shared-types";
 
 type Rule = (versionId: string) => RuleSet | null;
+type CompetitionRule = (selection: CompetitionRuleSelection) => RuleSet | null;
 type Push = (facts: PushFacts, rules: RuleSet) => EvaluationResult;
 type Variable = (facts: VarFacts, rules: RuleSet, options: CompetitionOptions) => VarOutcome;
 type Hash = (value: string) => Promise<Uint8Array>;
 
 export type AssessmentInput = Readonly<{
   ruleVersionId: string;
+  competition?: Readonly<{ competition: string; season: string }>;
   push: PushFacts;
   variable: VarFacts;
   options: CompetitionOptions;
@@ -28,6 +31,7 @@ export type AssessmentResult =
 
 export type AssessmentDependencies = Readonly<{
   rule: Rule;
+  competitionRule?: CompetitionRule;
   push: Push;
   variable: Variable;
   hash: Hash;
@@ -68,10 +72,12 @@ const comparison = (value: EvaluationResult, observed: ObservedDecision): Evalua
 
 // 밀기와 VAR 평가
 export const assessment =
-  ({ rule, push, variable, hash }: AssessmentDependencies) =>
+  ({ rule, competitionRule, push, variable, hash }: AssessmentDependencies) =>
   async (input: AssessmentInput): Promise<AssessmentResult> => {
     // 분석 대상 규정 판본 조회
-    const rules = rule(input.ruleVersionId);
+    const rules = input.competition
+      ? competitionRule?.({ ...input.competition, ifabVersionId: input.ruleVersionId })
+      : rule(input.ruleVersionId);
     if (!rules) return { kind: "RULE_VERSION_UNKNOWN" };
 
     // 밀기 판정 계산

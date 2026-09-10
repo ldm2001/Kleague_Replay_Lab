@@ -3,6 +3,14 @@ import type { AnalysisView, CandidateView, JudgmentView } from "@replay/applicat
 import type { PipelineFilterReason } from "@replay/shared-types";
 
 const filterReasons: Record<PipelineFilterReason, string> = {
+  INVALID_SCENE_EVENT: "재개 장면의 시간 범위나 관찰 근거가 맞지 않아 제외됐습니다",
+  SCENE_EVENT_UNAVAILABLE: "세트피스의 시간대별 관찰 근거가 없습니다",
+  SITUATION_OBSERVED: "영상에서 코너킥 재개 장면이 관찰됐습니다",
+  RULE_CLAUSES_UNAVAILABLE: "이 판본에 연결된 코너킥 검토 조항이 없습니다",
+  INVALID_TRACKING: "추적 결과의 범위가 맞지 않아 제외됐습니다",
+  TRACKING_UNAVAILABLE: "이 구간에서는 공 후보 경로를 확보하지 못했습니다",
+  TRACKING_INCOMPLETE: "영상 일부의 추적 결과만 있어 추가 판단을 보류했습니다",
+  CAMERA_MOTION_UNVERIFIED: "공 후보의 화면 위치는 이어졌지만 카메라 움직임 보정은 확인되지 않았습니다",
   INVALID_INTERVAL: "유효하지 않은 영상 구간이어서 표시 대상에서 제외됐습니다",
   EVIDENCE_UNAVAILABLE: "이 장면의 영상 근거를 제공할 수 없습니다",
   RULE_CONTEXT_UNVERIFIED: "경기와 적용 규정 판본이 확인되지 않았습니다",
@@ -53,12 +61,69 @@ const Citations = ({ citations }: Readonly<{ citations: JudgmentView["citations"
 };
 
 export function RulePanel({ analysis, candidate }: Readonly<{ analysis: AnalysisView; candidate: CandidateView }>) {
+  const scope = candidate.varScopeEvaluation;
+  // 완료된 대회요강 범위 평가는 전체 파울 판단의 미완료 필터와 별도로 표시한다
+  if (scope?.kind === "COMPETITION_VAR_SCOPE" && scope.status === "COMPLETED") return (
+    <section className="rule-panel" aria-label="완료된 VAR 범위 분석">
+      <header className="rule-heading">
+        <div><p>완료된 VAR 범위 분석</p><h2>{scope.topic === "GOAL_RELATED" ? "득점 관련 VAR 검토 범위" : "VAR 검토 범위"}</h2></div>
+        <span>{scope.competition} {scope.season} · 대회요강</span>
+      </header>
+      <div className="rule-grid">
+        <section aria-label="범위 평가 결과">
+          <h3>{scope.included ? "대회요강의 적용 범주에 해당" : "대회요강의 적용 범주에 해당하지 않음"}</h3>
+          <p className="rule-empty">{scope.question}</p>
+          <p className="rule-empty">{scope.explanation}</p>
+        </section>
+        <section aria-label="K리그 대회요강"><h3>K리그 대회요강</h3><Citations citations={scope.citations} /></section>
+        <section className="var-panel" aria-label="분석 근거">
+          <h3>분석 근거</h3>
+          {scope.topic === "GOAL_RELATED" ? <p>중계의 GOAL 표시가 관찰된 영상 구간</p> : null}
+          <p>제공된 대회요강의 적용 범주 분석이며 실제 득점 인정·VAR 실시·원심 오류·개입 필요성을 뜻하지 않습니다</p>
+          <p>검토 시한과 IFAB 판본 채택 여부는 평가하지 않습니다</p>
+        </section>
+      </div>
+    </section>
+  );
   const filter = candidate.filter;
+  // 서버가 선택한 상황과 검토 조건을 표시하고 미확인 조건을 충족으로 바꾸지 않는다
+  if (filter && (filter.status === "OBSERVED" || filter.status === "APPLICABLE") && filter.situation === "CORNER_KICK") return (
+    <section className="rule-panel pending" aria-label="규정 필터 결과">
+      <div><p>규정 필터 결과</p><h2>코너킥 장면</h2></div>
+      <p>{filter.referenceOnly ? filter.reasonCodes.includes("RULE_CLAUSES_UNAVAILABLE") ? "코너킥 조항 미연결 · 참고 규정" : "적용 판본 미확정 · 참고 규정" : "검증된 적용 판본 · 검토 규정"}</p>
+      <ul>{filter.reasonCodes.map((reason) => <li key={reason}>{filterReasons[reason] ?? "처리 근거를 확인할 수 없습니다"}</li>)}</ul>
+      <section aria-label="코너킥 검토 조건">
+        <h3>검토할 규정 조건</h3>
+        <ul className="citation-list">{filter.conditions?.map((condition) => <li key={condition.code}>
+          <strong>Law {condition.law}.{condition.section} · 조건 미확인</strong>
+          <p>{condition.description}</p>
+          <a href={condition.sourceUrl} target="_blank" rel="noreferrer">{filter.referenceOnly ? "참고 원문 보기" : "적용 판본 원문 보기"}</a>
+        </li>)}</ul>
+      </section>
+      <p>현재 영상 근거로는 각 조건의 충족 여부를 확정할 수 없습니다</p>
+      {filter.ruleReferences.length > 0 ? <section aria-label="검토 기준 조항"><h3>검토 기준 조항</h3><Citations citations={filter.ruleReferences} /></section> : null}
+      <small>필터 버전 · {filter.filterVersion}</small>
+    </section>
+  );
+  // 새 결과에서는 장면 인식과 영상 근거 제공 여부를 구분하되 서버 필터를 바꾸지 않는다
+  const recognizedCornerWithoutEvidence = "diagnostics" in analysis && analysis.diagnostics != null &&
+    candidate.sceneEvent?.kind === "CORNER_KICK" && candidate.sceneEvent.status === "OBSERVED" &&
+    filter?.status === "UNDETERMINED" && filter.reasonCodes.includes("EVIDENCE_UNAVAILABLE");
   // 필터 결과가 있으면 이를 최종 표시 상태로 사용하고 과거 판정 데이터를 재평가하지 않는다
   if (filter) return (
     <section className="rule-panel pending" aria-label="규정 필터 결과">
-      <div><p>규정 필터 결과</p><h2>{filter.status === "EXCLUDED" ? "표시 대상 제외" : "규정 판단 근거 부족"}</h2></div>
+      <div><p>규정 필터 결과</p><h2>{recognizedCornerWithoutEvidence ? "코너킥 장면" : filter.status === "EXCLUDED" ? "표시 대상 제외" : "규정 판단 근거 부족"}</h2></div>
+      {recognizedCornerWithoutEvidence ? <p>영상 근거 제공 불가</p> : null}
       <ul>{filter.reasonCodes.map((reason) => <li key={reason}>{filterReasons[reason] ?? "처리 근거를 확인할 수 없습니다"}</li>)}</ul>
+      {recognizedCornerWithoutEvidence && (filter.conditions?.length ?? 0) > 0 ? <section aria-label="코너킥 검토 조건">
+        <h3>검토할 규정 조건</h3>
+        <ul className="citation-list">{filter.conditions?.map((condition) => <li key={condition.code}>
+          <strong>Law {condition.law}.{condition.section} · 조건 미확인</strong>
+          <p>{condition.description}</p>
+          <a href={condition.sourceUrl} target="_blank" rel="noreferrer">{filter.referenceOnly ? "참고 원문 보기" : "적용 판본 원문 보기"}</a>
+        </li>)}</ul>
+      </section> : null}
+      {recognizedCornerWithoutEvidence ? <p>코너킥 장면은 인식됐지만 IFAB 규정 조건의 충족 여부는 확인되지 않았습니다</p> : null}
       <p>파이프라인 결과에 대한 확인이며 파울 없음 판정을 의미하지 않습니다</p>
       {filter.ruleReferences.length > 0 ? <section aria-label="검토 기준 조항"><h3>검토 기준 조항</h3><Citations citations={filter.ruleReferences} /></section> : null}
       <small>필터 버전 · {filter.filterVersion}</small>

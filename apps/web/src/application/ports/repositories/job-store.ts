@@ -103,6 +103,9 @@ export type AnalysisShot = Readonly<{
 
 // 분석 후보 결과
 export type AnalysisCandidate = Readonly<{
+  tracking?: import("@replay/shared-types").TrackingSummary | null;
+  sceneEvent?: import("@replay/shared-types").SceneEvent | null;
+  broadcastCue?: import("@replay/shared-types").BroadcastCue | null;
   index: number;
   category: "OTHER";
   startMs: number;

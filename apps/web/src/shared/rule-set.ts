@@ -4,6 +4,8 @@ import type { SendOffCategory, VarCategory, ReviewScenario } from "./vocabulary"
 // 엔진과 규정 데이터 사이의 질문 목록
 // 규정 개념 키
 export const CONCEPT_KEYS = Object.freeze([
+  "LAW_17_CORNER_PROCEDURE",
+  "LAW_11_DIRECT_RESTART_OFFSIDE",
   "LAW_12_DIRECT_FREE_KICK",
   "LAW_12_DISCIPLINE",
   "VAR_REVIEWABLE_CATEGORIES",

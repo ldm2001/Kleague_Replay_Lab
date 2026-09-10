@@ -41,6 +41,17 @@ def test_multiple_blobs_are_not_silently_resolved():
     assert result.reason == "AMBIGUOUS_BALL_CANDIDATES"
 
 
+def test_isolated_green_overlay_does_not_expand_ball_search_area():
+    image = np.full((180, 320, 3), (40, 40, 40), dtype=np.uint8)
+    cv2.rectangle(image, (0, 100), (319, 179), (35, 110, 35), -1)
+    cv2.rectangle(image, (20, 5), (80, 25), (35, 110, 35), -1)
+    cv2.circle(image, (40, 15), 4, (240, 240, 240), -1)
+    cv2.circle(image, (170, 85), 4, (240, 240, 240), -1)
+    candidates = ball_candidates(image)
+    assert len(candidates) == 1
+    assert candidates[0].x == pytest.approx(170, abs=1)
+
+
 def test_low_grass_closeup_does_not_seed_a_ball_track():
     image = np.full((180, 320, 3), (40, 40, 40), dtype=np.uint8)
     cv2.rectangle(image, (0, 140), (319, 170), (35, 110, 35), -1)

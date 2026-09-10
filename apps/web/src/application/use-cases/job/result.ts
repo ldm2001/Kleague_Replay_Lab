@@ -1,6 +1,9 @@
 import type { Clock } from "../../ports/clock/clock";
 // 모델 관찰 출력 검증
 import { observationData } from "@replay/shared-types";
+import { trackingData } from "@replay/shared-types";
+import { sceneEventData } from "@replay/shared-types";
+import { broadcastCueData } from "@replay/shared-types";
 import type { Hasher } from "../../ports/hashing/hasher";
 import type {
   AnalysisCandidate,
@@ -89,6 +92,10 @@ const candidate = (value: AnalysisCandidate): boolean =>
   value.reasons.every((reason) => typeof reason === "string") &&
   Array.isArray(value.shotIndices) &&
   value.shotIndices.every((index) => Number.isSafeInteger(index) && index >= 0) &&
+  (value.tracking == null || trackingData(value.tracking, value.startMs, value.endMs)) &&
+  // 재개 상황의 시각과 근거는 제출된 후보 구간 안에 있어야 한다
+  (value.sceneEvent == null || sceneEventData(value.sceneEvent, value.startMs, value.endMs)) &&
+  (value.broadcastCue == null || broadcastCueData(value.broadcastCue, value.startMs, value.endMs)) &&
   // 모델 관찰과 프레임 시각은 후보 구간 안에서만 허용
   (value.observation == null || (observationData(value.observation) &&
     value.observation.timestamps.every((time) => time >= value.startMs && time <= value.endMs)));

@@ -36,6 +36,7 @@ export type EvaluationContext = Readonly<{
   facts: EvaluationFacts;
   ruleVersionId: string;
   ruleVersionDbId: string;
+  competition?: Readonly<{ competition: string; season: string }>;
   competitionOptions: Readonly<Record<string, boolean | undefined>>;
 }>;
 

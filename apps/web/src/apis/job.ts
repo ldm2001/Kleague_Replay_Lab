@@ -1,4 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
+import { WORKER_PROTOCOL } from "@replay/shared-types";
 import type {
   ClaimInput,
   ClaimResult,
@@ -38,6 +39,15 @@ const auth = (request: Request, key: string): boolean => {
   const left = Buffer.from(value, "utf8");
   const right = Buffer.from(key, "utf8");
   return left.length === right.length && timingSafeEqual(left, right);
+};
+
+// 인증과 실행 계약을 확인한 뒤에만 본문과 작업 Lease에 접근한다
+const access = (request: Request, key: string): Response | null => {
+  if (!auth(request, key)) return json({ kind: "UNAUTHORIZED" }, 401);
+  if (request.headers.get("x-worker-protocol") !== WORKER_PROTOCOL) {
+    return json({ kind: "UNSUPPORTED_WORKER_PROTOCOL", requiredProtocol: WORKER_PROTOCOL }, 409);
+  }
+  return null;
 };
 
 // 요청 본문 읽기
@@ -190,11 +200,8 @@ const evidenceStatus = (value: EvidenceResult): number => {
 
 // 작업 선점 요청
 export const claim = async (request: Request, dependencies: JobApiDependencies): Promise<Response> => {
-  // Worker 인증 확인
-  if (!auth(request, dependencies.key)) {
-    // 인증 실패 응답
-    return json({ kind: "UNAUTHORIZED" }, 401);
-  }
+  const denied = access(request, dependencies.key);
+  if (denied) return denied;
 
   // 요청 본문 조회
   const value = await body(request);
@@ -226,11 +233,8 @@ export const progress = async (
   params: Readonly<{ jobId: string }>,
   dependencies: JobApiDependencies,
 ): Promise<Response> => {
-  // Worker 인증 확인
-  if (!auth(request, dependencies.key)) {
-    // 인증 실패 응답
-    return json({ kind: "UNAUTHORIZED" }, 401);
-  }
+  const denied = access(request, dependencies.key);
+  if (denied) return denied;
   // 요청 본문 조회
   const value = await body(request);
   // 진행 요청 변환
@@ -255,11 +259,8 @@ export const result = async (
   params: Readonly<{ jobId: string }>,
   dependencies: JobApiDependencies,
 ): Promise<Response> => {
-  // Worker 인증 확인
-  if (!auth(request, dependencies.key)) {
-    // 인증 실패 응답
-    return json({ kind: "UNAUTHORIZED" }, 401);
-  }
+  const denied = access(request, dependencies.key);
+  if (denied) return denied;
   // 요청 본문 조회
   const value = await body(request);
   // 작업 결과 입력 변환
@@ -280,11 +281,8 @@ export const evidence = async (
   params: Readonly<{ jobId: string }>,
   dependencies: JobApiDependencies,
 ): Promise<Response> => {
-  // Worker 인증 확인
-  if (!auth(request, dependencies.key)) {
-    // 인증 실패 응답
-    return json({ kind: "UNAUTHORIZED" }, 401);
-  }
+  const denied = access(request, dependencies.key);
+  if (denied) return denied;
   // 요청 본문 조회
   const value = await body(request);
   // 증거 권한 입력 변환

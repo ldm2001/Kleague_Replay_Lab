@@ -46,6 +46,7 @@ export const decision =
     // 규정 엔진 실행
     const result = await run({
       ruleVersionId: context.value.ruleVersionId,
+      ...(context.value.competition ? { competition: context.value.competition } : {}),
       push: context.value.facts.push,
       variable: context.value.facts.variable,
       observed: context.value.facts.observed,
@@ -67,7 +68,7 @@ export const decision =
       ruleVersionId: context.value.ruleVersionDbId,
       facts: context.value.facts,
       evaluation: result.value as EvaluationResult,
-      ruleEngineVersion: "rule-engine-v1",
+      ruleEngineVersion: "rule-engine-v2-competition",
       evaluationSchemaVersion: 1,
       now: clock.now().toISOString(),
     });

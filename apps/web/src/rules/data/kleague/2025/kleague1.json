@@ -1,0 +1,63 @@
+{
+  "versionId": "kleague1-2025",
+  "competition": "K리그1",
+  "season": "2025",
+  "title": "하나은행 K리그1 2025 대회요강",
+  "source": {
+    "url": "https://web.archive.org/web/20250208231838/https://www.kleague.com/about/competition.do",
+    "documentSha256": "e1db5c91b9b702f54f3b9a224b1713fdc6576c655cc18ba2b795b20f62055b0a",
+    "snapshotDate": "2025-02-08",
+    "localPath": "rules/kleague/2025/kleague1/competition-regulations.pdf"
+  },
+  "scopeCategories": [
+    {
+      "topic": "GOAL_RELATED",
+      "sourceLabel": "득점 상황",
+      "law": "25",
+      "section": "1.1"
+    },
+    {
+      "topic": "PENALTY_RELATED",
+      "sourceLabel": "PK(Penalty Kick) 상황",
+      "law": "25",
+      "section": "1.2"
+    },
+    {
+      "topic": "SENDING_OFF_RELATED",
+      "sourceLabel": "퇴장 상황",
+      "law": "25",
+      "section": "1.3"
+    },
+    {
+      "topic": "DISCIPLINARY_ERROR",
+      "sourceLabel": "징계조치 오류",
+      "law": "25",
+      "section": "1.4"
+    }
+  ],
+  "publicAnnouncement": "NOT_STATED",
+  "concepts": {
+    "VAR_REVIEWABLE_CATEGORIES": [
+      {
+        "key": "var-scope",
+        "revision": 1,
+        "law": "25",
+        "section": "1",
+        "relevance": "PRIMARY",
+        "sourcePage": "5",
+        "quoteSnapshot": "규정 요약: VAR는 경기에 영향을 미치는 명확한 오류를 바로잡도록 심판을 지원하며, 득점 상황·PK(Penalty Kick) 상황·퇴장 상황·징계조치 오류의 네 범주에 한해 적용한다."
+      }
+    ],
+    "VAR_REVIEW_PROCESS": [
+      {
+        "key": "var-ifab-fifa-reference",
+        "revision": 1,
+        "law": "25",
+        "section": "6",
+        "relevance": "PRIMARY",
+        "sourcePage": "6",
+        "quoteSnapshot": "규정 요약: 본 조에 명시되지 않은 VAR 관련 사항은 IFAB/FIFA 규정을 따른다."
+      }
+    ]
+  }
+}

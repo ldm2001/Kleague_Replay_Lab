@@ -70,6 +70,18 @@ def test_restart_without_preparation_is_not_inferred():
     assert "CLIP_ENDED_BEFORE_RESTART" in event.reasons
 
 
+def test_video_pattern_observation_does_not_require_invented_dead_ball_facts():
+    observations = [
+        RestartObservation(0, 0, preparation_detected=True, restart_candidates=("CORNER_KICK",), evidence_ids=("frame:0",)),
+        RestartObservation(300, 0, departure_detected=True, evidence_ids=("frame:300",)),
+    ]
+    assert all(item.dead_ball is None and item.ball_restarted is None for item in observations)
+    event, = setpieces(observations, require_live_source=False, visual_pattern=True)
+    assert event.status == "OBSERVED"
+    assert "BROADCAST_SOURCE_UNKNOWN" in event.reasons
+    assert setpieces(observations) == ()
+
+
 def test_no_duplicate_event_during_continued_play():
     assert len(setpieces([stopped(), restarted(), restarted(600)])) == 1
 

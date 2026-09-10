@@ -19,6 +19,9 @@ class RestartObservation:
     evidence_ids: tuple[str, ...] = ()
     # None은 본방송 여부도 아직 확인하지 못한 상태다
     is_replay: bool | None = None
+    # 영상 패턴 모드에서만 쓰며 법적 인플레이 상태와 분리한다
+    preparation_detected: bool | None = None
+    departure_detected: bool | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,7 +36,7 @@ class RestartEvent:
     reasons: tuple[str, ...]
 
 
-def setpieces(observations: Iterable[RestartObservation], max_gap_ms: int = 1500) -> tuple[RestartEvent, ...]:
+def setpieces(observations: Iterable[RestartObservation], max_gap_ms: int = 1500, *, require_live_source: bool = True, visual_pattern: bool = False) -> tuple[RestartEvent, ...]:
     """근거가 있는 중단과 재개 순서만 묶으며 영상 픽셀이나 경기규칙을 해석하지 않는다"""
     if type(max_gap_ms) is not int or max_gap_ms <= 0:
         raise ValueError("invalid-observation-gap")
@@ -56,7 +59,8 @@ def setpieces(observations: Iterable[RestartObservation], max_gap_ms: int = 1500
             reasons.append("RESTART_TYPE_AMBIGUOUS")
         if not source_known:
             reasons.append("BROADCAST_SOURCE_UNKNOWN")
-        observed = not reasons and restart is not None and len(possible) == 1
+        blockers = [value for value in reasons if require_live_source or value != "BROADCAST_SOURCE_UNKNOWN"]
+        observed = not blockers and restart is not None and len(possible) == 1
         events.append(RestartEvent(
             start, end, restart, "OBSERVED" if observed else "UNKNOWN",
             next(iter(possible)) if observed else "UNKNOWN",
@@ -71,7 +75,7 @@ def setpieces(observations: Iterable[RestartObservation], max_gap_ms: int = 1500
             raise ValueError("observation-time-not-increasing")
         if any(value not in RESTART_KINDS for value in current.restart_candidates):
             raise ValueError("invalid-restart-kind")
-        if any(value is not None and type(value) is not bool for value in (current.dead_ball, current.ball_restarted, current.is_replay)):
+        if any(value is not None and type(value) is not bool for value in (current.dead_ball, current.ball_restarted, current.is_replay, current.preparation_detected, current.departure_detected)):
             raise ValueError("invalid-observation-state")
 
         # 컷과 긴 공백은 실제 재개인지 알 수 없으므로 열린 사건을 미확인으로 닫는다
@@ -90,12 +94,15 @@ def setpieces(observations: Iterable[RestartObservation], max_gap_ms: int = 1500
             continue
 
         # 중단 여부와 재개 여부가 동시에 참이면 입력 자체가 모순이다
-        if current.dead_ball is True and current.ball_restarted is True:
+        preparing = current.preparation_detected is True if visual_pattern else current.dead_ball is True
+        departing = current.departure_detected is True if visual_pattern else current.ball_restarted is True
+        resuming = departing if visual_pattern else current.dead_ball is False
+        if preparing and departing:
             finish(current.timestamp_ms, "CONTRADICTORY_SIGNALS")
             start = None
             continue
         if start is None:
-            if current.dead_ball is not True or not current.evidence_ids:
+            if not preparing or not current.evidence_ids:
                 continue
             start = current.timestamp_ms
             possible = set()
@@ -105,14 +112,15 @@ def setpieces(observations: Iterable[RestartObservation], max_gap_ms: int = 1500
 
         # 소스 미확인과 근거 공백은 양성 판별을 막고 이후 입력으로 지워지지 않는다
         source_known = source_known and current.is_replay is False
-        if not current.evidence_ids or current.dead_ball is None:
+        state_missing = current.preparation_detected is None and current.departure_detected is None if visual_pattern else current.dead_ball is None
+        if not current.evidence_ids or state_missing:
             finish(current.timestamp_ms, "OBSERVATION_MISSING")
             start = None
             continue
         evidence.update(current.evidence_ids)
         incoming = set(current.restart_candidates)
         # 재개 후 위치를 중단 시점의 재개 위치로 소급하지 않는다
-        if current.dead_ball is True and incoming:
+        if preparing and incoming:
             if not possible:
                 possible = incoming
             else:
@@ -122,8 +130,8 @@ def setpieces(observations: Iterable[RestartObservation], max_gap_ms: int = 1500
                 else:
                     conflict = True
                     possible |= incoming
-        if current.dead_ball is False:
-            if current.ball_restarted is True:
+        if resuming:
+            if departing:
                 finish(current.timestamp_ms, None, current.timestamp_ms)
             else:
                 finish(current.timestamp_ms, "RESTART_NOT_OBSERVED")

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { claim, evidence as jobEvidence, progress, result as jobResult, type JobApiDependencies } from "./job.js";
 import type { EvidenceResult, JobClaim, JobProgress, JobResult } from "@replay/application";
+import { WORKER_PROTOCOL } from "@replay/shared-types";
 
 // 작업 선점 응답 모형
 const result: JobClaim = {
@@ -54,6 +55,7 @@ describe("job claim API", () => {
         headers: {
           "content-type": "application/json",
           "x-worker-key": "worker-secret",
+          "x-worker-protocol": WORKER_PROTOCOL,
         },
         body: JSON.stringify({ workerId: "video-worker-1", jobType: "ANALYZE_VIDEO" }),
       }),
@@ -87,6 +89,7 @@ describe("job claim API", () => {
         headers: {
           "content-type": "application/json",
           "x-worker-key": "worker-secret",
+          "x-worker-protocol": WORKER_PROTOCOL,
         },
         body: JSON.stringify({ workerId: "video-worker-1", jobType: "ANALYZE_VIDEO" }),
       }),
@@ -105,6 +108,7 @@ describe("job claim API", () => {
         headers: {
           "content-type": "application/json",
           "x-worker-key": "worker-secret",
+          "x-worker-protocol": WORKER_PROTOCOL,
         },
         body: JSON.stringify({
           workerId: "video-worker-1",
@@ -131,6 +135,7 @@ describe("job claim API", () => {
         headers: {
           "content-type": "application/json",
           "x-worker-key": "worker-secret",
+          "x-worker-protocol": WORKER_PROTOCOL,
         },
         body: JSON.stringify({
           workerId: "video-worker-1",
@@ -160,6 +165,7 @@ describe("job claim API", () => {
         headers: {
           "content-type": "application/json",
           "x-worker-key": "worker-secret",
+          "x-worker-protocol": WORKER_PROTOCOL,
         },
         body: JSON.stringify({
           workerId: "video-worker-1",

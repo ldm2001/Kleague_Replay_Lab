@@ -3,6 +3,28 @@
   "authority": "IFAB",
   "edition": "2026-27",
   "concepts": {
+    "LAW_17_CORNER_PROCEDURE": [
+      {
+        "key": "law-17-1-corner-procedure",
+        "revision": 1,
+        "law": "17",
+        "section": "1",
+        "relevance": "PRIMARY",
+        "sourcePage": "149",
+        "quoteSnapshot": "규정 요약: 해당 코너 구역에 놓인 정지된 공을 공격 팀 선수가 차야 한다. 공을 차서 명확히 움직이면 인플레이가 되며 코너 구역 밖으로 나올 필요는 없다. 코너 깃대를 움직이면 안 된다. 상대 선수는 공이 인플레이가 될 때까지 코너 아크에서 최소 9.15m를 유지해야 한다."
+      }
+    ],
+    "LAW_11_DIRECT_RESTART_OFFSIDE": [
+      {
+        "key": "law-11-3-direct-restart-offside",
+        "revision": 1,
+        "law": "11",
+        "section": "3",
+        "relevance": "SUPPORTING",
+        "sourcePage": "111",
+        "quoteSnapshot": "규정 요약: 선수가 골킥, 스로인 또는 코너킥에서 직접 공을 받는 경우에는 오프사이드 반칙이 성립하지 않는다."
+      }
+    ],
     "LAW_12_DIRECT_FREE_KICK": [
       {
         "key": "law-12-1-direct-free-kick",

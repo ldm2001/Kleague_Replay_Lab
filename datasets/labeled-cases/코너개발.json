@@ -1,0 +1,12 @@
+{
+  "source_sha256": "2242f5fc1b0e61e7b6ef9e184aab7ef4ff3dc13bfc9e03f9a16ab0e015b00857",
+  "purpose": "DEVELOPMENT_REGRESSION_ONLY",
+  "note": "같은 개발 영상에서 확인한 사례이며 독립 평가나 전체 사건 주석이 아님",
+  "cases": [
+    { "id": "assistant-referee", "start_ms": 134000, "end_ms": 137000, "expected_count": 0, "event_id": null },
+    { "id": "continuous-dribble", "start_ms": 455000, "end_ms": 458000, "expected_count": 0, "event_id": null },
+    { "id": "goalkeeper-goal-frame", "start_ms": 482000, "end_ms": 485000, "expected_count": 0, "event_id": null },
+    { "id": "corner-view", "start_ms": 508000, "end_ms": 511000, "expected_count": 1, "event_id": "corner-76m", "restart_range_ms": [509000, 509500], "replay": null },
+    { "id": "corner-replay", "start_ms": 533000, "end_ms": 536000, "expected_count": 1, "event_id": "corner-76m", "restart_range_ms": [534000, 534700], "replay": true }
+  ]
+}

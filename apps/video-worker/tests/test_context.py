@@ -88,3 +88,26 @@ def test_diagnostic_video_records_raw_signals_without_semantic_invention(tmp_pat
     assert [sample["timestamp_ms"] for sample in samples] == sorted(set(sample["timestamp_ms"] for sample in samples))
     with pytest.raises(FileExistsError):
         inspect_video(source, report.parent)
+
+
+def test_diagnostic_extracts_broadcast_cue_from_decoded_frames(tmp_path: Path):
+    image = np.full((540, 960, 3), (45, 112, 48), dtype=np.uint8)
+    cv2.rectangle(image, (29, 22), (260, 50), (125, 53, 9), -1)
+    cv2.rectangle(image, (190, 22), (260, 50), (20, 12, 175), -1)
+    cv2.rectangle(image, (29, 51), (260, 68), (83, 20, 18), -1)
+    cv2.putText(image, "GOAL", (88, 46), cv2.FONT_HERSHEY_DUPLEX, 0.9, (250, 250, 250), 2, cv2.LINE_AA)
+    source = tmp_path / "goal.mp4"
+    writer = cv2.VideoWriter(str(source), cv2.VideoWriter_fourcc(*"mp4v"), 15.0, (960, 540))
+    assert writer.isOpened()
+    try:
+        for _ in range(20):
+            writer.write(image)
+    finally:
+        writer.release()
+    report = inspect_video(source, tmp_path / "output")
+    summary = json.loads(report.read_text())
+    assert len(summary.get("broadcast_cues", [])) == 1
+    assert summary["broadcast_cues"][0]["kind"] == "GOAL_GRAPHIC"
+    assert summary["broadcast_cues"][0]["endMs"] - summary["broadcast_cues"][0]["startMs"] >= 300
+    samples = [json.loads(line) for line in (report.parent / "context.jsonl").read_text().splitlines()]
+    assert all(sample["dead_ball"] is None and sample["ball_restarted"] is None for sample in samples)

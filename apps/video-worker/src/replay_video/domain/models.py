@@ -39,6 +39,12 @@ class Candidate:
     camera_sufficiency: str
     reasons: tuple[str, ...]
     shot_indices: tuple[int, ...]
+    # 공 후보 경로의 구간별 측정 요약이며 신체 접촉 사실은 포함하지 않는다
+    tracking: dict[str, object] | None = None
+    # 영상에서 관찰한 재개 상황과 근거 시각을 서버 rules 필터에 전달한다
+    scene_event: dict[str, object] | None = None
+    # 방송 그래픽의 관찰 단서이며 경기 사건이나 규정 판정을 확정하지 않는다
+    broadcast_cue: dict[str, object] | None = None
 
 
 @dataclass(frozen=True, slots=True)

@@ -17,3 +17,4 @@ class PipelinePorts:
     candidates: Callable[[Path | str, VideoMetadata, tuple[Shot, ...]], tuple[Candidate, ...]]
     # 증거 생성 포트
     evidence: Callable[[Path | str, Path | str, VideoMetadata, tuple[Candidate, ...]], tuple[Evidence, ...]]
+    tracking: Callable[[Path | str, Path | str, VideoMetadata, tuple[Candidate, ...]], tuple[Candidate, ...]] | None = None

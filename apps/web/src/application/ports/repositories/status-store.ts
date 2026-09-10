@@ -7,6 +7,10 @@ export type EvidenceView = Readonly<{
 
 // 후보 화면 모델
 export type CandidateView = Readonly<{
+  tracking?: import("@replay/shared-types").TrackingSummary | null;
+  sceneEvent?: import("@replay/shared-types").SceneEvent | null;
+  broadcastCue?: import("@replay/shared-types").BroadcastCue | null;
+  varScopeEvaluation?: import("@replay/shared-types").VarScopeEvaluation | null;
   filter?: import("@replay/shared-types").PipelineFilterResult;
   // 최신 사실은 판정이 없어도 보정과 재시도에 사용
   factRevisionId?: string | null;
@@ -45,7 +49,15 @@ export type JudgmentView = Readonly<{
 
 // 분석 화면 모델
 export type AnalysisView = Readonly<{
-  filterSummary?: Readonly<{ checkedCount: number; excludedCount: number; undeterminedCount: number }>;
+  resultPolicy?: "COMPLETED_ONLY";
+  filterSummary?: Readonly<{ checkedCount: number; excludedCount: number; undeterminedCount: number; observedCount?: number; applicableCount?: number }>;
+  diagnostics?: Readonly<{
+    rawProposalCount: number;
+    invalidOutputCount: number;
+    recognizedEventCount: number;
+    supportedEventTypes: readonly ("CORNER_KICK" | "GOAL_GRAPHIC")[];
+    reasons: readonly string[];
+  }>;
   analysisId: string;
   mode: "VISUAL_CHANGE_BASELINE" | "ADJUDICATED";
   judgmentStatus: "NOT_EVALUATED" | "PARTIAL" | "EVALUATED";
@@ -56,6 +68,7 @@ export type AnalysisView = Readonly<{
   limitations: readonly string[];
   rule?: RuleView | null;
   evaluatedCount?: number;
+  completedScopeCount?: number;
   candidates: readonly CandidateView[];
 }>;
 
