@@ -24,8 +24,6 @@ type ContextRow = Readonly<{
   season: string | null;
 }>;
 
-const options = Object.freeze({ corner_kick_review: false });
-
 // 평가 결과 저장소
 export class EvaluationStore implements EvaluationStorePort {
   public constructor(private readonly client: DatabaseHandle) {}
@@ -222,7 +220,8 @@ export class EvaluationStore implements EvaluationStorePort {
         facts: row.facts as import("@replay/shared-types").EvaluationFacts,
         ruleVersionId: `ifab-${row.ifab_edition}`,
         ruleVersionDbId: row.rule_id,
-        competitionOptions: options,
+        competition: { competition: row.competition, season: row.season },
+        competitionOptions: {},
       },
     };
   }
@@ -270,50 +269,6 @@ export class EvaluationStore implements EvaluationStorePort {
       // 사실 이력이 없으면 저장 중단
       if (factRows.length === 0) return { kind: "FACT_NOT_FOUND" };
 
-      // 최신 K리그 규정 인용 조회
-      const kleagueRows = await transaction.execute(sql`
-        select authority, edition, law, section, concept, revision, content_sha256,
-               coalesce(official_korean, plain_korean, original_text) as quote_snapshot,
-               source_page, source_url, review_status
-        from rules
-        where authority = 'KLEAGUE'
-          and edition = '2026'
-          and concept = 'VAR_REVIEWABLE_CATEGORIES'
-        order by revision desc, id desc
-        limit 1
-      `);
-      // K리그 인용 행 선택
-      const [kleague] = kleagueRows as unknown as Array<{
-        authority: "KLEAGUE";
-        edition: string;
-        law: string;
-        section: string;
-        concept: string;
-        revision: number;
-        content_sha256: Buffer;
-        quote_snapshot: string | null;
-        source_page: string | null;
-        source_url: string | null;
-        review_status: string;
-      }>;
-      // IFAB 인용에 K리그 인용 추가
-      const citations = kleague && kleague.quote_snapshot
-        ? [...command.evaluation.citations, {
-            ruleId: `kleague-${kleague.edition}-${kleague.law}-${kleague.section}-${kleague.concept}`,
-            ruleRevision: kleague.revision,
-            ruleContentSha256: kleague.content_sha256.toString("hex"),
-            authority: kleague.authority,
-            edition: kleague.edition,
-            law: kleague.law,
-            section: kleague.section,
-            relevance: "SUPPORTING" as const,
-            quoteSnapshot: kleague.quote_snapshot,
-            sourcePage: kleague.source_page,
-            sourceUrl: kleague.source_url,
-          }]
-        : command.evaluation.citations;
-      const evaluation = { ...command.evaluation, citations };
-
       // 판정 결과 저장
       const inserted = await transaction.execute(sql`
         insert into decision_results (
@@ -350,8 +305,8 @@ export class EvaluationStore implements EvaluationStorePort {
           ${command.evaluation.inconclusiveReason}::inconclusive_reason,
           ${Buffer.from(command.evaluation.factSignature, "hex")},
           ${command.ruleEngineVersion}, ${command.evaluationSchemaVersion},
-          ${JSON.stringify(evaluation)}::jsonb,
-          ${JSON.stringify(citations)}::jsonb, ${command.now}
+          ${JSON.stringify(command.evaluation)}::jsonb,
+          ${JSON.stringify(command.evaluation.citations)}::jsonb, ${command.now}
         )
         on conflict (incident_candidate_id, fact_revision_id, applied_rule_version_id, rule_engine_version)
         do nothing

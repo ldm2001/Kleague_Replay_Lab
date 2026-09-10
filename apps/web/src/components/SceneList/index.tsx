@@ -30,6 +30,18 @@ const SceneRow = memo(function SceneRow({ analysisId, candidate, index, active, 
   const row = useRef<HTMLLIElement>(null);
   // 대표 프레임 선택
   const frame = candidate.evidence?.find((item) => item.kind === "FRAME");
+  const scope = candidate.varScopeEvaluation;
+  const scopeCompleted = scope?.kind === "COMPETITION_VAR_SCOPE" && scope.status === "COMPLETED";
+  const cornerObserved = candidate.sceneEvent?.kind === "CORNER_KICK" && candidate.sceneEvent.status === "OBSERVED";
+  const cornerEvidenceUnavailable = !scopeCompleted && cornerObserved && candidate.filter?.status === "UNDETERMINED" &&
+    candidate.filter.reasonCodes.includes("EVIDENCE_UNAVAILABLE");
+  const sceneLabel = scopeCompleted && scope.topic === "GOAL_RELATED" ? "득점 관련 장면" : cornerObserved ? "코너킥 장면" : "후보 장면";
+  const filterLabel = scopeCompleted ? "범위 평가 완료" : candidate.filter ? {
+    EXCLUDED: "표시 대상 제외",
+    UNDETERMINED: cornerEvidenceUnavailable ? "영상 근거 제공 불가" : "규정 판단 근거 부족",
+    OBSERVED: "재개 장면 관찰 · 참고 규정",
+    APPLICABLE: "검토할 규정 연결",
+  }[candidate.filter.status] : "파이프라인 후보";
 
   useEffect(() => {
     // 활성 후보를 목록 안에서 보이도록 이동
@@ -43,21 +55,21 @@ const SceneRow = memo(function SceneRow({ analysisId, candidate, index, active, 
       <button
         type="button"
         aria-current={active ? "true" : undefined}
-        aria-label={`후보 장면 ${String(index + 1).padStart(2, "0")} ${time(candidate.startMs)}부터 ${time(candidate.endMs)}`}
+        aria-label={`${sceneLabel} ${String(index + 1).padStart(2, "0")} ${time(candidate.startMs)}부터 ${time(candidate.endMs)}`}
         onClick={() => onSelect(index)}
       >
         {/* 후보 대표 프레임 표시 */}
         <span className="rail-thumb">
-          {frame ? <img src={`/api/analyses/${analysisId}/evidence/${frame.evidenceId}`} alt="" loading="lazy" decoding="async" /> : <span>프레임 준비 중</span>}
+          {frame ? <img src={`/api/analyses/${analysisId}/evidence/${frame.evidenceId}`} alt="" loading="lazy" decoding="async" /> : <span>{cornerEvidenceUnavailable ? "영상 근거 없음" : "프레임 준비 중"}</span>}
         </span>
         {/* 후보 시간과 판정 상태 표시 */}
         <span className="rail-copy">
-          <strong>후보 장면 {String(index + 1).padStart(2, "0")}</strong>
+          <strong>{sceneLabel} {String(index + 1).padStart(2, "0")}</strong>
           <small>{time(candidate.startMs)}부터 {time(candidate.endMs)}</small>
-          <em>{candidate.filter ? candidate.filter.status === "EXCLUDED" ? "표시 대상 제외" : "규정 판단 근거 부족" : "파이프라인 후보"}</em>
+          <em>{filterLabel}</em>
         </span>
-        {/* 변화 신호 점수 표시 */}
-        <span className="rail-score" aria-label="화면 변화 점수이며 파울 확률이 아님">{candidate.signalScore === null ? "—" : `${Math.round(candidate.signalScore * 100)}%`}</span>
+        {/* 완료 범위 평가와 재개 장면은 변화 신호 점수로 표시하지 않는다 */}
+        {scopeCompleted ? <span className="rail-score">범위 평가</span> : cornerObserved ? <span className="rail-score">재개</span> : <span className="rail-score" aria-label="화면 변화 점수이며 파울 확률이 아님">{candidate.signalScore === null ? "—" : `${Math.round(candidate.signalScore * 100)}%`}</span>}
       </button>
     </li>
   );

@@ -49,6 +49,20 @@ describeDatabase("initial PostgreSQL migration", () => {
     `;
     expect(contextColumns.map((column) => column.column_name)).toEqual(["competition", "season"]);
 
+    const [sceneEventColumn] = await sql<{ column_name: string; data_type: string; is_nullable: string }[]>`
+      select column_name, data_type, is_nullable
+      from information_schema.columns
+      where table_schema = 'public' and table_name = 'incident_candidates' and column_name = 'scene_event'
+    `;
+    expect(sceneEventColumn).toEqual({ column_name: "scene_event", data_type: "jsonb", is_nullable: "YES" });
+
+    const [broadcastCueColumn] = await sql<{ column_name: string; data_type: string; is_nullable: string }[]>`
+      select column_name, data_type, is_nullable
+      from information_schema.columns
+      where table_schema = 'public' and table_name = 'incident_candidates' and column_name = 'broadcast_cue'
+    `;
+    expect(broadcastCueColumn).toEqual({ column_name: "broadcast_cue", data_type: "jsonb", is_nullable: "YES" });
+
     const [rule] = await sql<{ authority: string; law: string; source_document: string }[]>`
       select authority, law, source_url as source_document
       from rules

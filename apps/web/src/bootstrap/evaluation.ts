@@ -2,7 +2,7 @@
 import { evaluationStore, hash, sessionStore } from "@replay/adapters";
 import { decision, facts, assessment, record, type Clock } from "@replay/application";
 import { pushResult, varResult } from "@replay/rule-engine";
-import { ruleSet } from "@replay/rule-data";
+import { combineCompetitionRules, ruleSet } from "@replay/rule-data";
 import { client } from "@replay/database";
 import type { EvaluationApiDependencies } from "../apis/candidate";
 
@@ -36,7 +36,7 @@ export const evaluation = (): EvaluationApiDependencies => {
   // 사실과 판정 저장소 생성
   const repository = evaluationStore(database);
   // 규정 엔진 조립
-  const run = assessment({ rule: ruleSet, push: pushResult, variable: varResult, hash: (value) => hasher.sha256(value) });
+  const run = assessment({ rule: ruleSet, competitionRule: combineCompetitionRules, push: pushResult, variable: varResult, hash: (value) => hasher.sha256(value) });
   // 평가 의존성 저장
   cached = {
     resolve,

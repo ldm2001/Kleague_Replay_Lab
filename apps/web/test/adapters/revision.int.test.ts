@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 import { evaluationStore, statusStore } from "@replay/adapters";
 import { assessment } from "@replay/application";
 import { client } from "@replay/database";
-import { ruleSet } from "@replay/rule-data";
+import { combineCompetitionRules, ruleSet } from "@replay/rule-data";
 import { pushResult, varResult } from "@replay/rule-engine";
 import { judgment } from "../fixtures/result";
 
@@ -20,7 +20,7 @@ describe.skipIf(!process.env.DATABASE_URL)("사실 버전", () => {
   let analysis: string;
   let candidate: string;
   const hash = (value: string) => createHash("sha256").update(value).digest();
-  const engine = assessment({ rule: ruleSet, push: pushResult, variable: varResult, hash: async (value) => hash(value) });
+  const engine = assessment({ rule: ruleSet, competitionRule: combineCompetitionRules, push: pushResult, variable: varResult, hash: async (value) => hash(value) });
 
   beforeEach(async () => {
     // 테스트별 소유 세션과 장면 생성
@@ -50,7 +50,7 @@ describe.skipIf(!process.env.DATABASE_URL)("사실 버전", () => {
     // 저장 직전 평가 문맥 확보
     const context = await store.context({ anonymousSessionId: session, analysisId: analysis, candidateId: candidate, now });
     if (context.kind !== "READY") throw new Error("context-unavailable");
-    const result = await engine({ ruleVersionId: context.value.ruleVersionId, push: context.value.facts.push, variable: context.value.facts.variable, observed: context.value.facts.observed, options: context.value.competitionOptions });
+    const result = await engine({ ruleVersionId: context.value.ruleVersionId, ...(context.value.competition ? { competition: context.value.competition } : {}), push: context.value.facts.push, variable: context.value.facts.variable, observed: context.value.facts.observed, options: context.value.competitionOptions });
     if (result.kind !== "EVALUATED") throw new Error("evaluation-unavailable");
     return { anonymousSessionId: session, analysisId: analysis, candidateId: candidate, analysisStateVersion: context.value.analysisStateVersion, factRevisionId: context.value.factRevisionId, ruleVersionId: context.value.ruleVersionDbId, facts: context.value.facts, evaluation: result.value, ruleEngineVersion: "test-v1", evaluationSchemaVersion: 1, now };
   };

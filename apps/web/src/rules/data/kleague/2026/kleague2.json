@@ -1,0 +1,72 @@
+{
+  "versionId": "kleague2-2026",
+  "competition": "K리그2",
+  "season": "2026",
+  "title": "하나은행 K리그2 2026 대회요강",
+  "source": {
+    "url": "https://www.kleague.com/about/competition.do",
+    "documentSha256": "932b9f5d9f94b319e46dc17d985e32a1394f1ad05e4537a5aedc969f7ac47b0a",
+    "snapshotDate": null,
+    "localPath": "rules/kleague/2026/kleague2/competition-regulations.pdf"
+  },
+  "scopeCategories": [
+    {
+      "topic": "GOAL_RELATED",
+      "sourceLabel": "득점 상황",
+      "law": "25",
+      "section": "1.1"
+    },
+    {
+      "topic": "PENALTY_RELATED",
+      "sourceLabel": "PK(Penalty Kick) 상황",
+      "law": "25",
+      "section": "1.2"
+    },
+    {
+      "topic": "SENDING_OFF_RELATED",
+      "sourceLabel": "퇴장 상황",
+      "law": "25",
+      "section": "1.3"
+    },
+    {
+      "topic": "DISCIPLINARY_ERROR",
+      "sourceLabel": "징계조치 오류",
+      "law": "25",
+      "section": "1.4"
+    }
+  ],
+  "publicAnnouncement": "OFR_ONLY",
+  "concepts": {
+    "VAR_REVIEWABLE_CATEGORIES": [
+      {
+        "key": "var-scope",
+        "revision": 1,
+        "law": "25",
+        "section": "1",
+        "relevance": "PRIMARY",
+        "sourcePage": "6",
+        "quoteSnapshot": "규정 요약: VAR는 경기에 영향을 미치는 명확한 오류를 바로잡도록 심판을 지원하며, 득점 상황·PK(Penalty Kick) 상황·퇴장 상황·징계조치 오류의 네 범주에 한해 적용한다."
+      }
+    ],
+    "VAR_REVIEW_PROCESS": [
+      {
+        "key": "var-public-announcement",
+        "revision": 1,
+        "law": "25",
+        "section": "6",
+        "relevance": "PRIMARY",
+        "sourcePage": "7",
+        "quoteSnapshot": "규정 요약: OFR(On-Field Review) 시 VAR 판독 장내 방송을 실시하며 홈클럽은 이에 협조한다."
+      },
+      {
+        "key": "var-ifab-fifa-reference",
+        "revision": 1,
+        "law": "25",
+        "section": "7",
+        "relevance": "PRIMARY",
+        "sourcePage": "7",
+        "quoteSnapshot": "규정 요약: 본 조에 명시되지 않은 VAR 관련 사항은 IFAB/FIFA 규정을 따른다."
+      }
+    ]
+  }
+}

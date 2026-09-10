@@ -14,6 +14,8 @@ describe("ruleSet", () => {
   it("모든 인용이 자기 출처를 전부 갖는다", () => {
     expect(ruleSet2025).not.toBeNull();
     const citations = [
+      ...ruleSet2025!.cite("LAW_17_CORNER_PROCEDURE"),
+      ...ruleSet2025!.cite("LAW_11_DIRECT_RESTART_OFFSIDE"),
       ...ruleSet2025!.cite("LAW_12_DIRECT_FREE_KICK"),
       ...ruleSet2025!.cite("LAW_12_DISCIPLINE"),
       ...ruleSet2025!.cite("VAR_REVIEWABLE_CATEGORIES"),
@@ -106,5 +108,20 @@ describe("판본 차이", () => {
 
   it("재개 예외는 두 판본에서 같다", () => {
     expect(ruleSet2026!.timeWindowExceptions()).toEqual(ruleSet2025!.timeWindowExceptions());
+  });
+
+  it("코너킥 절차와 직접 수신 예외는 확인된 판본별 원문 페이지를 가리킨다", () => {
+    const corner2025 = ruleSet2025!.cite("LAW_17_CORNER_PROCEDURE")[0]!;
+    const corner2026 = ruleSet2026!.cite("LAW_17_CORNER_PROCEDURE")[0]!;
+    const offside2025 = ruleSet2025!.cite("LAW_11_DIRECT_RESTART_OFFSIDE")[0]!;
+    const offside2026 = ruleSet2026!.cite("LAW_11_DIRECT_RESTART_OFFSIDE")[0]!;
+    expect(corner2025.sourcePage).toBe("143");
+    expect(corner2026.sourcePage).toBe("149");
+    expect(offside2025.sourcePage).toBe("105");
+    expect(offside2026.sourcePage).toBe("111");
+    expect(corner2025.quoteSnapshot).toBe(corner2026.quoteSnapshot);
+    expect(offside2025.quoteSnapshot).toBe(offside2026.quoteSnapshot);
+    expect(corner2025.quoteSnapshot).toMatch(/^규정 요약:/);
+    expect(offside2025.quoteSnapshot).toContain("직접");
   });
 });

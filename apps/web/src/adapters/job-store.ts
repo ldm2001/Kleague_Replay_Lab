@@ -379,13 +379,16 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
           await transaction.execute(sql`
             insert into incident_candidates (
               analysis_id, candidate_index, review_scenario, start_ms, end_ms, anchor_ms,
-              detection_confidence, camera_sufficiency, reasons, shot_indices, observation, review_status, created_at
+              detection_confidence, camera_sufficiency, reasons, shot_indices, observation, tracking, scene_event, broadcast_cue, review_status, created_at
             ) values (
               ${target.analysis_id}, ${item.index}, ${item.category}::review_scenario,
               ${item.startMs}, ${item.endMs}, ${item.anchorMs}, ${item.confidence},
               ${item.cameraSufficiency}::camera_sufficiency,
               ${JSON.stringify(item.reasons)}::jsonb, ${JSON.stringify(item.shotIndices)}::jsonb,
               ${item.observation ? JSON.stringify(item.observation) : null}::jsonb,
+              ${item.tracking ? JSON.stringify(item.tracking) : null}::jsonb,
+              ${item.sceneEvent ? JSON.stringify(item.sceneEvent) : null}::jsonb,
+              ${item.broadcastCue ? JSON.stringify(item.broadcastCue) : null}::jsonb,
               'UNREVIEWED', ${command.now}
             )
           `);

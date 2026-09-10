@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 from typing import Any, Callable
 
@@ -76,6 +76,11 @@ def pipeline(
     candidate_list = ports.candidates(metadata.source, metadata, shot_list)
     if progress:
         progress("EXTRACTING_FACTS", 55, "candidate-metadata")
+    if ports.tracking:
+        candidate_list = ports.tracking(metadata.source, root, metadata, candidate_list)
+        # 사건 구간 확장 뒤 실제로 겹치는 샷 식별자를 다시 연결한다
+        candidate_list = tuple(replace(item, shot_indices=tuple(shot.index for shot in shot_list
+            if shot.end_ms >= item.start_ms and shot.start_ms <= item.end_ms)) for item in candidate_list)
     if progress:
         progress("BUILDING_EVIDENCE", 70, "candidate-evidence")
     # 프레임과 클립 생성

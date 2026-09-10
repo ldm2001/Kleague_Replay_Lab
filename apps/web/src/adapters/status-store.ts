@@ -1,17 +1,21 @@
 import { sql } from "drizzle-orm";
 import type { AnalysisResultCommand, AnalysisResultStore as ResultPort, AnalysisView, CandidateView, EvidenceMedia, EvidenceMediaCommand, EvidenceMediaStore as EvidencePort, LatestMediaCommand, LatestMediaStore as LatestPort, MediaStatusCommand, MediaStatusStore as StatusPort, MediaView } from "@replay/application";
 import type { DatabaseClient } from "@replay/database";
-import { pipelineFilter } from "@replay/rule-engine";
-import { ruleSet } from "@replay/rule-data";
+import { evaluateVarScope, pipelineFilter } from "@replay/rule-engine";
+import { competitionRules, ruleSet } from "@replay/rule-data";
+import { broadcastCueData, sceneEventData, type ScopeEvidence } from "@replay/shared-types";
+import { knownVideoSource } from "./known-video-sources";
 
 type DatabaseHandle = Pick<DatabaseClient, "db">;
 
 type MediaRow = Readonly<{
   video_asset_id: string;
+  source_sha256: string | null;
   video_status: string;
   validation_error_code: string | null;
   analysis_id: string | null;
   analysis_status: string | null;
+  pipeline_version: string | null;
   stage: string;
   progress_percent: number;
   failure_code: string | null;
@@ -25,6 +29,9 @@ type MediaRow = Readonly<{
 }>;
 
 type CandidateRow = Readonly<{
+  tracking: CandidateView["tracking"];
+  scene_event: CandidateView["sceneEvent"];
+  broadcast_cue: CandidateView["broadcastCue"];
   category: string;
   observation: CandidateView["observation"];
   linked_shots: NonNullable<CandidateView["shots"]> | null;
@@ -64,6 +71,8 @@ type EvidenceRow = Readonly<{
   id: string;
   candidate_index: number;
   kind: "FRAME" | "CLIP";
+  start_ms: number;
+  end_ms: number;
 }>;
 
 // 상태와 결과 조회 저장소
@@ -74,10 +83,12 @@ export class StatusStore implements StatusPort, ResultPort, EvidencePort, Latest
     // 영상 처리 상태 조회
     const rows = await this.client.db.execute(sql`
       select video.id as video_asset_id,
+             encode(video.content_sha256, 'hex') as source_sha256,
              video.status::text as video_status,
              video.validation_error_code,
              analysis.id as analysis_id,
              analysis.status as analysis_status,
+             analysis.pipeline_version,
              coalesce(job.stage::text, 'QUEUED') as stage,
              coalesce(job.progress_percent, 0) as progress_percent,
              analysis.failure_code,
@@ -141,6 +152,9 @@ export class StatusStore implements StatusPort, ResultPort, EvidencePort, Latest
              decision.evaluation_snapshot #>> '{varAssessment,explanation}' as var_explanation,
              decision.citations as decision_citations,
              candidate.observation,
+             candidate.tracking,
+             candidate.scene_event,
+             candidate.broadcast_cue,
              (select jsonb_agg(jsonb_build_object('id', shot.id, 'index', shot.shot_index,
                        'startMs', shot.start_ms, 'endMs', shot.end_ms) order by shot.shot_index)
               from shots as shot where shot.analysis_id = candidate.analysis_id
@@ -164,7 +178,7 @@ export class StatusStore implements StatusPort, ResultPort, EvidencePort, Latest
     `);
     // 증거 파일 목록 조회
     const evidence = await this.client.db.execute(sql`
-      select asset.id, candidate.candidate_index, asset.kind::text as kind
+      select asset.id, candidate.candidate_index, asset.kind::text as kind, asset.start_ms, asset.end_ms
       from evidence_assets as asset
       join incident_candidates as candidate on candidate.id = asset.incident_candidate_id
       where asset.analysis_id = ${row.analysis_id}
@@ -174,27 +188,45 @@ export class StatusStore implements StatusPort, ResultPort, EvidencePort, Latest
     `);
     // 후보별 증거 묶음 초기화
     const grouped = new Map<number, Array<{ evidenceId: string; kind: "FRAME" | "CLIP" }>>();
+    const scopeEvidence = new Map<number, ScopeEvidence[]>();
     // 증거 행을 후보 번호로 그룹화
     for (const item of evidence as unknown as EvidenceRow[]) {
       const entries = grouped.get(item.candidate_index) ?? [];
       entries.push({ evidenceId: item.id, kind: item.kind });
       grouped.set(item.candidate_index, entries);
+      const scopeEntries = scopeEvidence.get(item.candidate_index) ?? [];
+      scopeEntries.push({ evidenceId: item.id, kind: item.kind, startMs: item.start_ms, endMs: item.end_ms });
+      scopeEvidence.set(item.candidate_index, scopeEntries);
     }
     // 후보 데이터 화면 모델 변환
     // 검증된 경기 연결이 없는 업로드는 추정 판본을 적용하지 않는다
     const rules = row.match_id && row.verification_status === "VERIFIED" && row.ifab_edition
       ? ruleSet(`ifab-${row.ifab_edition}`) : null;
-    const views: CandidateView[] = (candidates as unknown as CandidateRow[]).map((item) => ({
-      filter: pipelineFilter({
+    const pipelineOutput = row.pipeline_version != null;
+    const source = knownVideoSource(row.source_sha256 ?? "");
+    const book = source ? competitionRules(source.competition, source.season) : null;
+    const views: CandidateView[] = (candidates as unknown as CandidateRow[]).map((item) => {
+      const filter = pipelineFilter({
         startMs: item.start_ms, endMs: item.end_ms, anchorMs: item.anchor_ms,
         category: item.category ?? "OTHER",
+        tracking: item.tracking ?? null,
+        sceneEvent: item.scene_event ?? null,
         evidenceIds: (grouped.get(item.candidate_index) ?? []).map((entry) => entry.evidenceId),
-      }, rules),
+      }, rules);
+      return {
+      filter,
+      varScopeEvaluation: pipelineOutput && filter.status !== "EXCLUDED" ? evaluateVarScope({
+        broadcastCue: item.broadcast_cue ?? null, startMs: item.start_ms, endMs: item.end_ms,
+        evidence: scopeEvidence.get(item.candidate_index) ?? [], source,
+      }, book) : null,
       // 보정과 재평가에 필요한 현재 사실 및 영상 근거
       factRevisionId: item.fact_revision_id ?? null,
       facts: (item.fact_snapshot ?? null) as import("@replay/shared-types").EvaluationFacts | null,
       shots: item.linked_shots ?? [],
       observation: item.observation ?? null,
+      tracking: item.tracking ?? null,
+      sceneEvent: item.scene_event ?? null,
+      broadcastCue: item.broadcast_cue ?? null,
       id: item.id,
       index: item.candidate_index,
       startMs: item.start_ms,
@@ -232,10 +264,23 @@ export class StatusStore implements StatusPort, ResultPort, EvidencePort, Latest
             citations: (item.decision_citations ?? []) as import("@replay/shared-types").RuleCitation[],
           }
         : null,
-    }));
+      };
+    });
+    // 사건 인식과 규정 검토 상태는 별개이며 근거 부족인 인식 장면도 보존한다
+    const isRecognized = (candidate: CandidateView) =>
+      sceneEventData(candidate.sceneEvent, candidate.startMs, candidate.endMs) ||
+      broadcastCueData(candidate.broadcastCue, candidate.startMs, candidate.endMs);
+    const recognized = views.filter((candidate) => candidate.filter?.status !== "EXCLUDED" && isRecognized(candidate));
+    const invalid = views.filter((candidate) => candidate.filter?.status === "EXCLUDED");
+    const raw = views.filter((candidate) => candidate.filter?.status !== "EXCLUDED" && !isRecognized(candidate));
+    const diagnosticReasons = [...new Set([...raw, ...invalid].flatMap((candidate) => candidate.filter?.reasonCodes ?? []))].sort();
+    // 버전 없는 과거 분석은 기존 이력 조회를 유지하며 자동 파이프라인과 합치지 않는다
+    const hasBroadcast = views.some((candidate) => broadcastCueData(candidate.broadcastCue, candidate.startMs, candidate.endMs));
+    const publicCandidates = pipelineOutput ? recognized : views.filter((candidate) => candidate.filter?.status !== "EXCLUDED");
+    const judgmentViews = pipelineOutput ? recognized : views;
     // 화면에 연결한 현재 버전 판정만 완료 건수에 포함
-    const evaluated = views.filter((item) => item.judgment !== null).length;
-    const allJudged = views.length > 0 && evaluated === views.length;
+    const evaluated = judgmentViews.filter((item) => item.judgment !== null).length;
+    const allJudged = judgmentViews.length > 0 && evaluated === judgmentViews.length;
     // 상태와 결과 화면 모델 반환
     return {
       videoAssetId: row.video_asset_id,
@@ -262,10 +307,19 @@ export class StatusStore implements StatusPort, ResultPort, EvidencePort, Latest
         evaluatedCount: evaluated,
         filterSummary: {
           checkedCount: views.length,
-          excludedCount: views.filter((candidate) => candidate.filter?.status === "EXCLUDED").length,
+          excludedCount: invalid.length,
           undeterminedCount: views.filter((candidate) => candidate.filter?.status === "UNDETERMINED").length,
+          observedCount: views.filter((candidate) => candidate.filter?.status === "OBSERVED").length,
+          applicableCount: views.filter((candidate) => candidate.filter?.status === "APPLICABLE").length,
         },
-        candidates: views.filter((candidate) => candidate.filter?.status !== "EXCLUDED"),
+        ...(pipelineOutput ? { diagnostics: {
+          rawProposalCount: raw.length,
+          invalidOutputCount: invalid.length,
+          recognizedEventCount: recognized.length,
+          supportedEventTypes: hasBroadcast ? ["CORNER_KICK", "GOAL_GRAPHIC"] as const : ["CORNER_KICK"] as const,
+          reasons: [hasBroadcast ? "BROADCAST_AND_CORNER_DETECTORS" : "CORNER_ONLY_DETECTOR", ...(raw.length > 0 ? ["UNRECOGNIZED_PROPOSALS"] : []), ...diagnosticReasons],
+        } } : {}),
+        candidates: publicCandidates,
       },
     };
   }

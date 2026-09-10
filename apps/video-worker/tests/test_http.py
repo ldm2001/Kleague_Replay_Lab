@@ -64,6 +64,14 @@ def test_claim() -> None:
     assert api.claim("VALIDATE_VIDEO") == payload
 
 
+def test_json_sends_current_worker_protocol() -> None:
+    opener = Open([Reply(204)])
+    api = Api("http://web.test", "secret", "worker-1", opener=opener)
+    api.json("/api/internal/jobs/claim", {"workerId": "worker-1", "jobType": "ANALYZE_VIDEO"})
+    headers = {key.lower(): value for key, value in opener.requests[0].header_items()}
+    assert headers["x-worker-protocol"] == "video-observations-v1"
+
+
 # 작업 결과 요청 확인
 def test_result() -> None:
     # 작업 결과 응답 모형 구성

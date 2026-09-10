@@ -52,6 +52,33 @@ const database = (rows: unknown[]) => ({
 
 // 작업 저장소 테스트
 describe("JobStore", () => {
+  it("stores the corner observation JSON separately from the review scenario", async () => {
+    const sceneEvent = {
+      kind: "CORNER_KICK" as const, status: "OBSERVED" as const, startMs: 600, endMs: 1400, restartMs: 1000,
+      evidenceTimestampsMs: [600, 900, 1100, 1400], method: "corner-geometry-motion-v1" as const,
+    };
+    const queries: ReturnType<PgDialect["sqlToQuery"]>[] = [];
+    const repository = new JobStore({ db: { transaction: async (operation: (tx: unknown) => unknown) => operation({
+      execute: async (statement: SQL) => {
+        queries.push(new PgDialect().sqlToQuery(statement));
+        return queries.length === 1 ? [{
+          id: result.jobId, status: "PROCESSING", job_type: "ANALYZE_VIDEO",
+          job_revision: result.jobRevision, attempt: 1, lease_owner: result.workerId,
+          lease_token_hash: Buffer.from(result.leaseTokenHash), lease_until: "2030-01-01T00:00:00Z",
+          analysis_id: "22222222-2222-4222-8222-222222222222",
+        }] : [];
+      },
+    }) } } as never);
+    await expect(repository.result({ ...result, payload: {
+      kind: "ANALYZED", pipelineVersion: "video-baseline-v1", limitations: [], shots: [], evidence: [],
+      candidates: [{ index: 1, category: "OTHER", startMs: 500, endMs: 1500, anchorMs: 1000,
+        confidence: 0.5, cameraSufficiency: "MEDIUM", reasons: [], shotIndices: [], sceneEvent }],
+    } })).resolves.toEqual({ kind: "ACCEPTED" });
+    const insert = queries.find((query) => query.sql.includes("insert into incident_candidates"));
+    expect(insert?.sql).toContain("scene_event");
+    expect(insert?.params).toContain(JSON.stringify(sceneEvent));
+    expect(insert?.params).toContain("OTHER");
+  });
   it("does not infer a match rule edition from the upload clock", async () => {
     const queries: string[] = [];
     const repository = new JobStore({ db: { transaction: async (operation: (tx: unknown) => unknown) => operation({

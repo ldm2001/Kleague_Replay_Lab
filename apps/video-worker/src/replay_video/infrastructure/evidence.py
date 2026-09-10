@@ -100,8 +100,11 @@ def evidence(
     result: list[Evidence] = []
     # 모든 후보에 프레임 생성
     targets = sorted(candidate_list, key=lambda item: item.index)
-    # 클립 생성 후보 제한
-    clips = {item.index for item in sorted(candidate_list, key=lambda item: item.confidence, reverse=True)[:max_clips]}
+    # 관찰된 사건은 전후 근거 클립을 보장하고 일반 후보만 남은 예산으로 제한한다
+    clips = {item.index for item in candidate_list if item.scene_event is not None or item.broadcast_cue is not None}
+    remaining = max(0, max_clips - len(clips))
+    clips.update(item.index for item in sorted((item for item in candidate_list if item.index not in clips),
+                                               key=lambda item: item.confidence, reverse=True)[:remaining])
     # 후보별 증거 생성
     for candidate in targets:
         # 프레임 파일 경로 구성

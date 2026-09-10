@@ -1,7 +1,7 @@
 // 평가 엔진 테스트
 import { describe, expect, it } from "vitest";
 import type { CompetitionOptions, PushFacts, VarFacts } from "@replay/shared-types";
-import { ruleSet } from "@replay/rule-data";
+import { combineCompetitionRules, ruleSet } from "@replay/rule-data";
 import { pushResult, varResult } from "@replay/rule-engine";
 import { assessment } from "./assessment.js";
 
@@ -57,6 +57,81 @@ describe("assessment", () => {
     })({ ruleVersionId: "ifab-missing", push, variable, observed, options: {} })).resolves.toEqual({
       kind: "RULE_VERSION_UNKNOWN",
     });
+  });
+
+  it.each([
+    ["K리그1", "2025", "kleague1-2025"],
+    ["K리그2", "2025", "kleague2-2025"],
+    ["K리그1", "2026", "kleague1-2026"],
+    ["K리그2", "2026", "kleague2-2026"],
+  ])("evaluates with the selected %s %s rule book", async (competition, season, versionId) => {
+    const result = await assessment({
+      rule: ruleSet,
+      competitionRule: combineCompetitionRules,
+      push: pushResult,
+      variable: varResult,
+      hash: async () => new Uint8Array(32),
+    })({
+      ruleVersionId: "ifab-2025-26", competition: { competition, season },
+      push, variable, observed, options: {},
+    });
+
+    expect(result.kind).toBe("EVALUATED");
+    if (result.kind !== "EVALUATED") return;
+    const leagueCitations = result.value.citations.filter((item) => item.authority === "KLEAGUE");
+    expect(leagueCitations.length).toBeGreaterThan(0);
+    expect(leagueCitations.every((item) => item.ruleId.startsWith(`${versionId}-`) && item.edition === season)).toBe(true);
+    expect(result.value.citations.some((item) => item.authority === "IFAB" && item.edition === "2025-26")).toBe(true);
+  });
+
+  it.each([
+    ["unknown", "2026"],
+    ["K리그1", "2024"],
+    ["K리그2", "2027"],
+  ])("rejects unavailable competition data for %s %s", async (competition, season) => {
+    const result = await assessment({
+      rule: ruleSet,
+      competitionRule: combineCompetitionRules,
+      push: pushResult,
+      variable: varResult,
+      hash: async () => new Uint8Array(32),
+    })({
+      ruleVersionId: "ifab-2025-26", competition: { competition, season },
+      push, variable, observed, options: {},
+    });
+
+    expect(result).toEqual({ kind: "RULE_VERSION_UNKNOWN" });
+  });
+
+  it("does not silently ignore competition when its resolver is unavailable", async () => {
+    const result = await assessment({
+      rule: ruleSet,
+      push: pushResult,
+      variable: varResult,
+      hash: async () => new Uint8Array(32),
+    })({
+      ruleVersionId: "ifab-2025-26", competition: { competition: "K리그1", season: "2026" },
+      push, variable, observed, options: {},
+    });
+
+    expect(result).toEqual({ kind: "RULE_VERSION_UNKNOWN" });
+  });
+
+  it("applies the K League scope before evaluating the IFAB corner option", async () => {
+    const result = await assessment({
+      rule: ruleSet,
+      competitionRule: combineCompetitionRules,
+      push: pushResult,
+      variable: varResult,
+      hash: async () => new Uint8Array(32),
+    })({
+      ruleVersionId: "ifab-2026-27", competition: { competition: "K리그2", season: "2026" },
+      push, variable: { ...variable, reviewScenario: "CORNER_KICK_AWARDED" }, observed, options: {},
+    });
+
+    expect(result).toMatchObject({ kind: "EVALUATED", value: { varAssessment: {
+      reviewable: false, notReviewableReason: "OUTSIDE_REVIEWABLE_CATEGORIES", intervention: "NO_INTERVENTION",
+    } } });
   });
 
   it.each([

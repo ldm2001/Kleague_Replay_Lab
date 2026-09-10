@@ -21,6 +21,9 @@ describe("migration discovery", () => {
       "0011_competition_context",
       "0012_kleague_rule_scope",
       "0013_observations",
+      "0014_candidate_tracking",
+      "0015_candidate_scene_event",
+      "0016_broadcast_cue",
     ]);
     expect(list[0]?.checksum).toMatch(/^[a-f0-9]{64}$/);
     expect(list[0]?.sql).toContain("CREATE TABLE analyses");
@@ -36,5 +39,7 @@ describe("migration discovery", () => {
     expect(context?.sql).toContain("K리그1");
     const scope = list.find((migration) => migration.name === "0012_kleague_rule_scope");
     expect(scope?.sql).toContain("KLEAGUE");
+    const broadcast = list.find((migration) => migration.name === "0016_broadcast_cue");
+    expect(broadcast?.sql).toContain("broadcast_cue jsonb");
   });
 });

@@ -151,6 +151,9 @@ def report(api: WorkerApi, item: dict[str, object], path: Path) -> dict[str, obj
         "cameraSufficiency": item["camera_sufficiency"],
         "reasons": item["reasons"],
         "shotIndices": item["shot_indices"],
+        "tracking": item.get("tracking"),
+        "sceneEvent": item.get("scene_event"),
+        "broadcastCue": item.get("broadcast_cue"),
     } for item in value["candidates"]]
     # 분석 결과와 증거 업로드 정보 반환
     return {

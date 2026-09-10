@@ -15,6 +15,12 @@ def ball_candidates(frame: np.ndarray) -> tuple[BallCandidate, ...]:
     grass, _ = _field(image)
     if np.count_nonzero(grass) / grass.size < 0.2:
         return ()
+    # 화면 위의 녹색 로고와 작은 광고 영역이 탐색 띠를 만들지 않도록 주 잔디 영역만 사용한다
+    count, components, stats, _ = cv2.connectedComponentsWithStats(grass, connectivity=8)
+    if count <= 1:
+        return ()
+    largest = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+    grass = np.where(components == largest, 255, 0).astype(np.uint8)
     # 떠 있는 공은 잔디와 붙어 있지 않을 수 있어 수직 탐색 띠를 넓힌다
     hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
     bright = cv2.inRange(hsv, (0, 0, 160), (179, 65, 255))

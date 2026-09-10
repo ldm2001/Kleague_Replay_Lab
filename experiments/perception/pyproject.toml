@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "replay-lab-perception-experiment"
+version = "0.1.0"
+requires-python = ">=3.11"
+description = "Isolated object detection and tracking experiment; not referee adjudication"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["replay_perception*"]
+namespaces = true
+
+[tool.setuptools.package-data]
+replay_perception = ["model-manifest.json"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

@@ -6,6 +6,8 @@ from typing import Callable, Mapping
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from .protocol import WORKER_PROTOCOL
+
 
 class HttpError(RuntimeError):
     # 내부 API 오류
@@ -46,6 +48,7 @@ class Api:
             headers={
                 "content-type": "application/json",
                 "x-worker-key": self.key,
+                "x-worker-protocol": WORKER_PROTOCOL,
             },
             method="POST",
         )
