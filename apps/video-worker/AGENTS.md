@@ -26,7 +26,7 @@ Python 패키지는 `apps/video-worker/pyproject.toml`을 기준으로 한다
 
 ## 핵심 제약
 
-- AI 모델과 Gemma와 Ollama를 호출하지 않는다
+- 승인된 RT-DETR·YOLO11m·ViTPose의 로컬 관측만 허용하며 Gemma·Ollama·생성형 모델과 외부 추론은 호출하지 않는다
 - 사용자 입력과 사실 확인을 기다리지 않는다
 - Worker는 메타데이터와 샷과 변화 후보 및 관찰된 영상 패턴과 프레임·클립을 만든다
 - 코너킥 영상 패턴은 경기 재개의 적법성이나 본방과 리플레이 구분을 확정하지 않는다
@@ -36,4 +36,5 @@ Python 패키지는 `apps/video-worker/pyproject.toml`을 기준으로 한다
 - 영상 파일은 저장소에 추가하지 않는다
 
 상세 파이프라인 계약은 [README.md](README.md)와 [자동 처리 설계](../../docs/design/자동처리.md)를 본다
+모델 관측과 사건·규정 연결의 승인 범위는 [운영판정연결](../../docs/design/운영판정연결.md)을 따른다
 기존 Python 파일의 들여쓰기 정리는 필요한 줄만 한 줄씩 수정하고 전체 자동 포맷은 피한다

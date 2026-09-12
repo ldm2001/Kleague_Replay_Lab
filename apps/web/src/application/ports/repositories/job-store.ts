@@ -139,6 +139,7 @@ export type AnalysisPayload = Readonly<{
   shots: readonly AnalysisShot[];
   candidates: readonly AnalysisCandidate[];
   evidence?: readonly AnalysisEvidence[];
+  perception?: import("@replay/shared-types").PerceptionRun;
 }>;
 
 // Worker 결과 payload
@@ -152,14 +153,44 @@ export type JobResultCommand = Readonly<{
   leaseTokenHash: Uint8Array;
   now: string;
   payload: JobResultPayload;
+  perceptionVerification?: Readonly<{
+    analysisId: string;
+    sourceSha256: Uint8Array;
+    admission: Readonly<{ status: "NOT_ADMITTED"; reasons: readonly string[] }>;
+  }>;
 }>;
 
 // 작업 결과 저장 상태
-export type JobResult = Readonly<{
-  kind: "ACCEPTED" | "NOT_FOUND" | "STALE_LEASE" | "ALREADY_FINISHED";
+export type JobResult =
+  | Readonly<{ kind: "ACCEPTED" | "NOT_FOUND" | "STALE_LEASE" | "ALREADY_FINISHED" }>
+  | Readonly<{ kind: "INVALID_RESULT"; reason: "SOURCE" | "CONTEXT" }>;
+
+export type JobResultPreflightCommand = Readonly<{
+  jobId: string;
+  workerId: string;
+  jobRevision: number;
+  leaseTokenHash: Uint8Array;
+  now: string;
 }>;
+
+export type JobResultPreflight =
+  | Readonly<{
+      kind: "AUTHORIZED";
+      analysisId: string;
+      sourceSha256: Uint8Array;
+      analysisSourceSha256: Uint8Array;
+      expiresAt: string | null;
+      ruleEdition: Readonly<{
+        id: string;
+        verificationStatus: string;
+        matchId: string;
+        ifabEdition: string;
+      }> | null;
+    }>
+  | Readonly<{ kind: "NOT_FOUND" | "STALE_LEASE" | "ALREADY_FINISHED" }>;
 
 // 작업 결과 저장 포트
 export type JobResultStore = Readonly<{
   result: (command: JobResultCommand) => Promise<JobResult>;
+  preflight?: (command: JobResultPreflightCommand) => Promise<JobResultPreflight>;
 }>;

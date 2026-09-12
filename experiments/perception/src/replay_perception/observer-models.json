@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "models": {
+    "role": {
+      "model_id": "martinjolif/yolo-football-player-detection",
+      "slug": "yolo11m_football",
+      "revision": "5e83fafa8d564243001ce8e063612a618a138fbe",
+      "license": "AGPL-3.0",
+      "architecture": "YOLO11m",
+      "labels": [
+        "ball",
+        "goalkeeper",
+        "player",
+        "referee"
+      ],
+      "files": [
+        {
+          "name": "yolo-football-player-detection.pt",
+          "size": 40583084,
+          "sha256": "69c652bfa9814ef882c439617f04b8fd5749b6b8455aaa3c36110bc2e802aadd",
+          "url": "https://huggingface.co/martinjolif/yolo-football-player-detection/resolve/5e83fafa8d564243001ce8e063612a618a138fbe/yolo-football-player-detection.pt"
+        },
+        {
+          "name": "README.md",
+          "size": 2537,
+          "sha256": "446b7be35352183834b72eda7e197485a3da660e77a2013409a0e91fe00efb92",
+          "url": "https://huggingface.co/martinjolif/yolo-football-player-detection/resolve/5e83fafa8d564243001ce8e063612a618a138fbe/README.md"
+        }
+      ]
+    },
+    "pose": {
+      "model_id": "usyd-community/vitpose-plus-small",
+      "slug": "vitpose_plus_small",
+      "revision": "0c30b6534bb621af0162b481176742577264e36e",
+      "license": "Apache-2.0",
+      "architecture": "VitPoseForPoseEstimation",
+      "keypoints": [
+        "nose",
+        "left_eye",
+        "right_eye",
+        "left_ear",
+        "right_ear",
+        "left_shoulder",
+        "right_shoulder",
+        "left_elbow",
+        "right_elbow",
+        "left_wrist",
+        "right_wrist",
+        "left_hip",
+        "right_hip",
+        "left_knee",
+        "right_knee",
+        "left_ankle",
+        "right_ankle"
+      ],
+      "files": [
+        {
+          "name": "model.safetensors",
+          "size": 132619932,
+          "sha256": "f7bad8ed09eeeb2a7de6b38faaa8a88d07838e23e9c06a2a782099bca7467cb9",
+          "url": "https://huggingface.co/usyd-community/vitpose-plus-small/resolve/0c30b6534bb621af0162b481176742577264e36e/model.safetensors"
+        },
+        {
+          "name": "config.json",
+          "size": 1846,
+          "sha256": "9a81cb593c0af3c5a7e07bb4ffb4643d6a8163f73b4373d294b4a4997c8abe81",
+          "url": "https://huggingface.co/usyd-community/vitpose-plus-small/resolve/0c30b6534bb621af0162b481176742577264e36e/config.json"
+        },
+        {
+          "name": "preprocessor_config.json",
+          "size": 363,
+          "sha256": "9b11cadc98c30b968a70cc1658ce1fbd74b721b0f21402a2ff8bc1dc9d1474a0",
+          "url": "https://huggingface.co/usyd-community/vitpose-plus-small/resolve/0c30b6534bb621af0162b481176742577264e36e/preprocessor_config.json"
+        },
+        {
+          "name": "README.md",
+          "size": 11656,
+          "sha256": "0f83999d99d35f74969ff14d33c29fe9657888d92f532baff8339ba1a486f834",
+          "url": "https://huggingface.co/usyd-community/vitpose-plus-small/resolve/0c30b6534bb621af0162b481176742577264e36e/README.md"
+        }
+      ]
+    }
+  }
+}

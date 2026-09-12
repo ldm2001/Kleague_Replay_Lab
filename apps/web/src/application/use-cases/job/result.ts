@@ -1,6 +1,7 @@
 import type { Clock } from "../../ports/clock/clock";
 // 모델 관찰 출력 검증
-import { observationData } from "@replay/shared-types";
+import { observationData, perceptionReferencesData, perceptionRunData } from "@replay/shared-types";
+import { perceptionAdmission } from "@replay/rule-engine";
 import { trackingData } from "@replay/shared-types";
 import { sceneEventData } from "@replay/shared-types";
 import { broadcastCueData } from "@replay/shared-types";
@@ -16,6 +17,7 @@ import type {
   JobResultStore,
   ValidationPayload,
 } from "../../ports/repositories/job-store";
+import type { CompletionStorage } from "../../ports/storage/upload-storage";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CODE = /^[A-Z0-9_]{1,64}$/;
@@ -39,13 +41,26 @@ export type ResultInvalidReason =
 export type ResultResult = JobResult | Readonly<{
   kind: "INVALID_INPUT";
   reason: ResultInvalidReason;
+}> | Readonly<{
+  kind: "INVALID_RESULT";
+  reason: "VERIFICATION_UNAVAILABLE" | "SOURCE" | "ARTIFACT" | "REFERENCE" | "STORAGE";
 }>;
 
 export type ResultDependencies = Readonly<{
   clock: Clock;
   hasher: Hasher;
   repository: JobResultStore;
+  storage?: CompletionStorage;
 }>;
+
+const bytesHex = (value: Uint8Array): string =>
+  Array.from(value, (byte) => byte.toString(16).padStart(2, "0")).join("");
+
+const verifiedHash = (value: Uint8Array, expected: string): boolean =>
+  value.length === 32 && bytesHex(value) === expected;
+
+const MAX_PERCEPTION_OBJECT_BYTES = 128 * 1_024 * 1_024;
+const MAX_REFERENCE_OBJECT_BYTES = 50 * 1_024 * 1_024;
 
 // 영상 검증 payload 확인
 const validation = (payload: ValidationPayload): boolean =>
@@ -115,21 +130,34 @@ const evidence = (value: AnalysisEvidence): boolean =>
   (value.height === null || (Number.isSafeInteger(value.height) && value.height > 0));
 
 // 분석 payload 확인
-const analysis = (value: AnalysisPayload): boolean =>
-  typeof value.pipelineVersion === "string" &&
-  value.pipelineVersion.length > 0 &&
-  value.pipelineVersion.length <= 64 &&
-  Array.isArray(value.limitations) &&
-  value.limitations.every((item) => typeof item === "string") &&
-  Array.isArray(value.shots) &&
-  value.shots.every(shot) &&
-  Array.isArray(value.candidates) &&
-  value.candidates.every(candidate) &&
-  (value.evidence === undefined || (
-    Array.isArray(value.evidence) &&
-    value.evidence.length <= 128 &&
-    value.evidence.every(evidence)
-  ));
+const analysis = (value: AnalysisPayload): boolean => {
+  const valid = typeof value.pipelineVersion === "string" &&
+    value.pipelineVersion.length > 0 &&
+    value.pipelineVersion.length <= 64 &&
+    Array.isArray(value.limitations) &&
+    value.limitations.every((item) => typeof item === "string") &&
+    Array.isArray(value.shots) &&
+    value.shots.every(shot) &&
+    Array.isArray(value.candidates) &&
+    value.candidates.every(candidate) &&
+    (value.evidence === undefined || (
+      Array.isArray(value.evidence) &&
+      value.evidence.length <= 128 &&
+      value.evidence.every(evidence)
+    ));
+  if (!valid) return false;
+  if (value.pipelineVersion !== "video-local-observers-v1") return value.perception === undefined;
+  if (new Set(value.shots.map((item) => item.index)).size !== value.shots.length ||
+    new Set(value.candidates.map((item) => item.index)).size !== value.candidates.length ||
+    new Set((value.evidence ?? []).map((item) => item.objectKey)).size !== (value.evidence ?? []).length) {
+    return false;
+  }
+  return perceptionRunData(value.perception) && perceptionReferencesData(
+    value.perception,
+    value.candidates,
+    value.evidence ?? [],
+  );
+};
 
 // 결과 유형별 payload 확인
 const payload = (value: JobResultPayload): boolean =>
@@ -140,7 +168,7 @@ const payload = (value: JobResultPayload): boolean =>
       : value.kind === "FAILED" && failure(value);
 
 export const result =
-  ({ clock, hasher, repository }: ResultDependencies) =>
+  ({ clock, hasher, repository, storage }: ResultDependencies) =>
   async (input: ResultInput): Promise<ResultResult> => {
     // 작업 결과 검증
     if (!UUID.test(input.jobId)) {
@@ -166,6 +194,89 @@ export const result =
 
     // Lease 토큰 해시 생성
     const leaseTokenHash = Uint8Array.from(await hasher.sha256(input.leaseToken));
+    if (input.payload.kind === "ANALYZED" && input.payload.pipelineVersion === "video-local-observers-v1") {
+      if (!input.payload.perception || !repository.preflight || !storage) {
+        return { kind: "INVALID_RESULT", reason: "VERIFICATION_UNAVAILABLE" };
+      }
+      const initialNow = clock.now().toISOString();
+      const preflight = await repository.preflight({
+        jobId: input.jobId.toLowerCase(),
+        workerId,
+        jobRevision: input.jobRevision,
+        leaseTokenHash,
+        now: initialNow,
+      });
+      if (preflight.kind !== "AUTHORIZED") return preflight;
+      const perception = input.payload.perception;
+      if (!verifiedHash(preflight.sourceSha256, perception.sourceSha256) ||
+        !verifiedHash(preflight.analysisSourceSha256, perception.sourceSha256) || !preflight.expiresAt) {
+        return { kind: "INVALID_RESULT", reason: "SOURCE" };
+      }
+      const expectedArtifactKey = `perception/${preflight.analysisId}/${input.jobId.toLowerCase()}/${input.jobRevision}/${perception.artifact.contentSha256}.jsonl.gz`;
+      if (perception.artifact.objectKey !== expectedArtifactKey) {
+        return { kind: "INVALID_RESULT", reason: "ARTIFACT" };
+      }
+      try {
+        const artifact = await storage.head(perception.artifact.objectKey, MAX_PERCEPTION_OBJECT_BYTES);
+        if (!artifact || artifact.sizeBytes !== perception.artifact.sizeBytes ||
+          !verifiedHash(artifact.contentSha256, perception.artifact.contentSha256)) {
+          return { kind: "INVALID_RESULT", reason: "ARTIFACT" };
+        }
+        const evidence = input.payload.evidence ?? [];
+        const indices = [...new Set(perception.incidents.flatMap((incident) => incident.evidenceIndices))];
+        const references = await Promise.all(indices.map(async (evidenceIndex) => {
+          const item = evidence[evidenceIndex]!;
+          const expectedPrefix = `evidence/${preflight.analysisId}/${input.jobId.toLowerCase()}/`;
+          if (!item.objectKey.startsWith(expectedPrefix)) return null;
+          const object = await storage.head(item.objectKey, MAX_REFERENCE_OBJECT_BYTES);
+          if (!object || !verifiedHash(object.contentSha256, item.contentSha256)) return null;
+          return {
+            evidenceIndex,
+            candidateIndex: item.candidateIndex,
+            startMs: item.startMs,
+            endMs: item.endMs,
+            declaredContentSha256: item.contentSha256.toLowerCase(),
+            verifiedContentSha256: bytesHex(object.contentSha256),
+          };
+        }));
+        if (references.some((reference) => reference === null)) {
+          return { kind: "INVALID_RESULT", reason: "REFERENCE" };
+        }
+        const admission = perceptionAdmission(perception, {
+          serverVerified: true,
+          pipelineVersion: input.payload.pipelineVersion,
+          sourceSha256: bytesHex(preflight.sourceSha256),
+          artifact: {
+            objectKey: perception.artifact.objectKey,
+            contentSha256: bytesHex(artifact.contentSha256),
+            sizeBytes: artifact.sizeBytes,
+          },
+          references: references.filter((reference) => reference !== null),
+          ruleEdition: preflight.ruleEdition,
+        });
+        const completedAt = clock.now();
+        if (!Number.isFinite(new Date(preflight.expiresAt).getTime()) ||
+          new Date(preflight.expiresAt).getTime() <= completedAt.getTime()) {
+          return { kind: "INVALID_RESULT", reason: "SOURCE" };
+        }
+        return repository.result({
+          jobId: input.jobId.toLowerCase(),
+          workerId,
+          jobRevision: input.jobRevision,
+          leaseTokenHash,
+          now: completedAt.toISOString(),
+          payload: input.payload,
+          perceptionVerification: {
+            analysisId: preflight.analysisId,
+            sourceSha256: preflight.sourceSha256,
+            admission,
+          },
+        });
+      } catch {
+        return { kind: "INVALID_RESULT", reason: "STORAGE" };
+      }
+    }
+
     // 작업 결과 저장
     return repository.result({
       jobId: input.jobId.toLowerCase(),

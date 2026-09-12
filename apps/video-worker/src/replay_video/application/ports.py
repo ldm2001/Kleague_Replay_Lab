@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from ..domain.models import Candidate, Evidence, Shot, VideoMetadata
+from ..domain.models import Candidate, Evidence, PerceptionOutput, Shot, VideoMetadata
 
 
 @dataclass(frozen=True, slots=True)
@@ -18,3 +18,4 @@ class PipelinePorts:
     # 증거 생성 포트
     evidence: Callable[[Path | str, Path | str, VideoMetadata, tuple[Candidate, ...]], tuple[Evidence, ...]]
     tracking: Callable[[Path | str, Path | str, VideoMetadata, tuple[Candidate, ...]], tuple[Candidate, ...]] | None = None
+    perception: Callable[[Path | str, Path | str, VideoMetadata, tuple[Candidate, ...], tuple[Shot, ...]], PerceptionOutput] | None = None

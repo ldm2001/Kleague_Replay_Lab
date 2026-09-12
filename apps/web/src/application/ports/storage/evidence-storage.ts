@@ -11,11 +11,21 @@ export type EvidenceGrantInput = Readonly<{
 export type EvidenceGrant = Readonly<{
   objectKey: string;
   uploadUrl: string;
+  headers?: Readonly<Record<string, string>>;
+}>;
+
+export type PerceptionGrantInput = Readonly<{
+  analysisId: string;
+  jobId: string;
+  jobRevision: number;
+  contentSha256: string;
+  sizeBytes: number;
 }>;
 
 // 증거 저장소 포트
 export type EvidenceStorage = Readonly<{
   evidence: (input: EvidenceGrantInput) => Promise<EvidenceGrant>;
+  perception?: (input: PerceptionGrantInput) => Promise<EvidenceGrant>;
 }>;
 
 // 증거 저장 포트

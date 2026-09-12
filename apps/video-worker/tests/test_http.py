@@ -35,10 +35,16 @@ class Open:
         self.replies = replies
         # 요청 기록 초기화
         self.requests: list[object] = []
+        # opener 호출 중 스트림에서 읽은 요청 본문 보관
+        self.bodies: list[bytes | None] = []
+        self.streaming: list[bool] = []
 
     def __call__(self, request: object, timeout: float = 0) -> Reply:
         # 요청 기록
         self.requests.append(request)
+        data = getattr(request, "data", None)
+        self.streaming.append(hasattr(data, "read"))
+        self.bodies.append(data.read() if hasattr(data, "read") else data)
         # 다음 응답 선택
         reply = self.replies.pop(0)
         if isinstance(reply, Exception):
@@ -69,7 +75,7 @@ def test_json_sends_current_worker_protocol() -> None:
     api = Api("http://web.test", "secret", "worker-1", opener=opener)
     api.json("/api/internal/jobs/claim", {"workerId": "worker-1", "jobType": "ANALYZE_VIDEO"})
     headers = {key.lower(): value for key, value in opener.requests[0].header_items()}
-    assert headers["x-worker-protocol"] == "video-observations-v1"
+    assert headers["x-worker-protocol"] == "video-observations-v2"
 
 
 # 작업 결과 요청 확인
@@ -89,6 +95,32 @@ def test_result() -> None:
     assert body["workerId"] == "worker-1"
     assert body["jobRevision"] == 2
     assert body["leaseToken"] == "lease"
+
+
+def test_result_accepts_idempotent_already_finished_response() -> None:
+    payload = io.BytesIO(b'{"kind":"ALREADY_FINISHED"}')
+    error = HTTPError("http://web.test", 409, "finished", {}, payload)
+    api = Api("http://web.test", "secret", "worker-1", opener=Open([error]))
+    job = {"jobId": "job-1", "jobRevision": 2, "leaseToken": "lease"}
+
+    assert api.result(job, {"kind": "VALIDATED"}) == {"kind": "ALREADY_FINISHED"}
+
+
+def test_result_preserves_terminal_409_when_no_verifiable_body_exists() -> None:
+    error = HTTPError("http://web.test", 409, "stale", {}, None)
+    api = Api("http://web.test", "secret", "worker-1", opener=Open([error]))
+    job = {"jobId": "job-1", "jobRevision": 2, "leaseToken": "lease"}
+
+    with pytest.raises(HttpError, match="http-409"):
+        api.result(job, {"kind": "VALIDATED"})
+
+
+def test_result_rejects_unexpected_success_payload() -> None:
+    api = Api("http://web.test", "secret", "worker-1", opener=Open([Reply(200, b'{"kind":"OTHER"}')]))
+    job = {"jobId": "job-1", "jobRevision": 2, "leaseToken": "lease"}
+
+    with pytest.raises(HttpError, match="result-response-invalid"):
+        api.result(job, {"kind": "VALIDATED"})
 
 
 # 원본 영상 수신 확인
@@ -140,4 +172,71 @@ def test_evidence(tmp_path: Path) -> None:
     put_request = opener.requests[1]
     assert getattr(grant_request, "full_url") == "http://web.test/api/internal/jobs/job-1/evidence"
     assert getattr(put_request, "method") == "PUT"
-    assert getattr(put_request, "data") == b"frame"
+    assert opener.bodies[1] == b"frame"
+    assert opener.streaming[1] is True
+    headers = {key.lower(): value for key, value in put_request.header_items()}
+    assert headers["content-length"] == "5"
+    assert headers["content-type"] == "image/jpeg"
+
+
+def test_put_streams_gzip_with_only_checksum_bound_headers(tmp_path: Path) -> None:
+    source = tmp_path / "perception.jsonl.gz"
+    source.write_bytes(b"diagnostic")
+    opener = Open([Reply(200)])
+    api = Api("http://web.test", "secret", "worker-1", opener=opener)
+
+    api.put("http://storage.test/perception", source, "application/gzip", {
+        "x-amz-checksum-sha256": "checksum",
+        "if-none-match": "*",
+    })
+
+    request = opener.requests[0]
+    headers = {key.lower(): value for key, value in request.header_items()}
+    assert opener.streaming == [True]
+    assert opener.bodies == [b"diagnostic"]
+    assert headers == {
+        "content-type": "application/gzip",
+        "content-length": str(len(b"diagnostic")),
+        "x-amz-checksum-sha256": "checksum",
+        "if-none-match": "*",
+    }
+
+
+@pytest.mark.parametrize("headers", [
+    {"authorization": "secret"},
+    {"content-type": "application/gzip"},
+    {"x-amz-checksum-sha256": "checksum", "if-none-match": "*", "x-extra": "no"},
+])
+def test_put_rejects_unapproved_grant_headers_before_network(tmp_path: Path, headers: dict[str, str]) -> None:
+    source = tmp_path / "perception.jsonl.gz"
+    source.write_bytes(b"diagnostic")
+    opener = Open([])
+    api = Api("http://web.test", "secret", "worker-1", opener=opener)
+
+    with pytest.raises(HttpError, match="evidence-headers-invalid"):
+        api.put("http://storage.test/perception", source, "application/gzip", headers)
+    assert opener.requests == []
+
+
+def test_put_rejects_oversize_before_opening_network(tmp_path: Path) -> None:
+    source = tmp_path / "candidate.mp4"
+    with source.open("wb") as output:
+        output.truncate(50 * 1024 * 1024 + 1)
+    opener = Open([])
+    api = Api("http://web.test", "secret", "worker-1", opener=opener)
+
+    with pytest.raises(HttpError, match="evidence-size-invalid"):
+        api.put("http://storage.test/candidate.mp4", source, "video/mp4")
+    assert opener.requests == []
+
+
+def test_put_treats_precondition_failure_as_upload_failure(tmp_path: Path) -> None:
+    source = tmp_path / "perception.jsonl.gz"
+    source.write_bytes(b"diagnostic")
+    error = HTTPError("http://storage.test/perception", 412, "exists", {}, None)
+    api = Api("http://web.test", "secret", "worker-1", opener=Open([error]))
+
+    with pytest.raises(HttpError, match="evidence-412"):
+        api.put("http://storage.test/perception", source, "application/gzip", {
+            "x-amz-checksum-sha256": "checksum", "if-none-match": "*",
+        })

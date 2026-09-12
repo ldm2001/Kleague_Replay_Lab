@@ -10,3 +10,5 @@ export { varResult } from "./var/assessment";
 export { evaluateVarScope } from "./var/scope";
 export type { VarScopeInput } from "./var/scope";
 export { pipelineFilter } from "./gates/pipeline-filter";
+export { perceptionAdmission, perceptionModelPins, perceptionRecognitionMethods } from "./perception-admission";
+export type { PerceptionAdmission, PerceptionAdmissionContext, VerifiedPerceptionReference } from "./perception-admission";

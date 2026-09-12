@@ -14,6 +14,7 @@
     "dev:infra": "docker compose -f infra/local/docker-compose.yml up -d",
     "test": "vitest run",
     "test:video": "python3 -m pytest -c apps/video-worker/pyproject.toml apps/video-worker/tests -q",
+    "test:perception": "experiments/perception/.venv-referee/bin/python -m pytest -c experiments/perception/pyproject.toml experiments/perception/tests -q",
     "typecheck": "tsc -p tsconfig.base.json --noEmit",
     "check:enums": "node scripts/check/enums.mjs",
     "check:edition": "node scripts/check/no-edition-literal.mjs",

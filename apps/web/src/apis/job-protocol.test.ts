@@ -40,7 +40,7 @@ describe.each(routes)("worker protocol at %s", (_name, invoke) => {
 
       expect(response.status).toBe(409);
       expect(await response.json()).toEqual({
-        kind: "UNSUPPORTED_WORKER_PROTOCOL", requiredProtocol: "video-observations-v1",
+        kind: "UNSUPPORTED_WORKER_PROTOCOL", requiredProtocol: "video-observations-v2",
       });
       expect(response.headers.get("cache-control")).toBe("no-store");
       for (const port of [ports.claim, ports.progress, ports.result, ports.evidence]) {

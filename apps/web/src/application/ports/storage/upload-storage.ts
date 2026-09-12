@@ -25,7 +25,7 @@ export type UploadedObjectHead = Readonly<{
 
 // 업로드 완료 저장소 포트
 export type CompletionStorage = Readonly<{
-  head: (objectKey: string) => Promise<UploadedObjectHead | null>;
+  head: (objectKey: string, maxSizeBytes?: number) => Promise<UploadedObjectHead | null>;
 }>;
 
 // Worker 원본 읽기 포트

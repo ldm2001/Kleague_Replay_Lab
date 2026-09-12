@@ -1,6 +1,7 @@
 # 의존성
 node_modules/
 .venv/
+/experiments/perception/.venv-referee/
 __pycache__/
 *.py[cod]
 

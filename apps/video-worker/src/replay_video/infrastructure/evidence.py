@@ -32,6 +32,11 @@ def frame(source: Path, destination: Path, timestamp_ms: int) -> None:
 def clip(source: Path, destination: Path, start_ms: int, end_ms: int) -> None:
     # 클립 길이 계산
     duration = max(0.2, (end_ms - start_ms) / 1000)
+    # Leave container/headroom inside the 50 MiB upload cap. VBV limits quality,
+    # not duration: -fs would silently truncate the claimed evidence interval.
+    rate = min(6_000_000, int(45 * 1024 * 1024 * 8 / (duration + 2)))
+    if rate <= 0:
+        raise ValueError("clip-duration-invalid")
     # FFmpeg 명령 구성
     command = [
         "ffmpeg",
@@ -53,7 +58,15 @@ def clip(source: Path, destination: Path, start_ms: int, end_ms: int) -> None:
         "-c:v",
         "libx264",
         "-preset",
-        "ultrafast",
+        "veryfast",
+        "-crf",
+        "23",
+        "-maxrate",
+        str(rate),
+        "-bufsize",
+        str(rate * 2),
+        "-threads",
+        "2",
         "-pix_fmt",
         "yuv420p",
         "-movflags",
@@ -72,6 +85,10 @@ def clip(source: Path, destination: Path, start_ms: int, end_ms: int) -> None:
     # 생성 상태 확인
     if result.returncode != 0:
         raise RuntimeError("clip-write-failed")
+    if not destination.is_file() or destination.stat().st_size <= 0:
+        raise RuntimeError("clip-write-failed")
+    if destination.stat().st_size > 50 * 1024 * 1024:
+        raise RuntimeError("clip-size-limit")
 
 
 # 후보 증거 묶음 생성
@@ -101,7 +118,8 @@ def evidence(
     # 모든 후보에 프레임 생성
     targets = sorted(candidate_list, key=lambda item: item.index)
     # 관찰된 사건은 전후 근거 클립을 보장하고 일반 후보만 남은 예산으로 제한한다
-    clips = {item.index for item in candidate_list if item.scene_event is not None or item.broadcast_cue is not None}
+    clips = {item.index for item in candidate_list if item.scene_event is not None or item.broadcast_cue is not None
+             or "LOCAL_OBSERVER_EVIDENCE_REQUIRED" in item.reasons}
     remaining = max(0, max_clips - len(clips))
     clips.update(item.index for item in sorted((item for item in candidate_list if item.index not in clips),
                                                key=lambda item: item.confidence, reverse=True)[:remaining])

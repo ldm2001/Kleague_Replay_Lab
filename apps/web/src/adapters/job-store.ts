@@ -9,6 +9,8 @@ import type {
   JobStore as JobPort,
   JobResult,
   JobResultCommand,
+  JobResultPreflight,
+  JobResultPreflightCommand,
   JobResultStore as ResultPort,
   JobStage,
   JobType,
@@ -19,6 +21,8 @@ import type {
 import type { DatabaseClient } from "@replay/database";
 
 type DatabaseHandle = Pick<DatabaseClient, "db">;
+type WallClock = () => Date;
+const MAX_PRIVATE_SUMMARY_BYTES = 1_048_576;
 
 type JobRow = Readonly<{
   id: string;
@@ -36,7 +40,10 @@ type JobRow = Readonly<{
 
 // 작업 저장소 어댑터
 export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort {
-  public constructor(private readonly client: DatabaseHandle) {}
+  public constructor(
+    private readonly client: DatabaseHandle,
+    private readonly wallClock: WallClock = () => new Date(),
+  ) {}
 
   public async claim(command: JobClaimCommand): Promise<JobClaim | null> {
     // Lease 토큰 생성
@@ -227,6 +234,53 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
     return jobs.length > 0 ? { kind: "STALE_LEASE" } : { kind: "NOT_FOUND" };
   }
 
+  public async preflight(command: JobResultPreflightCommand): Promise<JobResultPreflight> {
+    const rows = await this.client.db.execute(sql`
+      select job.analysis_id, video.content_sha256, analysis.source_fingerprint,
+             analysis.expires_at, analysis.match_id, rule.id as rule_version_id,
+             rule.verification_status, rule.ifab_edition
+      from processing_jobs as job
+      join analyses as analysis on analysis.id = job.analysis_id
+      join video_assets as video on video.id = analysis.video_asset_id
+      left join competition_rule_versions as rule on rule.id = analysis.applied_rule_version_id
+      where job.id = ${command.jobId}
+        and job.job_type = 'ANALYZE_VIDEO'
+        and job.status = 'PROCESSING'
+        and job.job_revision = ${command.jobRevision}
+        and job.lease_owner = ${command.workerId}
+        and job.lease_token_hash = ${Buffer.from(command.leaseTokenHash)}
+        and job.lease_until > ${command.now}
+      limit 1
+    `);
+    const [row] = rows as unknown as Array<{
+      analysis_id: string;
+      content_sha256: Buffer | null;
+      source_fingerprint: Buffer | null;
+      expires_at: string | null;
+      match_id: string | null;
+      rule_version_id: string | null;
+      verification_status: string | null;
+      ifab_edition: string | null;
+    }>;
+    if (row) {
+      return {
+        kind: "AUTHORIZED",
+        analysisId: row.analysis_id,
+        sourceSha256: Uint8Array.from(row.content_sha256 ?? []),
+        analysisSourceSha256: Uint8Array.from(row.source_fingerprint ?? []),
+        expiresAt: row.expires_at === null ? null : new Date(row.expires_at).toISOString(),
+        ruleEdition: row.match_id && row.rule_version_id && row.verification_status === "VERIFIED" && row.ifab_edition
+          ? { id: row.rule_version_id, verificationStatus: row.verification_status,
+              matchId: row.match_id, ifabEdition: row.ifab_edition }
+          : null,
+      };
+    }
+    const jobs = await this.client.db.execute(sql`select status from processing_jobs where id = ${command.jobId} limit 1`);
+    const [job] = jobs as unknown as Array<{ status: string }>;
+    if (!job) return { kind: "NOT_FOUND" };
+    return job.status === "PROCESSING" ? { kind: "STALE_LEASE" } : { kind: "ALREADY_FINISHED" };
+  }
+
   public async result(command: JobResultCommand): Promise<JobResult> {
     // Worker 결과 유형별 저장 분기
     const lease = Buffer.from(command.leaseTokenHash);
@@ -327,13 +381,40 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
     } else if (command.payload.kind === "ANALYZED") {
       // 영상 분석 결과와 증거 저장
       const payload = command.payload;
+      const perception = payload.pipelineVersion === "video-local-observers-v1" ? payload.perception : undefined;
+      if (payload.pipelineVersion === "video-local-observers-v1" && (!perception || !command.perceptionVerification)) {
+        return { kind: "INVALID_RESULT", reason: "CONTEXT" };
+      }
+      if (payload.pipelineVersion !== "video-local-observers-v1" && command.perceptionVerification) {
+        return { kind: "INVALID_RESULT", reason: "CONTEXT" };
+      }
+      let privateSummaryJson: string | undefined;
+      if (perception && command.perceptionVerification) {
+        try {
+          privateSummaryJson = JSON.stringify({
+            ...perception.summary,
+            processingStatus: perception.processingStatus,
+            coverage: perception.coverage,
+            incidents: perception.incidents,
+            admission: command.perceptionVerification.admission,
+          });
+        } catch {
+          return { kind: "INVALID_RESULT", reason: "CONTEXT" };
+        }
+        if (Buffer.byteLength(privateSummaryJson, "utf8") > MAX_PRIVATE_SUMMARY_BYTES) {
+          return { kind: "INVALID_RESULT", reason: "CONTEXT" };
+        }
+      }
       rows = await this.client.db.transaction(async (transaction) => {
         const selected = await transaction.execute(sql`
-          select id, status, job_type, job_revision, attempt, lease_owner,
-                 lease_token_hash, lease_until, analysis_id
-          from processing_jobs
-          where id = ${command.jobId}
-          for update
+          select job.id, job.status, job.job_type, job.job_revision, job.attempt, job.lease_owner,
+                 job.lease_token_hash, job.lease_until, job.analysis_id,
+                 analysis.source_fingerprint, analysis.expires_at, video.content_sha256
+          from processing_jobs as job
+          join analyses as analysis on analysis.id = job.analysis_id
+          join video_assets as video on video.id = analysis.video_asset_id
+          where job.id = ${command.jobId}
+          for update of job, analysis, video
         `);
         const [target] = selected as unknown as Array<{
           id: string;
@@ -345,11 +426,16 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
           lease_token_hash: Buffer | null;
           lease_until: string | null;
           analysis_id: string | null;
+          source_fingerprint: Buffer | null;
+          content_sha256: Buffer | null;
+          expires_at: string | null;
         }>;
         // 작업 대상이 없으면 결과 저장 중단
         if (!target) return [{ kind: "NOT_FOUND" }];
         // 완료된 작업은 중복 결과 차단
         if (target.status !== "PROCESSING") return [{ kind: "ALREADY_FINISHED" }];
+        // 새 관측 경로는 행 잠금 대기 이후의 실제 벽시계로 Lease와 보존 기한을 다시 확인한다
+        const lockedNow = perception ? this.wallClock().toISOString() : command.now;
         // 현재 Worker Lease 확인
         const validLease =
           target.job_type === "ANALYZE_VIDEO" &&
@@ -359,8 +445,27 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
           target.lease_token_hash !== null &&
           Buffer.compare(target.lease_token_hash, lease) === 0 &&
           target.lease_until !== null &&
-          new Date(target.lease_until).getTime() > new Date(command.now).getTime();
+          new Date(target.lease_until).getTime() > new Date(lockedNow).getTime();
         if (!validLease) return [{ kind: "STALE_LEASE" }];
+
+        if (perception && command.perceptionVerification) {
+          const verified = Buffer.from(command.perceptionVerification.sourceSha256);
+          const sourceMatches = command.perceptionVerification.analysisId === target.analysis_id &&
+            verified.length === 32 && target.source_fingerprint?.length === 32 && target.content_sha256?.length === 32 &&
+            Buffer.compare(target.source_fingerprint, verified) === 0 && Buffer.compare(target.content_sha256, verified) === 0 &&
+            target.expires_at !== null && new Date(target.expires_at).getTime() > new Date(lockedNow).getTime();
+          if (!sourceMatches) return [{ kind: "INVALID_RESULT", reason: "SOURCE" }];
+        }
+
+        const candidateIndices = new Set(payload.candidates.map((item) => item.index));
+        const shotIndices = new Set(payload.shots.map((item) => item.index));
+        const evidenceObjectKeys = new Set((payload.evidence ?? []).map((item) => item.objectKey));
+        const evidencePrefix = `evidence/${target.analysis_id}/${target.id}/`;
+        if (candidateIndices.size !== payload.candidates.length || shotIndices.size !== payload.shots.length ||
+          evidenceObjectKeys.size !== (payload.evidence ?? []).length || (payload.evidence ?? []).some((item) =>
+          !item.objectKey.startsWith(evidencePrefix) || !candidateIndices.has(item.candidateIndex))) {
+          return [{ kind: "INVALID_RESULT", reason: "CONTEXT" }];
+        }
 
         // 샷 목록 저장
         for (const item of payload.shots) {
@@ -389,17 +494,13 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
               ${item.tracking ? JSON.stringify(item.tracking) : null}::jsonb,
               ${item.sceneEvent ? JSON.stringify(item.sceneEvent) : null}::jsonb,
               ${item.broadcastCue ? JSON.stringify(item.broadcastCue) : null}::jsonb,
-              'UNREVIEWED', ${command.now}
+              'UNREVIEWED', ${lockedNow}
             )
           `);
         }
 
         // 후보별 증거 자산 저장
         for (const item of payload.evidence ?? []) {
-          const prefix = `evidence/${target.analysis_id}/${target.id}/`;
-          if (!item.objectKey.startsWith(prefix)) {
-            throw new Error("Evidence object key is outside the claimed job scope");
-          }
           const candidates = await transaction.execute(sql`
             select id
             from incident_candidates
@@ -408,7 +509,7 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
             limit 1
           `);
           const [candidate] = candidates as unknown as Array<{ id: string }>;
-          if (!candidate) throw new Error("Evidence candidate is unavailable");
+          if (!candidate) return [{ kind: "INVALID_RESULT", reason: "CONTEXT" }];
           await transaction.execute(sql`
             insert into evidence_assets (
               analysis_id, incident_candidate_id, kind, object_key, content_sha256,
@@ -417,9 +518,25 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
             select ${target.analysis_id}, ${candidate.id}, ${item.kind}::evidence_kind,
                    ${item.objectKey}, ${Buffer.from(item.contentSha256, "hex")},
                    ${item.startMs}, ${item.endMs}, ${item.width}, ${item.height},
-                   ${command.now}, expires_at
+                   ${lockedNow}, expires_at
             from analyses
             where id = ${target.analysis_id}
+          `);
+        }
+
+        if (perception && command.perceptionVerification) {
+          await transaction.execute(sql`
+            insert into analysis_perception_runs (
+              analysis_id, job_id, job_revision, schema_version, pipeline_version,
+              source_sha256, artifact_object_key, artifact_sha256, artifact_size_bytes,
+              model_provenance, summary, created_at, expires_at
+            ) values (
+              ${target.analysis_id}, ${target.id}, ${target.job_revision}, ${perception.schemaVersion},
+              ${payload.pipelineVersion}, ${Buffer.from(perception.sourceSha256, "hex")},
+              ${perception.artifact.objectKey}, ${Buffer.from(perception.artifact.contentSha256, "hex")},
+              ${perception.artifact.sizeBytes}, ${JSON.stringify(perception.models)}::jsonb,
+              ${privateSummaryJson!}::jsonb, ${lockedNow}, ${target.expires_at}
+            )
           `);
         }
 
@@ -430,15 +547,15 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
               pipeline_version = ${payload.pipelineVersion},
               limitations = ${JSON.stringify(payload.limitations)}::jsonb,
               state_version = state_version + 1,
-              completed_at = ${command.now}
+              completed_at = ${lockedNow}
           where id = ${target.analysis_id}
         `);
         // 분석 작업 완료 처리
         await transaction.execute(sql`
           update processing_jobs
           set status = 'SUCCEEDED', stage = 'SUCCEEDED', progress_percent = 100,
-              heartbeat_at = ${command.now}, lease_owner = null, lease_token_hash = null,
-              lease_until = null, failure_code = null, retryable = null, updated_at = ${command.now}
+              heartbeat_at = ${lockedNow}, lease_owner = null, lease_token_hash = null,
+              lease_until = null, failure_code = null, retryable = null, updated_at = ${lockedNow}
           where id = ${target.id}
         `);
         // 작업 완료 이벤트 기록
@@ -447,7 +564,7 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
             job_id, job_revision, attempt, event_type, stage, progress_percent, created_at
           ) values (
             ${target.id}, ${target.job_revision}, ${target.attempt},
-            'SUCCEEDED', 'SUCCEEDED', 100, ${command.now}
+            'SUCCEEDED', 'SUCCEEDED', 100, ${lockedNow}
           )
         `);
         return [{ kind: "ACCEPTED" }];
@@ -516,7 +633,7 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
         `));
     }
 
-    const [row] = rows as unknown as Array<{ kind: JobResult["kind"] }>;
+    const [row] = rows as unknown as Array<JobResult>;
     // 저장 결과 반환
     return row ?? { kind: "NOT_FOUND" };
   }

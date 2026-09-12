@@ -5,8 +5,10 @@ from pathlib import Path
 from typing import Callable, Mapping
 
 from .application.pipeline import pipeline
+from .application.ports import PipelinePorts
+from .domain.models import LOCAL_OBSERVER_PIPELINE_VERSION
 from .infrastructure.probe import probe
-from .infrastructure.ports import media
+from .infrastructure.ports import operating
 
 
 class JobError(ValueError):
@@ -33,7 +35,8 @@ def text(value: object) -> str:
 
 
 # 작업 실행
-def job(value: Mapping[str, object], *, progress: Callable[[str, int, str], None] | None = None) -> JobResult:
+def job(value: Mapping[str, object], *, progress: Callable[[str, int, str], None] | None = None,
+        check_cancelled: Callable[[], None] | None = None, ports: PipelinePorts | None = None) -> JobResult:
     # 작업 식별자 확인
     job_id = text(value.get("job_id"))
     # 작업 유형 확인
@@ -66,7 +69,9 @@ def job(value: Mapping[str, object], *, progress: Callable[[str, int, str], None
         # 출력 경로 확인
         output = Path(text(value.get("output_path"))).expanduser()
         # 영상 파이프라인 실행
-        result = pipeline(source, output, ports=media(), progress=progress)
+        selected_ports = ports if ports is not None else operating(progress=progress, check_cancelled=check_cancelled)
+        version = LOCAL_OBSERVER_PIPELINE_VERSION if ports is None or selected_ports.perception is not None else "video-baseline-v1"
+        result = pipeline(source, output, ports=selected_ports, pipeline_version=version, progress=progress)
         # 분석 결과 반환
         return JobResult(
             job_id=job_id,
