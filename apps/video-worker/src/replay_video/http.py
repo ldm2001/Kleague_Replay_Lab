@@ -40,7 +40,12 @@ class Api:
         self.opener = opener
 
     # JSON 요청
-    def json(self, path: str, payload: Mapping[str, object]) -> dict[str, object] | None:
+    def _json(
+        self,
+        path: str,
+        payload: Mapping[str, object],
+        allowed_errors: tuple[int, ...] = (),
+    ) -> dict[str, object] | None:
         # JSON 요청 객체 구성
         request = Request(
             f"{self.base}{path}",
@@ -62,19 +67,31 @@ class Api:
                 # 응답 본문 읽기
                 body = response.read()
         except HTTPError as error:
-            raise HttpError(f"http-{error.code}") from error
+            if error.code not in allowed_errors:
+                raise HttpError(f"http-{error.code}") from error
+            status = error.code
+            body = error.read()
         except URLError as error:
             raise HttpError("http-unavailable") from error
-        if status < 200 or status >= 300:
+        if (status < 200 or status >= 300) and status not in allowed_errors:
             # 오류 상태 변환
             raise HttpError(f"http-{status}")
         # JSON 본문 해석
-        value = json.loads(body.decode("utf-8"))
+        try:
+            value = json.loads(body.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            if status in allowed_errors:
+                raise HttpError(f"http-{status}") from error
+            raise HttpError("http-payload") from error
         if not isinstance(value, dict):
             # 객체가 아닌 응답 차단
             raise HttpError("http-payload")
         # API 응답 반환
         return value
+
+    # 일반 JSON 요청
+    def json(self, path: str, payload: Mapping[str, object]) -> dict[str, object] | None:
+        return self._json(path, payload)
 
     # 작업 선점
     def claim(self, kind: str) -> dict[str, object] | None:
@@ -101,7 +118,7 @@ class Api:
 
     # 작업 결과
     def result(self, job: Mapping[str, object], payload: Mapping[str, object]) -> dict[str, object] | None:
-        return self.json(
+        response = self._json(
             f"/api/internal/jobs/{job['jobId']}/result",
             {
                 "workerId": self.worker,
@@ -109,7 +126,13 @@ class Api:
                 "leaseToken": job["leaseToken"],
                 "payload": dict(payload),
             },
+            (409,),
         )
+        if response and response.get("kind") in {"ACCEPTED", "ALREADY_FINISHED"}:
+            return response
+        if response and response.get("kind") == "STALE_LEASE":
+            raise HttpError("http-409")
+        raise HttpError("result-response-invalid")
 
     # 증거 업로드 권한
     def evidence(self, job: Mapping[str, object], items: list[dict[str, object]]) -> dict[str, object] | None:
@@ -124,18 +147,42 @@ class Api:
         )
 
     # 증거 파일 전송
-    def put(self, url: str, source: Path, content_type: str) -> None:
-        # 증거 파일 전송 요청 구성
-        request = Request(
-            url,
-            data=source.read_bytes(),
-            headers={"content-type": content_type},
-            method="PUT",
-        )
+    def put(
+        self,
+        url: str,
+        source: Path,
+        content_type: str,
+        headers: Mapping[str, str] | None = None,
+    ) -> None:
+        # 저장소 권한에서 전달 가능한 헤더를 제한한다
+        forwarded = {key.lower(): value for key, value in (headers or {}).items()}
+        allowed = {"x-amz-checksum-sha256", "if-none-match"}
+        if (len(forwarded) != len(headers or {}) or set(forwarded) - allowed or
+                not all(isinstance(value, str) for value in forwarded.values())):
+            raise HttpError("evidence-headers-invalid")
+        if content_type == "application/gzip":
+            if set(forwarded) != allowed:
+                raise HttpError("evidence-headers-invalid")
+            maximum = 128 * 1024 * 1024
+        elif content_type in {"image/jpeg", "video/mp4"}:
+            if forwarded:
+                raise HttpError("evidence-headers-invalid")
+            maximum = 50 * 1024 * 1024
+        else:
+            raise HttpError("evidence-type-invalid")
         try:
-            # 증거 파일 전송
-            with self.opener(request, timeout=self.timeout) as response:
-                status = int(getattr(response, "status", 200))
+            size = source.stat().st_size
+        except OSError as error:
+            raise HttpError("evidence-path-invalid") from error
+        if size <= 0 or size > maximum or not source.is_file():
+            raise HttpError("evidence-size-invalid")
+        request_headers = {"content-type": content_type, "content-length": str(size), **forwarded}
+        try:
+            # 파일 객체를 urllib에 전달해 본문 전체를 메모리에 올리지 않는다
+            with source.open("rb") as stream:
+                request = Request(url, data=stream, headers=request_headers, method="PUT")
+                with self.opener(request, timeout=self.timeout) as response:
+                    status = int(getattr(response, "status", 200))
         except HTTPError as error:
             raise HttpError(f"evidence-{error.code}") from error
         except URLError as error:

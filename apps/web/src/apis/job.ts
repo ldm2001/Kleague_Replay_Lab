@@ -144,7 +144,8 @@ const evidenceInput = (value: Record<string, unknown>, jobId: string): EvidenceI
     if (
       typeof item !== "object" || item === null || Array.isArray(item) ||
       typeof item.name !== "string" || typeof item.contentType !== "string" ||
-      typeof item.sizeBytes !== "number"
+      typeof item.sizeBytes !== "number" ||
+      (item.contentSha256 !== undefined && typeof item.contentSha256 !== "string")
     ) {
       // 잘못된 증거 항목 차단
       return null;
@@ -154,6 +155,7 @@ const evidenceInput = (value: Record<string, unknown>, jobId: string): EvidenceI
       name: item.name,
       contentType: item.contentType as EvidenceInput["items"][number]["contentType"],
       sizeBytes: item.sizeBytes,
+      ...(typeof item.contentSha256 === "string" ? { contentSha256: item.contentSha256 } : {}),
     });
   }
   // 증거 권한 입력 구성
@@ -184,6 +186,7 @@ const resultStatus = (value: ResultResult): number => {
     case "STALE_LEASE": return 409;
     case "ALREADY_FINISHED": return 409;
     case "INVALID_INPUT": return 400;
+    case "INVALID_RESULT": return 400;
   }
 };
 
@@ -195,6 +198,7 @@ const evidenceStatus = (value: EvidenceResult): number => {
     case "STALE_LEASE": return 409;
     case "ALREADY_FINISHED": return 409;
     case "INVALID_INPUT": return 400;
+    case "UNAVAILABLE": return 503;
   }
 };
 

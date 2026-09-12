@@ -6,6 +6,7 @@ describe("database schema public contract", () => {
   it("exports every MVP table", () => {
     expect(Object.keys(schema).sort()).toEqual([
       "analyses",
+      "analysisPerceptionRuns",
       "anonymousSessions",
       "clubs",
       "competitionRuleVersions",
@@ -31,5 +32,6 @@ describe("database schema public contract", () => {
     expect(schema.idempotencyRecords).toBeDefined();
     expect(schema.analyses).toBeDefined();
     expect(schema.processingJobs).toBeDefined();
+    expect(schema.analysisPerceptionRuns).toBeDefined();
   });
 });

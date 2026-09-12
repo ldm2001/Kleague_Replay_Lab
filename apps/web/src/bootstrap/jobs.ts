@@ -41,7 +41,7 @@ export const jobs = (): JobApiDependencies => {
   // 진행 유스케이스 생성
   const state = progressCase({ clock, hasher, repository, leaseMs: lease() });
   // 작업 결과 유스케이스 생성
-  const result = resultCase({ clock, hasher, repository });
+  const result = resultCase({ clock, hasher, repository, storage: source });
   // 증거 업로드 권한 유스케이스 생성
   const evidence = evidenceCase({ clock, hasher, repository, storage: source });
   // 작업 의존성 저장

@@ -1,6 +1,7 @@
 # Replay Lab Video Worker
 
-현재 단계는 실제 미디어 파일을 대상으로 하는 영상 파이프라인의 기준 구현이다
+운영 `ANALYZE_VIDEO`는 기존 영상 처리와 승인된 RT-DETR-R18·YOLO11m·ViTPose의 로컬 관측을 함께 실행한다
+아래 기준 CLI는 비모델 개발 진단으로 유지한다. 운영 모델 경로의 오류를 기준 CLI 성공으로 바꾸지 않는다
 
 ```text
 ffprobe 메타데이터 확인
@@ -63,34 +64,55 @@ PYTHONPATH=src python3 -m replay_video.cli \
   /tmp/replay-lab-result
 ```
 
-사이트 연결 Worker 실행
+## 사이트 연결 Worker 실행
 
-AI 모델 호출과 모델 환경설정은 사용하지 않는다
+저장소 루트에서 전용 환경을 준비한다. 기존 `.venv-referee`가 준비돼 있으면 환경 생성과 설치를 반복할 필요가 없다
+
+```sh
+python3.11 -m venv experiments/perception/.venv-referee
+experiments/perception/.venv-referee/bin/python -m pip install -r experiments/perception/requirements-referee.txt
+experiments/perception/.venv-referee/bin/python -m pip install -e experiments/perception -e apps/video-worker
+PYTHONPATH=experiments/perception/src experiments/perception/.venv-referee/bin/python -m replay_perception.fetch_model
+PYTHONPATH=experiments/perception/src experiments/perception/.venv-referee/bin/python -m replay_perception.fetch_observer_models
+```
+
+준비 명령만 고정된 모델 자산을 다운로드하며 운영 추론은 검증된 로컬 캐시만 읽는다
+Gemma·Ollama·생성형 모델·외부 추론·추가 학습과 새 가중치는 사용하지 않는다
+세 모델의 출처와 라이선스 및 가중치 해시는 `experiments/perception`의 manifest에 고정돼 있다
+공개 서비스 배포의 라이선스 검토나 클라우드 성능 검증이 끝났다는 의미는 아니다
 
 ```bash
-cd ../..
 npm run dev:worker
 ```
 
 개발 스크립트가 `apps/web/.env.local`을 자동으로 읽는다
 
-내부 JSON 요청에는 `x-worker-protocol: video-observations-v1`을 보낸다
+기본 Python은 `experiments/perception/.venv-referee/bin/python`이며 없으면 명확하게 실패한다
+별도로 준비한 실행 환경은 `WORKER_PYTHON`으로 명시할 수 있다. 이전 Python으로 몰래 전환하지 않는다
+`WORKER_PERCEPTION_DEVICE=cpu`가 기본이며 Apple Silicon 개발 환경은 `mps`를 사용할 수 있다
+이는 운영자 실행 환경이며 사용자 화면에 모델·임계값·사실 입력을 추가하지 않는다
+
+내부 JSON 요청에는 `x-worker-protocol: video-observations-v2`를 보낸다
 웹 서버는 인증 후 선점과 진행 및 결과와 증거 권한 요청의 버전을 검사한다
 버전이 없거나 다르면 본문 처리와 작업 선점 전에 HTTP 409로 거부한다
 웹과 Worker를 함께 갱신하고 이전 Worker는 활성 작업을 마친 뒤 종료한다
 이 검사는 실행 계약의 호환성 검사이며 관측 정확도의 인증이 아니다
 과거에 저장된 분석은 자동 재처리하거나 수정하지 않는다
 
-결과 디렉터리에는 `report.json`과 후보별 `frames`와 `clips`가 생성된다
+새 운영 경로는 `0017_analysis_perception_runs`까지 적용된 DB를 요구한다
+스키마와 서버 프로토콜을 먼저 맞추고 활성 작업이 없는지 확인한 뒤 이전 Worker를 새 환경으로 교체한다
+기존 분석을 자동 재처리하지 않는다
+
+결과 디렉터리에는 `report.json`, 후보별 `frames`와 `clips`, 비공개 `perception/perception.jsonl.gz`와 로컬 요약이 생성된다
 
 기초 후보 범주는 `OTHER`로 기록한다 화면 변화 점수는 접촉과 강도의 근거가 아니다
 서버는 저장된 후보와 근거에 rules 필터를 적용하고 부족한 근거를 확인 불가로 반환한다
 사용자 사실 입력이나 확인 단계는 없다
 
 Application 파이프라인은 `PipelinePorts`만 사용
-실제 미디어 구현은 `infrastructure.ports.media`에서 조립
+비모델 개발 진단은 `infrastructure.ports.media`, 운영 경로는 `infrastructure.ports.operating`에서 조립한다
 
-Job 경계는 `replay_video.worker.job`으로 제공한다 현재 `VALIDATE_VIDEO`는 영상 메타데이터를 검증하고 `ANALYZE_VIDEO`는 위 파이프라인 전체를 실행한다
+Job 경계는 `replay_video.worker.job`이다. `VALIDATE_VIDEO`는 모델 없이 메타데이터를 검증하고 `ANALYZE_VIDEO`는 새 운영 파이프라인을 실행한다
 
 `replay_video.runner`는 Nextjs 내부 API에서 작업을 선점하고 Lease를 갱신하고 원본 영상을 내려받아 결과를 제출한다
 
@@ -99,7 +121,32 @@ Job 경계는 `replay_video.worker.job`으로 제공한다 현재 `VALIDATE_VIDE
 클립은 관찰된 장면을 먼저 확보하고 총 8건보다 적으면 나머지를 변화 신호 순으로 채운다
 관찰된 장면이 8건보다 많으면 해당 장면의 클립을 모두 보존한다
 
-후속 작업에서 선수와 공 추적을 검토할 수 있지만 AI 모델 도입이나 자동 판정 추가는 별도 설계 승인 없이는 하지 않는다
+## 운영 관측·전송·규정 승인 경계
+
+- 동일 원본 PTS에서 검출·추적·일반 역할·17관절·손 주변 물체·사건 연결을 순차 관측한다
+- 기본 간격은 100ms다. 요청 구간의 예정 표본 수와 처리·누락 수를 따로 기록하며 누락이나 실패는 `PARTIAL`이다
+- 30,000표본·1,800초의 단계 사이 검사, 원시 512 MiB·gzip 128 MiB·레코드 8 MiB 상한을 둔다. 멈춘 추론 자체를 강제 중단하는 하드 타임아웃은 아니다
+- 원시 상자·관절·물체와 원본 SHA256·PTS·모델 및 코드 해시는 비공개 gzip에 남긴다. API에는 최대 256 KiB 요약과 제한된 근거 참조만 보낸다
+- 새 관측 후보는 최대 16개 추가하고 30초 이내 클립을 확보한다. 요약에서 빠진 관측은 raw 파일에 보존하고 `truncated` 사유를 남긴다
+- 주심·부심은 가설이며 깃발/카드 형태는 관측 단서다. 접근한 상자를 접촉으로, 신호를 선언된 원심으로, 이후 재개를 앞선 판정의 독립 근거로 바꾸지 않는다
+- 서버는 원본·모델 출처와 실제 객체 크기/해시, 참조, 현재 lease와 보존 기한을 검증하고 별도 `analysis_perception_runs`에 저장한다
+- 현재 역할·신호·접촉·원심·재개 의미의 인식 방법은 미검증이므로 `NOT_ADMITTED`다. `EvaluationFacts`의 boolean과 강도를 기본값으로 채우지 않는다
+- 기존 K리그 `COMPETITION_VAR_SCOPE`와 전체 파울 완료 개수는 계속 분리한다. 처리 성공이나 관측 존재만으로 최종 판정을 공개하지 않는다
+
+gzip 권한은 분석·작업·revision·진단 파일 SHA256에 결합된 전용 키, 서명된 체크섬과 `If-None-Match: *`를 사용한다
+원본 영상 SHA256은 이 객체 키와 별개로 서버의 업로드 해시와 대조한다
+기존 JPEG/MP4는 50 MiB, 권한 요청은 128개·합계 200 MiB를 넘지 않게 나누며 증거 배열 순서는 유지한다
+Worker는 파일을 스트리밍 PUT하고 성공·실패 결과 제출이 끝날 때까지 heartbeat를 유지한다
+lease가 오래됐거나 heartbeat 오류로 소유권이 미확인되면 후속 처리와 결과 제출을 중단한다. 서버에 FAILED가 저장됐다고 가정하지 않는다
+이 경우 서버의 lease 만료와 재시도 정책이 작업 소유권을 결정한다
+
+진단 보존 기한은 분석의 기한을 따르지만 현재 DB 만료 메타데이터나 cascade가 객체 파일을 삭제하지는 않는다
+별도 객체 정리 작업은 남아 있다. 기존 JPEG/MP4 PUT 권한의 재사용 가능성도 남아 있으므로 의미적 사실 승인 활성화 전에 증거 불변성 정책을 보강해야 한다
+
+```sh
+npm run test:video
+npm run test:perception
+```
 
 ## 세트피스 원시 신호 진단
 
@@ -202,7 +249,7 @@ ABSENT는 공이 없는 프레임이고 UNOBSERVABLE은 가림 등으로 확인�
 Worker는 후보마다 sampleCount와 selectedCount 및 cameraCount와 motionOnsetsMs를 tracking으로 전달한다
 coverage는 원본 프레임 처리 범위이며 공 추적 성공률이 아니다
 웹 서버는 수량 관계와 후보 안의 시각을 검증하고 incident_candidates의 tracking JSONB에 저장한다
-웹 DB에는 0014_candidate_tracking과 0015_candidate_scene_event 및 0016_broadcast_cue 마이그레이션을 적용해야 한다
+웹 DB에는 0014_candidate_tracking·0015_candidate_scene_event·0016_broadcast_cue와 새 운영용 0017_analysis_perception_runs 마이그레이션을 적용해야 한다
 
 rules는 추적 없음과 일부 처리 및 위치만 연결과 카메라 보정 측정 및 움직임 시작 신호를 구분한다
 이 상태들은 공 후보 측정 상태이며 파울 판정과 세트피스 종류를 생성하지 않는다

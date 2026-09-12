@@ -1,11 +1,17 @@
 from __future__ import annotations
 from pathlib import Path
+from functools import partial
+import hashlib
+import json
 import time
 from threading import Event, Thread
+from types import SimpleNamespace
 import pytest
 from test_pipeline import fixture
 from replay_video.runner import Pulse, cycle, loop
 from replay_video.http import HttpError
+from replay_video.infrastructure.ports import media
+from replay_video.worker import job as real_job
 
 # 워커 API 모형
 class ApiFake:
@@ -22,10 +28,11 @@ class ApiFake:
     def claim(self, kind: str) -> dict[str, object]:
         # 고정 작업 Lease 반환
         return {
-            "jobId": "job-1",
+            "jobId": "11111111-1111-4111-8111-111111111111",
             "jobType": kind,
             "jobRevision": 1,
             "leaseToken": "lease",
+            "analysisId": "22222222-2222-4222-8222-222222222222",
             "sourceUrl": "http://storage/video",
         }
 
@@ -83,11 +90,13 @@ def test_validation(tmp_path: Path) -> None:
     assert api.progresses[0] == ("VALIDATING", 10)
 
 # 영상 분석 작업 확인
-def test_analysis(tmp_path: Path) -> None:
+def test_analysis(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # 분석 입력 준비
     source = tmp_path / "sample.mp4"
     fixture(source)
     api = ApiFake(source)
+    # 운영 관측 모델을 로드하지 않는 기존 미디어 파이프라인 회귀 테스트
+    monkeypatch.setattr("replay_video.runner.job", partial(real_job, ports=media()))
 
     # 분석 작업 실행
     assert cycle(api, "ANALYZE_VIDEO", tmp_path / "work") is True
@@ -197,3 +206,342 @@ def test_order(tmp_path: Path) -> None:
     reporter.join(2)
     assert not heartbeat.is_alive() and not reporter.is_alive()
     assert api.progresses[-1] == ("BUILDING_EVIDENCE", 70)
+
+
+def test_pulse_state_and_accepted_result_do_not_wait_for_blocked_heartbeat_request(tmp_path: Path) -> None:
+    blocked, release, checked, submitted = Event(), Event(), Event(), Event()
+
+    class BlockedHeartbeat(ApiFake):
+        def progress(self, item, stage, percent, message=None):
+            if message == "worker-heartbeat":
+                blocked.set()
+                assert release.wait(2)
+            return super().progress(item, stage, percent, message)
+
+    api = BlockedHeartbeat(tmp_path / "unused")
+    pulse = Pulse(api, api.claim("VALIDATE_VIDEO"), "VALIDATING", interval=0.001)
+    with pulse:
+        assert blocked.wait(2)
+        checker = Thread(target=lambda: (pulse.check(), checked.set()))
+        finisher = Thread(target=lambda: (pulse.submit({"kind": "VALIDATED"}), submitted.set()))
+        checker.start()
+        finisher.start()
+        check_was_nonblocking = checked.wait(0.2)
+        submit_was_nonblocking = submitted.wait(0.2)
+        release.set()
+        checker.join(2)
+        finisher.join(2)
+
+    assert check_was_nonblocking is True
+    assert submit_was_nonblocking is True
+    assert pulse.accepted is True and pulse.failure is None
+    assert api.results == [{"kind": "VALIDATED"}]
+
+
+def test_stale_start_stops_before_download_or_result(tmp_path: Path) -> None:
+    class Stale(ApiFake):
+        downloaded = False
+
+        def progress(self, *_args, **_kwargs):
+            return {"kind": "STALE_LEASE"}
+
+        def media(self, _url: str, _target: Path) -> None:
+            self.downloaded = True
+
+    api = Stale(tmp_path / "unused.mp4")
+
+    assert cycle(api, "ANALYZE_VIDEO", tmp_path / "work") is True
+    assert api.downloaded is False
+    assert api.results == []
+
+
+def test_transient_heartbeat_failure_stops_job_without_submitting_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+) -> None:
+    failed = Event()
+
+    class HeartbeatFailure(ApiFake):
+        def progress(self, item, stage, percent, message=None):
+            if message == "worker-heartbeat":
+                failed.set()
+                raise HttpError("http-unavailable")
+            return super().progress(item, stage, percent, message)
+
+    def interrupted(_value, *, progress=None, check_cancelled=None, ports=None):
+        assert progress is not None and check_cancelled is not None and ports is None
+        assert failed.wait(1)
+        check_cancelled()
+        raise AssertionError("lease failure did not stop the job")
+
+    source = tmp_path / "sample.mp4"
+    source.write_bytes(b"video")
+    api = HeartbeatFailure(source)
+    monkeypatch.setattr("replay_video.runner.Pulse", partial(Pulse, interval=0.001))
+    monkeypatch.setattr("replay_video.runner.job", interrupted)
+
+    assert cycle(api, "ANALYZE_VIDEO", tmp_path / "work") is True
+    assert failed.is_set()
+    assert api.results == []
+    assert "WORKER_HEARTBEAT_FAILED" in caplog.text
+
+
+def test_heartbeat_continues_while_final_result_request_is_blocked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    submitting, heartbeating, release = Event(), Event(), Event()
+
+    class BlockingResult(ApiFake):
+        def progress(self, item, stage, percent, message=None):
+            if submitting.is_set() and message == "worker-heartbeat":
+                heartbeating.set()
+            return super().progress(item, stage, percent, message)
+
+        def result(self, _job, payload):
+            self.results.append(payload)
+            submitting.set()
+            assert release.wait(2)
+            return {"kind": "ACCEPTED"}
+
+    def validated(*_args, **_kwargs):
+        return SimpleNamespace(payload={"kind": "VALIDATED", "duration_ms": 1000, "width": 10, "height": 10})
+
+    source = tmp_path / "sample.mp4"
+    source.write_bytes(b"video")
+    api = BlockingResult(source)
+    monkeypatch.setattr("replay_video.runner.Pulse", partial(Pulse, interval=0.001))
+    monkeypatch.setattr("replay_video.runner.job", validated)
+    worker = Thread(target=cycle, args=(api, "VALIDATE_VIDEO", tmp_path / "work"))
+    worker.start()
+    assert submitting.wait(2)
+    assert heartbeating.wait(2)
+    release.set()
+    worker.join(2)
+
+    assert not worker.is_alive()
+    assert api.results == [{"kind": "VALIDATED", "durationMs": 1000, "width": 10, "height": 10}]
+
+
+def test_accepted_result_wins_heartbeat_stale_race(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    submitting, stale = Event(), Event()
+
+    class AcceptedRace(ApiFake):
+        def progress(self, item, stage, percent, message=None):
+            if submitting.is_set() and message == "worker-heartbeat":
+                stale.set()
+                raise HttpError("http-409")
+            return super().progress(item, stage, percent, message)
+
+        def result(self, _job, payload):
+            self.results.append(payload)
+            submitting.set()
+            assert stale.wait(2)
+            return {"kind": "ACCEPTED"}
+
+    def validated(*_args, **_kwargs):
+        return SimpleNamespace(payload={"kind": "VALIDATED", "duration_ms": 1000, "width": 10, "height": 10})
+
+    source = tmp_path / "sample.mp4"
+    source.write_bytes(b"video")
+    api = AcceptedRace(source)
+    monkeypatch.setattr("replay_video.runner.Pulse", partial(Pulse, interval=0.001))
+    monkeypatch.setattr("replay_video.runner.job", validated)
+
+    assert cycle(api, "VALIDATE_VIDEO", tmp_path / "work") is True
+    assert stale.is_set()
+    assert len(api.results) == 1
+
+
+def test_normal_processing_failure_is_reported_only_while_lease_is_owned(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "sample.mp4"
+    source.write_bytes(b"video")
+    api = ApiFake(source)
+
+    def broken(*_args, **_kwargs):
+        raise ValueError("processing failed")
+
+    monkeypatch.setattr("replay_video.runner.job", broken)
+    assert cycle(api, "VALIDATE_VIDEO", tmp_path / "work") is True
+    assert api.results == [{"kind": "FAILED", "failureCode": "WORKER_ERROR", "retryable": False}]
+
+
+def test_heartbeat_continues_while_processing_failure_result_is_blocked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    submitting, heartbeating = Event(), Event()
+
+    class BlockingFailure(ApiFake):
+        def progress(self, item, stage, percent, message=None):
+            if submitting.is_set() and message == "worker-heartbeat":
+                heartbeating.set()
+            return super().progress(item, stage, percent, message)
+
+        def result(self, _job, payload):
+            self.results.append(payload)
+            submitting.set()
+            assert heartbeating.wait(2)
+            return {"kind": "ACCEPTED"}
+
+    def broken(*_args, **_kwargs):
+        raise ValueError("processing failed")
+
+    source = tmp_path / "sample.mp4"
+    source.write_bytes(b"video")
+    api = BlockingFailure(source)
+    monkeypatch.setattr("replay_video.runner.Pulse", partial(Pulse, interval=0.001))
+    monkeypatch.setattr("replay_video.runner.job", broken)
+
+    assert cycle(api, "VALIDATE_VIDEO", tmp_path / "work") is True
+    assert heartbeating.is_set()
+    assert api.results == [{"kind": "FAILED", "failureCode": "WORKER_ERROR", "retryable": False}]
+
+
+def test_accepted_failure_result_wins_heartbeat_stale_race(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    submitting, stale = Event(), Event()
+
+    class AcceptedFailureRace(ApiFake):
+        def progress(self, item, stage, percent, message=None):
+            if submitting.is_set() and message == "worker-heartbeat":
+                stale.set()
+                raise HttpError("http-409")
+            return super().progress(item, stage, percent, message)
+
+        def result(self, _job, payload):
+            self.results.append(payload)
+            submitting.set()
+            assert stale.wait(2)
+            return {"kind": "ACCEPTED"}
+
+    def broken(*_args, **_kwargs):
+        raise ValueError("processing failed")
+
+    source = tmp_path / "sample.mp4"
+    source.write_bytes(b"video")
+    api = AcceptedFailureRace(source)
+    monkeypatch.setattr("replay_video.runner.Pulse", partial(Pulse, interval=0.001))
+    monkeypatch.setattr("replay_video.runner.job", broken)
+
+    assert cycle(api, "VALIDATE_VIDEO", tmp_path / "work") is True
+    assert stale.is_set()
+    assert api.results == [{"kind": "FAILED", "failureCode": "WORKER_ERROR", "retryable": False}]
+
+
+def test_stale_failure_result_attempt_stops_without_second_submission(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    submitting, stale = Event(), Event()
+
+    class RejectedFailureRace(ApiFake):
+        def progress(self, item, stage, percent, message=None):
+            if submitting.is_set() and message == "worker-heartbeat":
+                stale.set()
+                raise HttpError("http-409")
+            return super().progress(item, stage, percent, message)
+
+        def result(self, _job, payload):
+            self.results.append(payload)
+            submitting.set()
+            assert stale.wait(2)
+            raise HttpError("http-409")
+
+    def broken(*_args, **_kwargs):
+        raise ValueError("processing failed")
+
+    source = tmp_path / "sample.mp4"
+    source.write_bytes(b"video")
+    api = RejectedFailureRace(source)
+    monkeypatch.setattr("replay_video.runner.Pulse", partial(Pulse, interval=0.001))
+    monkeypatch.setattr("replay_video.runner.job", broken)
+
+    assert cycle(api, "VALIDATE_VIDEO", tmp_path / "work") is True
+    assert stale.is_set()
+    assert api.results == [{"kind": "FAILED", "failureCode": "WORKER_ERROR", "retryable": False}]
+
+
+def local_analysis_job(*, perception: bool = False):
+    def operation(value, **_kwargs):
+        output = Path(value["output_path"])
+        output.mkdir(parents=True)
+        report_value = {"pipeline_version": "video-local-observers-v1" if perception else "video-baseline-v1",
+                        "limitations": [], "shots": [], "candidates": [], "evidence": []}
+        if perception:
+            artifact = output / "perception" / "perception.jsonl.gz"
+            artifact.parent.mkdir()
+            artifact.write_bytes(b"gzip")
+            report_value["perception"] = {
+                "schemaVersion": "perception-run-v1", "sourceSha256": "a" * 64,
+                "processingStatus": "PARTIAL", "coverage": {}, "models": [],
+                "artifact": {"path": "perception/perception.jsonl.gz", "contentType": "application/gzip",
+                             "contentSha256": hashlib.sha256(b"gzip").hexdigest(), "sizeBytes": 4},
+                "summary": {}, "incidents": [],
+            }
+        else:
+            frame = output / "frame.jpg"
+            frame.write_bytes(b"frame")
+            report_value["evidence"] = [{"path": "frame.jpg", "candidate_index": 0, "kind": "FRAME",
+                                         "start_ms": 0, "end_ms": 0}]
+        report_path = output / "report.json"
+        report_path.write_text(json.dumps(report_value))
+        return SimpleNamespace(payload={"kind": "ANALYZED", "report_path": str(report_path)})
+    return operation
+
+
+@pytest.mark.parametrize("terminal", ["http-404", "STALE_LEASE"])
+def test_media_evidence_authorization_loss_never_submits_a_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, terminal: str,
+) -> None:
+    class LostEvidence(ApiFake):
+        def evidence(self, _job, _items):
+            if terminal.startswith("http-"):
+                raise HttpError(terminal)
+            return {"kind": terminal}
+
+    source = tmp_path / "sample.mp4"
+    source.write_bytes(b"video")
+    api = LostEvidence(source)
+    monkeypatch.setattr("replay_video.runner.job", local_analysis_job())
+
+    assert cycle(api, "ANALYZE_VIDEO", tmp_path / "work") is True
+    assert api.results == []
+    assert api.uploads == []
+
+
+@pytest.mark.parametrize("terminal", ["http-409", "NOT_FOUND"])
+def test_perception_evidence_authorization_loss_never_submits_a_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, terminal: str,
+) -> None:
+    class LostEvidence(ApiFake):
+        def evidence(self, _job, _items):
+            if terminal.startswith("http-"):
+                raise HttpError(terminal)
+            return {"kind": terminal}
+
+    source = tmp_path / "sample.mp4"
+    source.write_bytes(b"video")
+    api = LostEvidence(source)
+    monkeypatch.setattr("replay_video.runner.job", local_analysis_job(perception=True))
+
+    assert cycle(api, "ANALYZE_VIDEO", tmp_path / "work") is True
+    assert api.results == []
+    assert api.uploads == []
+
+
+def test_storage_put_409_remains_an_ordinary_processing_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class PutFailure(ApiFake):
+        def put(self, *_args):
+            raise HttpError("evidence-409")
+
+    source = tmp_path / "sample.mp4"
+    source.write_bytes(b"video")
+    api = PutFailure(source)
+    monkeypatch.setattr("replay_video.runner.job", local_analysis_job())
+
+    assert cycle(api, "ANALYZE_VIDEO", tmp_path / "work") is True
+    assert api.results == [{"kind": "FAILED", "failureCode": "WORKER_ERROR", "retryable": False}]

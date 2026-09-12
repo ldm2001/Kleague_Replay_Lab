@@ -4,6 +4,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+LOCAL_OBSERVER_PIPELINE_VERSION = "video-local-observers-v1"
+
+
 @dataclass(frozen=True, slots=True)
 class VideoMetadata:
     # 영상 메타데이터
@@ -56,6 +59,12 @@ class Evidence:
     timestamp_ms: int
     start_ms: int
     end_ms: int
+
+
+@dataclass(frozen=True, slots=True)
+class PerceptionOutput:
+    candidates: tuple[Candidate, ...]
+    perception: dict[str, object]
 
 
 @dataclass(frozen=True, slots=True)

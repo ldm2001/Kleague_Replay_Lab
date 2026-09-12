@@ -1,0 +1,14 @@
+# Separate referee-observation environment; keep the original .venv unchanged.
+# Current Ultralytics excludes NumPy 2.2 on Darwin.
+torch==2.6.0
+torchvision==0.21.0
+transformers==5.17.0
+trackers==2.6.0
+supervision==0.30.2
+numpy==2.3.5
+scipy==1.15.3
+opencv-python==4.11.0.86
+av==18.1.0
+certifi==2026.7.22
+ultralytics==8.4.146
+pytest==8.3.5

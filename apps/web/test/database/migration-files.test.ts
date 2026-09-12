@@ -24,6 +24,7 @@ describe("migration discovery", () => {
       "0014_candidate_tracking",
       "0015_candidate_scene_event",
       "0016_broadcast_cue",
+      "0017_analysis_perception_runs",
     ]);
     expect(list[0]?.checksum).toMatch(/^[a-f0-9]{64}$/);
     expect(list[0]?.sql).toContain("CREATE TABLE analyses");
@@ -41,5 +42,18 @@ describe("migration discovery", () => {
     expect(scope?.sql).toContain("KLEAGUE");
     const broadcast = list.find((migration) => migration.name === "0016_broadcast_cue");
     expect(broadcast?.sql).toContain("broadcast_cue jsonb");
+    const perception = list.find((migration) => migration.name === "0017_analysis_perception_runs");
+    expect(perception?.sql).toContain("CREATE TABLE analysis_perception_runs");
+    expect(perception?.sql).toContain("ON DELETE CASCADE");
+    expect(perception?.sql).toContain("UNIQUE (job_id, job_revision)");
+    expect(perception?.sql).toContain("octet_length(source_sha256) = 32");
+    expect(perception?.sql).toContain("artifact_size_bytes > 0");
+    expect(perception?.sql).toContain("artifact_size_bytes <= 134217728");
+    expect(perception?.sql).toContain("jsonb_typeof(summary) = 'object'");
+    expect(perception?.sql).toContain("octet_length(summary::text) <= 1048576");
+    expect(perception?.sql).toContain("job_revision > 0");
+    expect(perception?.sql).toContain("artifact_object_key =");
+    expect(perception?.sql).toContain("jsonb_typeof(summary->'incidents') = 'array'");
+    expect(perception?.sql).toContain("jsonb_typeof(summary->'admission') = 'object'");
   });
 });

@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   bigint,
   boolean,
+  check,
   customType,
   date,
   index,
@@ -205,6 +206,43 @@ export const processingJobs = pgTable("processing_jobs", {
   createdAt: stamp(),
   updatedAt: stamp(),
 });
+
+// 비공개 운영 관측 결과 테이블
+export const analysisPerceptionRuns = pgTable(
+  "analysis_perception_runs",
+  {
+    id: id(),
+    analysisId: uuid("analysis_id").notNull().references(() => analyses.id, { onDelete: "cascade" }),
+    jobId: uuid("job_id").notNull().references(() => processingJobs.id),
+    jobRevision: integer("job_revision").notNull(),
+    schemaVersion: varchar("schema_version", { length: 32 }).notNull(),
+    pipelineVersion: varchar("pipeline_version", { length: 64 }).notNull(),
+    sourceSha256: bytea("source_sha256").notNull(),
+    artifactObjectKey: text("artifact_object_key").notNull(),
+    artifactSha256: bytea("artifact_sha256").notNull(),
+    artifactSizeBytes: bigint("artifact_size_bytes", { mode: "number" }).notNull(),
+    modelProvenance: jsonb("model_provenance").$type<import("@replay/shared-types").PerceptionModelProvenance[]>().notNull(),
+    summary: jsonb().$type<Record<string, unknown>>().notNull(),
+    createdAt: stamp(),
+    expiresAt: timestamp("expires_at", { withTimezone: true, mode: "string" }).notNull(),
+    objectDeletedAt: timestamp("object_deleted_at", { withTimezone: true, mode: "string" }),
+  },
+  (table) => [
+    uniqueIndex("analysis_perception_runs_job_revision_unique").on(table.jobId, table.jobRevision),
+    uniqueIndex("analysis_perception_runs_artifact_object_key_unique").on(table.artifactObjectKey),
+    index("analysis_perception_runs_analysis_idx").on(table.analysisId),
+    check("analysis_perception_runs_schema_version_check", sql`${table.schemaVersion} = 'perception-run-v1'`),
+    check("analysis_perception_runs_pipeline_version_check", sql`${table.pipelineVersion} = 'video-local-observers-v1'`),
+    check("analysis_perception_runs_job_revision_check", sql`${table.jobRevision} > 0`),
+    check("analysis_perception_runs_source_sha256_check", sql`octet_length(${table.sourceSha256}) = 32`),
+    check("analysis_perception_runs_artifact_sha256_check", sql`octet_length(${table.artifactSha256}) = 32`),
+    check("analysis_perception_runs_artifact_key_check", sql`${table.artifactObjectKey} = 'perception/' || ${table.analysisId}::text || '/' || ${table.jobId}::text || '/' || ${table.jobRevision}::text || '/' || encode(${table.artifactSha256}, 'hex') || '.jsonl.gz'`),
+    check("analysis_perception_runs_artifact_size_check", sql`${table.artifactSizeBytes} > 0 and ${table.artifactSizeBytes} <= 134217728`),
+    check("analysis_perception_runs_model_provenance_check", sql`jsonb_typeof(${table.modelProvenance}) = 'array' and jsonb_array_length(${table.modelProvenance}) = 3 and octet_length(${table.modelProvenance}::text) <= 16384`),
+    check("analysis_perception_runs_summary_check", sql`jsonb_typeof(${table.summary}) = 'object' and jsonb_typeof(${table.summary}->'incidents') = 'array' and jsonb_typeof(${table.summary}->'admission') = 'object' and octet_length(${table.summary}::text) <= 1048576`),
+    check("analysis_perception_runs_expiry_check", sql`${table.expiresAt} > ${table.createdAt}`),
+  ],
+);
 
 // Worker 처리 이벤트 테이블
 export const processingJobEvents = pgTable(

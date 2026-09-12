@@ -1,7 +1,7 @@
 import { createHash as digest, randomUUID } from "node:crypto";
 import { DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, PutObjectCommand, type S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import type { CompletionStorage, UploadStorage, EvidenceBody, EvidenceBodyStorage, EvidenceGrant, EvidenceGrantInput, EvidenceStorage, JobSourceStorage, UploadGrant, UploadedObjectHead } from "@replay/application";
+import type { CompletionStorage, UploadStorage, EvidenceBody, EvidenceBodyStorage, EvidenceGrant, EvidenceGrantInput, EvidenceStorage, JobSourceStorage, PerceptionGrantInput, UploadGrant, UploadedObjectHead } from "@replay/application";
 
 export type S3ObjectClient = Readonly<{
   send: (...args: any[]) => Promise<any>;
@@ -22,21 +22,52 @@ type HeadResult = Readonly<{
   ChecksumSHA256?: string;
 }>;
 
-type Body = AsyncIterable<Uint8Array>;
+type Body = AsyncIterable<Uint8Array> & Readonly<{ destroy?: () => void }>;
+
+const release = async (body: Body, iterator?: AsyncIterator<Uint8Array>): Promise<void> => {
+  try {
+    if (iterator?.return) await iterator.return();
+  } finally {
+    body.destroy?.();
+  }
+};
 
 // 스트림 체크섬 계산
-const checksum = async (body: Body): Promise<Uint8Array> => {
+const checksum = async (body: Body, expectedSizeBytes: number, maxSizeBytes?: number): Promise<Uint8Array> => {
   // SHA-256 상태 생성
   const hash = digest("sha256");
-  // 스트림 청크 순회
-  for await (const chunk of body) hash.update(chunk);
-  // 체크섬 바이트 반환
-  return Uint8Array.from(hash.digest());
+  const iterator = body[Symbol.asyncIterator]();
+  const limit = Math.min(expectedSizeBytes, maxSizeBytes ?? expectedSizeBytes);
+  let actualSizeBytes = 0;
+  let completed = false;
+  try {
+    while (true) {
+      const item = await iterator.next();
+      if (item.done) {
+        completed = true;
+        break;
+      }
+      if (!(item.value instanceof Uint8Array)) throw new Error("Object body chunk is invalid");
+      actualSizeBytes += item.value.byteLength;
+      if (!Number.isSafeInteger(actualSizeBytes) || actualSizeBytes > limit || actualSizeBytes > expectedSizeBytes) {
+        throw new Error("Object body exceeds the verification length limit");
+      }
+      hash.update(item.value);
+    }
+    if (actualSizeBytes !== expectedSizeBytes) throw new Error("Object body length differs from HEAD");
+    // 체크섬 바이트 반환
+    return Uint8Array.from(hash.digest());
+  } finally {
+    if (!completed) await release(body, iterator);
+  }
 };
 
 // 서명 URL 생성
 const signer: Sign = (client, command, expiresIn) =>
-  getSignedUrl(client as S3Client, command as PutObjectCommand, { expiresIn });
+  getSignedUrl(client as S3Client, command as PutObjectCommand, {
+    expiresIn,
+    unhoistableHeaders: new Set(["x-amz-checksum-sha256"]),
+  });
 
 // Object Key 접두사 정규화
 const prefix = (value: string | undefined): string => {
@@ -47,7 +78,13 @@ const prefix = (value: string | undefined): string => {
 };
 
 // Base64 바이트 변환
-const bytes = (value: string): Uint8Array => Uint8Array.from(Buffer.from(value, "base64"));
+const bytes = (value: string): Uint8Array => {
+  const decoded = Buffer.from(value, "base64");
+  if (decoded.length === 0 || decoded.toString("base64") !== value) {
+    throw new Error("Object checksum is invalid");
+  }
+  return Uint8Array.from(decoded);
+};
 
 // S3 저장소 어댑터
 export class S3Storage implements UploadStorage, CompletionStorage, JobSourceStorage, EvidenceStorage, EvidenceBodyStorage {
@@ -80,15 +117,18 @@ export class S3Storage implements UploadStorage, CompletionStorage, JobSourceSto
     return { objectKey, uploadUrl, expiresAt: input.expiresAt };
   }
 
-  public async head(objectKey: string): Promise<UploadedObjectHead | null> {
+  public async head(objectKey: string, maxSizeBytes?: number): Promise<UploadedObjectHead | null> {
     // 객체 메타데이터 조회
     try {
       const result = (await this.options.client.send(
-        new HeadObjectCommand({ Bucket: this.options.bucket, Key: objectKey }),
+        new HeadObjectCommand({ Bucket: this.options.bucket, Key: objectKey, ChecksumMode: "ENABLED" }),
       )) as HeadResult;
       // 객체 크기 확인
-      if (result.ContentLength === undefined) {
+      if (result.ContentLength === undefined || !Number.isSafeInteger(result.ContentLength) || result.ContentLength < 0) {
         throw new Error("Object size is unavailable");
+      }
+      if (maxSizeBytes !== undefined && result.ContentLength > maxSizeBytes) {
+        throw new Error("Object exceeds the verification limit");
       }
       // 저장소 체크섬 확인
       if (result.ChecksumSHA256 !== undefined) {
@@ -100,11 +140,18 @@ export class S3Storage implements UploadStorage, CompletionStorage, JobSourceSto
       // 객체 본문 조회
       const downloaded = (await this.options.client.send(
         new GetObjectCommand({ Bucket: this.options.bucket, Key: objectKey }),
-      )) as Readonly<{ Body?: Body }>;
+      )) as Readonly<{ Body?: Body; ContentLength?: number }>;
       // 객체 본문 확인
       if (!downloaded.Body) throw new Error("Object checksum is unavailable");
+      if (downloaded.ContentLength !== undefined && downloaded.ContentLength !== result.ContentLength) {
+        await release(downloaded.Body);
+        throw new Error("GET content length differs from HEAD");
+      }
       // 본문 체크섬 계산
-      return { sizeBytes: result.ContentLength, contentSha256: await checksum(downloaded.Body) };
+      return {
+        sizeBytes: result.ContentLength,
+        contentSha256: await checksum(downloaded.Body, result.ContentLength, maxSizeBytes),
+      };
     } catch (error) {
       // 객체 없음 결과 변환
       if (error instanceof Error && "name" in error && (error as Error & { name?: string }).name === "NotFound") {
@@ -138,6 +185,28 @@ export class S3Storage implements UploadStorage, CompletionStorage, JobSourceSto
       this.expiresIn,
     );
     return { objectKey, uploadUrl };
+  }
+
+  public async perception(input: PerceptionGrantInput): Promise<EvidenceGrant> {
+    const checksum = Buffer.from(input.contentSha256, "hex").toString("base64");
+    const objectKey = `perception/${input.analysisId}/${input.jobId}/${input.jobRevision}/${input.contentSha256}.jsonl.gz`;
+    const uploadUrl = await this.sign(
+      this.options.client,
+      new PutObjectCommand({
+        Bucket: this.options.bucket,
+        Key: objectKey,
+        ContentType: "application/gzip",
+        ContentLength: input.sizeBytes,
+        ChecksumSHA256: checksum,
+        IfNoneMatch: "*",
+      }),
+      this.expiresIn,
+    );
+    return {
+      objectKey,
+      uploadUrl,
+      headers: { "x-amz-checksum-sha256": checksum, "if-none-match": "*" },
+    };
   }
 
   public async body(objectKey: string): Promise<EvidenceBody> {

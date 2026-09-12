@@ -29,6 +29,7 @@ describeDatabase("initial PostgreSQL migration", () => {
     expect(tableNames).toContain("processing_job_events");
     expect(tableNames).toContain("decision_results");
     expect(tableNames).toContain("upload_intents");
+    expect(tableNames).toContain("analysis_perception_runs");
 
     const [policyColumn] = await sql<{ column_name: string }[]>`
       select column_name
@@ -88,7 +89,15 @@ describeDatabase("initial PostgreSQL migration", () => {
         'analyses_temporary_expiry_policy_check',
         'analyses_status_check',
         'video_assets_expiry_after_creation_check',
-        'idempotency_records_expiry_after_creation_check'
+        'idempotency_records_expiry_after_creation_check',
+        'analysis_perception_runs_source_sha256_check',
+        'analysis_perception_runs_artifact_sha256_check',
+        'analysis_perception_runs_artifact_size_check',
+        'analysis_perception_runs_model_provenance_check',
+        'analysis_perception_runs_summary_check',
+        'analysis_perception_runs_expiry_check',
+        'analysis_perception_runs_job_revision_check',
+        'analysis_perception_runs_artifact_key_check'
       )
       order by conname
     `;
@@ -96,6 +105,14 @@ describeDatabase("initial PostgreSQL migration", () => {
     expect(constraints.map((constraint) => constraint.conname)).toEqual([
       "analyses_status_check",
       "analyses_temporary_expiry_policy_check",
+      "analysis_perception_runs_artifact_key_check",
+      "analysis_perception_runs_artifact_sha256_check",
+      "analysis_perception_runs_artifact_size_check",
+      "analysis_perception_runs_expiry_check",
+      "analysis_perception_runs_job_revision_check",
+      "analysis_perception_runs_model_provenance_check",
+      "analysis_perception_runs_source_sha256_check",
+      "analysis_perception_runs_summary_check",
       "competition_rule_versions_no_overlap",
       "decision_results_citations_check",
       "fact_revision_shots_fact_fk",

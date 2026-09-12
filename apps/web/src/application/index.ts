@@ -51,6 +51,8 @@ export type {
   JobFailurePayload,
   JobResult,
   JobResultCommand,
+  JobResultPreflight,
+  JobResultPreflightCommand,
   JobResultPayload,
   JobResultStore,
   JobStage,
@@ -149,7 +151,7 @@ export type {
 // 증거 접근 포트 공개
 export type { EvidenceAccess, EvidenceAccessCommand, EvidenceStore } from "./ports/repositories/evidence-store";
 // 증거 업로드 유스케이스 공개
-export type { EvidenceBody, EvidenceBodyStorage, EvidenceGrant, EvidenceGrantInput, EvidenceStorage } from "./ports/storage/evidence-storage";
+export type { EvidenceBody, EvidenceBodyStorage, EvidenceGrant, EvidenceGrantInput, EvidenceStorage, PerceptionGrantInput } from "./ports/storage/evidence-storage";
 // 증거 권한 유스케이스 공개
 export { evidence } from "./use-cases/job/evidence";
 export type { EvidenceDependencies, EvidenceInput, EvidenceItem, EvidenceResult } from "./use-cases/job/evidence";

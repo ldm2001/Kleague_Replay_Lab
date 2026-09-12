@@ -157,6 +157,19 @@ describe("job claim API", () => {
     expect(await response.json()).toEqual(completionResult);
   });
 
+  it("maps a structurally valid but unverifiable result to bad request", async () => {
+    const deps = { ...dependencies(), result: async () => ({ kind: "INVALID_RESULT", reason: "SOURCE" } as const) };
+    const response = await jobResult(new Request("http://localhost/internal/jobs/job-1/result", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-worker-key": "worker-secret", "x-worker-protocol": WORKER_PROTOCOL },
+      body: JSON.stringify({ workerId: "video-worker-1", jobRevision: 2, leaseToken: "lease-token",
+        payload: { kind: "VALIDATED", durationMs: 90_000, width: 1_920, height: 1_080 } }),
+    }), { jobId: "11111111-1111-4111-8111-111111111111" }, deps);
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ kind: "INVALID_RESULT", reason: "SOURCE" });
+  });
+
   it("returns scoped evidence upload grants", async () => {
     // 증거 권한 요청 구성
     const response = await jobEvidence(
@@ -180,5 +193,39 @@ describe("job claim API", () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual(evidenceResult);
+  });
+
+  it("preserves the gzip checksum field for the evidence use case", async () => {
+    let received: unknown;
+    const deps = { ...dependencies(), evidence: async (input: unknown) => {
+      received = input;
+      return { kind: "GRANTED", items: [] } as const;
+    } } as JobApiDependencies;
+    const response = await jobEvidence(new Request("http://localhost/internal/jobs/job-1/evidence", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-worker-key": "worker-secret", "x-worker-protocol": WORKER_PROTOCOL },
+      body: JSON.stringify({
+        workerId: "video-worker-1", jobRevision: 2, leaseToken: "lease-token",
+        items: [{ name: "observations.jsonl.gz", contentType: "application/gzip", sizeBytes: 1024, contentSha256: "a".repeat(64) }],
+      }),
+    }), { jobId: "11111111-1111-4111-8111-111111111111" }, deps);
+
+    expect(response.status).toBe(200);
+    expect(received).toMatchObject({ items: [{ contentSha256: "a".repeat(64) }] });
+  });
+
+  it("returns service unavailable when immutable gzip storage is not configured", async () => {
+    const deps = { ...dependencies(), evidence: async () => ({ kind: "UNAVAILABLE" } as const) };
+    const response = await jobEvidence(new Request("http://localhost/internal/jobs/job-1/evidence", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-worker-key": "worker-secret", "x-worker-protocol": WORKER_PROTOCOL },
+      body: JSON.stringify({
+        workerId: "video-worker-1", jobRevision: 2, leaseToken: "lease-token",
+        items: [{ name: "observations.jsonl.gz", contentType: "application/gzip", sizeBytes: 1024, contentSha256: "a".repeat(64) }],
+      }),
+    }), { jobId: "11111111-1111-4111-8111-111111111111" }, deps);
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ kind: "UNAVAILABLE" });
   });
 });
