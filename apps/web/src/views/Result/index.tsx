@@ -55,7 +55,9 @@ export function ResultView({ analysisId }: Readonly<{ analysisId: string }>) {
             <div><p>Video review</p><h1>영상 검토 결과</h1></div>
             <a href="/analyze">새 영상 분석</a>
           </header>
-          {completedOnly ? <p role="status">{(state.analysis.completedScopeCount ?? 0) > 0 ? `완료된 VAR 범위 분석 ${state.analysis.completedScopeCount}건` : `완료된 분석 결과 ${state.analysis.candidates.length}건`}</p> : <>
+          {completedOnly ? <p role="status">{(state.analysis.evaluatedCount ?? 0) > 0
+            ? `밀기 규정 평가 ${state.analysis.evaluatedCount}건 · VAR 범위 분석 ${state.analysis.completedScopeCount ?? 0}건`
+            : (state.analysis.completedScopeCount ?? 0) > 0 ? `완료된 VAR 범위 분석 ${state.analysis.completedScopeCount}건` : `완료된 분석 결과 ${state.analysis.candidates.length}건`}</p> : <>
             <p role="status">{state.analysis.diagnostics ? `인식된 장면 ${state.analysis.diagnostics.recognizedEventCount}건` : `후보 ${state.analysis.candidates.length}건`} · 파이프라인 처리 결과</p>
             {state.analysis.diagnostics ? <p>현재 코너킥 장면 인식 범위</p> : null}
             {!state.analysis.diagnostics && state.analysis.filterSummary ? <p>규정 필터 확인 {state.analysis.filterSummary.checkedCount}건 · 재개 장면 관찰 {state.analysis.filterSummary.observedCount ?? 0}건 · 검토 규정 연결 {state.analysis.filterSummary.applicableCount ?? 0}건 · 근거 부족 {state.analysis.filterSummary.undeterminedCount}건 · 유효하지 않은 구간 제외 {state.analysis.filterSummary.excludedCount}건</p> : null}

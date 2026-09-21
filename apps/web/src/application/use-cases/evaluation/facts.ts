@@ -1,7 +1,7 @@
 import type { Hasher } from "../../ports/hashing/hasher";
 import type { Clock } from "../../ports/clock/clock";
 import type { EvaluationStore, FactPatchResult } from "../../ports/repositories/evaluation-store";
-import type { EvaluationFacts } from "@replay/shared-types";
+import type { EvaluationFacts, PushFacts } from "@replay/shared-types";
 import {
   CAMERA_SUFFICIENCY_LEVELS,
   DECISION_NATURES,
@@ -63,6 +63,14 @@ const validContext = (value: unknown): boolean => object(value) &&
   observed(value.offenderRole, (item) => one(item, ["ATTACKING_TEAM", "DEFENDING_TEAM", "UNKNOWN"])) &&
   observed(value.disciplinaryContext, (item) => one(item, ["NONE", "DOGSO", "SPA", "UNKNOWN"]));
 
+export const pushFactsData = (push: unknown): push is PushFacts => object(push) &&
+  observed(push.contactDetected, nullableBoolean) &&
+  observed(push.severity, (item) => one(item, OBSERVED_SEVERITIES)) &&
+  observed(push.opponentDisplacement, (item) => one(item, DISPLACEMENT_LEVELS)) &&
+  observed(push.insidePenaltyArea, nullableBoolean) &&
+  (push.context === undefined || validContext(push.context)) &&
+  one(push.cameraSufficiency, CAMERA_SUFFICIENCY_LEVELS);
+
 const validFacts = (value: unknown): value is EvaluationFacts => {
   // 사실 묶음의 최상위 구조 확인
   if (!object(value) || !object(value.push) || !object(value.variable) || !object(value.observed)) return false;
@@ -70,12 +78,7 @@ const validFacts = (value: unknown): value is EvaluationFacts => {
   const variable = value.variable;
   const decision = value.observed;
   return (
-    observed(push.contactDetected, nullableBoolean) &&
-    observed(push.severity, (item) => one(item, OBSERVED_SEVERITIES)) &&
-    observed(push.opponentDisplacement, (item) => one(item, DISPLACEMENT_LEVELS)) &&
-    observed(push.insidePenaltyArea, nullableBoolean) &&
-    (push.context === undefined || validContext(push.context)) &&
-    one(push.cameraSufficiency, CAMERA_SUFFICIENCY_LEVELS) &&
+    pushFactsData(push) &&
     one(variable.reviewScenario, REVIEW_SCENARIOS) &&
     nullableBoolean(variable.restartOccurred) &&
     one(variable.sendOffCategory, SEND_OFF_CATEGORIES) &&

@@ -54,6 +54,18 @@ class FakeS3 implements S3ObjectClient {
 }
 
 describe("s3 upload storage", () => {
+  it("binds new media evidence to a revision, checksum and first-write-only PUT", async () => {
+    let signed: any;
+    const storage = s3({ client: new FakeS3(), bucket: "replay-local", sign: async (_client, command) => {
+      signed = command; return "http://storage/immutable";
+    } });
+    const sha256 = "a".repeat(64);
+    const grant = await storage.evidence({ analysisId: "analysis", jobId: "job", jobRevision: 2,
+      name: "clip.mp4", contentType: "video/mp4", sizeBytes: 128, contentSha256: sha256 });
+    expect(grant.objectKey).toBe(`evidence/analysis/job/2/${sha256}/clip.mp4`);
+    expect(signed.input).toMatchObject({ ChecksumSHA256: Buffer.from(sha256, "hex").toString("base64"), IfNoneMatch: "*" });
+    expect(grant.headers).toEqual({ "x-amz-checksum-sha256": Buffer.from(sha256, "hex").toString("base64"), "if-none-match": "*" });
+  });
   it("grants a private put URL and returns the object head", async () => {
     const client = new FakeS3();
     const storage = s3({

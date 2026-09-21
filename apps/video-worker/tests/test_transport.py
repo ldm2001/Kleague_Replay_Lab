@@ -36,8 +36,10 @@ class TransportApi:
             return self.grants.pop(0)
         return {"kind": "GRANTED", "items": [{
             "name": item["name"],
-            "objectKey": f"evidence/job/{item['name']}",
+            "objectKey": f"evidence/{_job.get('analysisId')}/{_job.get('jobId')}/{_job.get('jobRevision')}/{item['contentSha256']}/{item['name']}",
             "uploadUrl": f"http://storage/{item['name']}",
+            "headers": {"x-amz-checksum-sha256": base64.b64encode(bytes.fromhex(item["contentSha256"])).decode("ascii"),
+                        "if-none-match": "*"},
         } for item in reversed(items)]}
 
     def put(self, *args: object) -> None:
@@ -47,6 +49,19 @@ class TransportApi:
 def evidence_entry(path: str, candidate: int, kind: str) -> dict[str, object]:
     return {"path": path, "candidate_index": candidate, "kind": kind,
             "timestamp_ms": 100, "start_ms": 50, "end_ms": 150}
+
+
+def test_media_requests_hash_bound_grants_and_sends_first_write_headers(tmp_path: Path) -> None:
+    source = tmp_path / "frame.jpg"
+    source.write_bytes(b"frame")
+    api = TransportApi()
+    artifacts(api, CLAIM, tmp_path, [evidence_entry(source.name, 0, "FRAME")])
+    assert api.requests[0][0].get("contentSha256") == digest(source)
+    assert len(api.uploads[0]) == 4
+    assert api.uploads[0][3] == {
+        "x-amz-checksum-sha256": base64.b64encode(bytes.fromhex(digest(source))).decode("ascii"),
+        "if-none-match": "*",
+    }
 
 
 def report_value(*, pipeline: str = "video-baseline-v1", evidence: list[dict[str, object]] | None = None) -> dict[str, object]:
@@ -63,16 +78,19 @@ def test_media_grants_preserve_local_evidence_order_when_response_is_reversed(tm
     clip.write_bytes(b"clip")
     api = TransportApi()
 
-    result = artifacts(api, {}, tmp_path, [
+    result = artifacts(api, CLAIM, tmp_path, [
         evidence_entry("frames/one.jpg", 7, "FRAME"),
         evidence_entry("clips/two.mp4", 8, "CLIP"),
     ])
 
     assert [item["candidateIndex"] for item in result] == [7, 8]
-    assert [item["objectKey"] for item in result] == ["evidence/job/one.jpg", "evidence/job/two.mp4"]
+    assert [item["objectKey"] for item in result] == [
+        f"evidence/{ANALYSIS_ID}/{JOB_ID}/{JOB_REVISION}/{digest(frame)}/one.jpg",
+        f"evidence/{ANALYSIS_ID}/{JOB_ID}/{JOB_REVISION}/{digest(clip)}/two.mp4",
+    ]
     assert [item["contentSha256"] for item in result] == [digest(frame), digest(clip)]
     assert [upload[1].name for upload in api.uploads] == ["one.jpg", "two.mp4"]
-    assert all(len(upload) == 3 for upload in api.uploads)
+    assert all(len(upload) == 4 for upload in api.uploads)
 
 
 def test_media_uploads_split_grants_at_128_items_without_reordering(tmp_path: Path) -> None:
@@ -83,7 +101,7 @@ def test_media_uploads_split_grants_at_128_items_without_reordering(tmp_path: Pa
         entries.append(evidence_entry(path.name, index, "FRAME"))
     api = TransportApi()
 
-    result = artifacts(api, {}, tmp_path, entries)
+    result = artifacts(api, CLAIM, tmp_path, entries)
 
     assert [len(batch) for batch in api.requests] == [128, 1]
     assert [item["candidateIndex"] for item in result] == list(range(129))
@@ -101,7 +119,7 @@ def test_media_uploads_split_grants_before_200_mib(
     monkeypatch.setattr("replay_video.runner.file_hash", lambda _path: "a" * 64)
     api = TransportApi()
 
-    artifacts(api, {}, tmp_path, entries)
+    artifacts(api, CLAIM, tmp_path, entries)
 
     assert [len(batch) for batch in api.requests] == [4, 1]
     assert [sum(int(item["sizeBytes"]) for item in batch) for batch in api.requests] == [
@@ -123,7 +141,7 @@ def test_media_inputs_fail_closed_before_grants(tmp_path: Path, entries: list[di
     api = TransportApi()
 
     with pytest.raises(RuntimeError, match=message):
-        artifacts(api, {}, tmp_path, entries)
+        artifacts(api, CLAIM, tmp_path, entries)
     assert api.requests == []
 
 
@@ -134,7 +152,7 @@ def test_media_path_must_be_a_nonempty_string(tmp_path: Path) -> None:
     api = TransportApi()
 
     with pytest.raises(RuntimeError, match="evidence-path-invalid"):
-        artifacts(api, {}, tmp_path, [entry])
+        artifacts(api, CLAIM, tmp_path, [entry])
     assert api.requests == []
 
 
@@ -151,7 +169,7 @@ def test_media_grants_require_one_unique_complete_match_per_request(tmp_path: Pa
     api.grants = [{"kind": "GRANTED", "items": granted}]
 
     with pytest.raises(RuntimeError, match="evidence-grant-invalid"):
-        artifacts(api, {}, tmp_path, [evidence_entry(source.name, 0, "FRAME")])
+        artifacts(api, CLAIM, tmp_path, [evidence_entry(source.name, 0, "FRAME")])
     assert api.uploads == []
 
 
@@ -168,7 +186,7 @@ def test_media_validates_every_grant_before_uploading_the_batch(tmp_path: Path) 
     ]}]
 
     with pytest.raises(RuntimeError, match="evidence-grant-invalid"):
-        artifacts(api, {}, tmp_path, [
+        artifacts(api, CLAIM, tmp_path, [
             evidence_entry("one.jpg", 0, "FRAME"), evidence_entry("two.jpg", 1, "FRAME"),
         ])
     assert api.uploads == []
@@ -180,13 +198,13 @@ def test_media_rejects_symlink_escape_and_oversize_before_grants(tmp_path: Path)
     (tmp_path / "escaped.jpg").symlink_to(outside)
     api = TransportApi()
     with pytest.raises(RuntimeError, match="evidence-path-invalid"):
-        artifacts(api, {}, tmp_path, [evidence_entry("escaped.jpg", 0, "FRAME")])
+        artifacts(api, CLAIM, tmp_path, [evidence_entry("escaped.jpg", 0, "FRAME")])
 
     large = tmp_path / "large.mp4"
     with large.open("wb") as output:
         output.truncate(50 * 1024 * 1024 + 1)
     with pytest.raises(RuntimeError, match="evidence-size-invalid"):
-        artifacts(api, {}, tmp_path, [evidence_entry("large.mp4", 0, "CLIP")])
+        artifacts(api, CLAIM, tmp_path, [evidence_entry("large.mp4", 0, "CLIP")])
     assert api.requests == []
 
 
@@ -237,7 +255,9 @@ def test_report_uploads_perception_separately_and_replaces_only_local_path(tmp_p
     checksum = base64.b64encode(bytes.fromhex(sha256)).decode("ascii")
     api = TransportApi()
     api.grants = [
-        {"kind": "GRANTED", "items": [{"name": "frame.jpg", "objectKey": "evidence/frame.jpg", "uploadUrl": "http://frame"}]},
+        {"kind": "GRANTED", "items": [{"name": "frame.jpg",
+          "objectKey": f"evidence/{ANALYSIS_ID}/{JOB_ID}/{JOB_REVISION}/{digest(tmp_path / 'frame.jpg')}/frame.jpg", "uploadUrl": "http://frame",
+          "headers": {"x-amz-checksum-sha256": base64.b64encode(bytes.fromhex(digest(tmp_path / 'frame.jpg'))).decode("ascii"), "if-none-match": "*"}}]},
         {"kind": "GRANTED", "items": [{"name": "perception.jsonl.gz",
           "objectKey": f"perception/{ANALYSIS_ID}/{JOB_ID}/{JOB_REVISION}/{sha256}.jsonl.gz",
           "uploadUrl": "http://perception", "headers": {"x-amz-checksum-sha256": checksum, "if-none-match": "*"}}]},
@@ -248,7 +268,7 @@ def test_report_uploads_perception_separately_and_replaces_only_local_path(tmp_p
     assert len(api.requests) == 2
     assert api.requests[1] == [{"name": "perception.jsonl.gz", "contentType": "application/gzip",
                                 "sizeBytes": len(b"gzip-data"), "contentSha256": sha256}]
-    assert len(api.uploads[0]) == 3
+    assert len(api.uploads[0]) == 4
     assert api.uploads[1] == ("http://perception", artifact, "application/gzip",
                               {"x-amz-checksum-sha256": checksum, "if-none-match": "*"})
     perception = payload["perception"]

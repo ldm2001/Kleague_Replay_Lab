@@ -2,6 +2,7 @@ from __future__ import annotations
 from pathlib import Path
 from functools import partial
 import hashlib
+import base64
 import json
 import time
 from threading import Event, Thread
@@ -63,12 +64,14 @@ class ApiFake:
             "kind": "GRANTED",
             "items": [{
                 "name": item["name"],
-                "objectKey": f"evidence/analysis/{job['jobId']}/{item['name']}",
+                "objectKey": f"evidence/{job['analysisId']}/{job['jobId']}/{job['jobRevision']}/{item['contentSha256']}/{item['name']}",
                 "uploadUrl": f"http://storage/{item['name']}",
+                "headers": {"x-amz-checksum-sha256": base64.b64encode(bytes.fromhex(item["contentSha256"])).decode("ascii"),
+                            "if-none-match": "*"},
             } for item in items],
         }
 
-    def put(self, _url: str, source: Path, _content_type: str) -> None:
+    def put(self, _url: str, source: Path, _content_type: str, _headers=None) -> None:
         # 증거 업로드 파일 기록
         self.uploads.append(source.name)
 

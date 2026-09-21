@@ -39,6 +39,15 @@ class StatusDouble implements MediaStatusStore {
 }
 
 describe("media status", () => {
+  it("does not leak private automatic review counts or raw candidates through polling", async () => {
+    const output = await status({ clock: { now: () => NOW }, repository: { status: async () => ({ ...view, analysis: {
+      ...view.analysis!, automaticReviewSummary: { videoCoverage: "PARTIAL", summaryTruncated: true, checkedCount: 1, completedCount: 0, blockedCount: 1 },
+      diagnostics: { rawProposalCount: 1, invalidOutputCount: 0, recognizedEventCount: 0, supportedEventTypes: [], reasons: [] },
+    } }) } })({ anonymousSessionId: "33333333-3333-4333-8333-333333333333", videoAssetId: view.videoAssetId });
+    expect(output).toMatchObject({ analysis: { candidates: [], evaluatedCount: 0 } });
+    expect(output).not.toHaveProperty("analysis.automaticReviewSummary");
+    expect(output).not.toHaveProperty("analysis.diagnostics");
+  });
   it("loads an owned video and analysis view", async () => {
     const repository = new StatusDouble();
     const result = await status({ clock: { now: () => NOW } satisfies Clock, repository })({

@@ -93,16 +93,19 @@ npm run dev:worker
 `WORKER_PERCEPTION_DEVICE=cpu`가 기본이며 Apple Silicon 개발 환경은 `mps`를 사용할 수 있다
 이는 운영자 실행 환경이며 사용자 화면에 모델·임계값·사실 입력을 추가하지 않는다
 
-내부 JSON 요청에는 `x-worker-protocol: video-observations-v4`를 보낸다
+내부 JSON 요청에는 `x-worker-protocol: video-observations-v5`를 보낸다
 웹 서버는 인증 후 선점과 진행 및 결과와 증거 권한 요청의 버전을 검사한다
 버전이 없거나 다르면 본문 처리와 작업 선점 전에 HTTP 409로 거부한다
 웹과 Worker를 함께 갱신하고 이전 Worker는 활성 작업을 마친 뒤 종료한다
 이 검사는 실행 계약의 호환성 검사이며 관측 정확도의 인증이 아니다
 과거에 저장된 분석은 자동 재처리하거나 수정하지 않는다
 
-새 운영 경로는 `0019_judgment_contract`까지 적용된 DB를 요구한다
+새 운영 경로는 `0020_automatic_reviews`까지 적용된 DB를 요구한다
+v5는 매체 증거에도 SHA256과 job revision이 결합된 키·체크섬·조건부 최초 PUT을 사용한다
+서버는 제출 성공 전에 사건별 자동 평가를 계산하고 결과와 같은 트랜잭션에 저장한다
+현재 승인된 관측기는 접촉 강도와 판정 맥락을 확정하지 않으므로 밀기 평가는 BLOCKED로 보존되며 파울 없음으로 공개하지 않는다
 리플레이 여부를 판별하지 않은 샷의 `is_replay` / `isReplay`는 false가 아니라 null이다
-이전 false 이력은 재작성하지 않으며 v4는 새 관측의 미확인을 보존한다
+이전 false 이력은 재작성하지 않으며 새 관측의 미확인을 보존한다
 스키마와 서버 프로토콜을 먼저 맞추고 활성 작업이 없는지 확인한 뒤 이전 Worker를 새 환경으로 교체한다
 기존 분석을 자동 재처리하지 않는다
 

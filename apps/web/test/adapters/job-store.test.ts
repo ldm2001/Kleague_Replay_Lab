@@ -59,6 +59,35 @@ const database = (rows: unknown[]) => ({
 
 // 작업 저장소 테스트
 describe("JobStore", () => {
+  it.each([["rule-lock", "lease"], ["last-write", "lease"], ["rule-lock", "retention"], ["last-write", "retention"]])("rejects expiry after %s (%s) and never commits partial output", async (expireAt, expiredField) => {
+    let expired = false, rolledBack = false;
+    const writes: string[] = [];
+    const payload = { ...perceptionPayload(), evidence: [] };
+    const repository = new JobStore({ db: { transaction: async (operation: (tx: unknown) => unknown) => {
+      try { return await operation({ execute: async (statement: SQL) => {
+        const query = new PgDialect().sqlToQuery(statement);
+        if (query.sql.includes("for update of job")) return [{ id: PERCEPTION_JOB_ID, status: "PROCESSING", job_type: "ANALYZE_VIDEO",
+          job_revision: 2, attempt: 1, lease_owner: "worker-1", lease_token_hash: Buffer.from([1, 2, 3]),
+          lease_until: expiredField === "lease" ? "2030-01-01T00:00:10.000Z" : "2030-01-01T01:00:00.000Z", analysis_id: PERCEPTION_ANALYSIS_ID,
+          source_fingerprint: Buffer.from(PERCEPTION_SOURCE_SHA256, "hex"), content_sha256: Buffer.from(PERCEPTION_SOURCE_SHA256, "hex"),
+          expires_at: expiredField === "retention" ? "2030-01-01T00:00:10.000Z" : "2030-01-01T01:00:00.000Z", match_id: "match", applied_rule_version_id: "rule" }];
+        if (query.sql.includes("for share of rule")) { if (expireAt === "rule-lock") expired = true; return []; }
+        if (/insert into|update analyses|update processing_jobs/.test(query.sql)) writes.push(query.sql);
+        if (query.sql.includes("insert into processing_job_events") && expireAt === "last-write") expired = true;
+        return [];
+      } }); } catch (error) { rolledBack = true; writes.length = 0; throw error; }
+    } } } as never, () => new Date(expired ? "2030-01-01T00:00:11.000Z" : "2030-01-01T00:00:01.000Z"));
+    const output = await repository.result({ jobId: PERCEPTION_JOB_ID, workerId: "worker-1", jobRevision: 2,
+      leaseTokenHash: Uint8Array.from([1, 2, 3]), now: "2030-01-01T00:00:01.000Z", payload,
+      perceptionVerification: { analysisId: PERCEPTION_ANALYSIS_ID, sourceSha256: Buffer.from(PERCEPTION_SOURCE_SHA256, "hex"), admission: { status: "NOT_ADMITTED", reasons: [] } },
+      automaticReview: { version: "automatic-review-v1", analysisId: PERCEPTION_ANALYSIS_ID, jobId: PERCEPTION_JOB_ID, jobRevision: 2,
+        sourceSha256: PERCEPTION_SOURCE_SHA256, pipelineVersion: payload.pipelineVersion, videoCoverage: "FULL", summaryTruncated: false,
+        evaluatedCount: 0, blockedCount: 1, rows: [{ candidateIndex: 1, question: "PUSHING", status: "BLOCKED", reasonCodes: [],
+          evidenceIndices: [], producer: null, rule: null, facts: null, result: null }] } });
+    expect(output).toEqual(expiredField === "lease" ? { kind: "STALE_LEASE" } : { kind: "INVALID_RESULT", reason: "SOURCE" });
+    expect(writes).toEqual([]);
+    expect(rolledBack).toBe(expireAt === "last-write");
+  });
   it("stores v2 audio only in the private perception summary envelope", async () => {
     const queries: ReturnType<PgDialect["sqlToQuery"]>[] = [];
     const payload = avPerceptionPayload();

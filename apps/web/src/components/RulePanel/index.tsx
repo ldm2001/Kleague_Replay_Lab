@@ -63,6 +63,20 @@ const Citations = ({ citations }: Readonly<{ citations: JudgmentView["citations"
 
 export function RulePanel({ analysis, candidate }: Readonly<{ analysis: AnalysisView; candidate: CandidateView }>) {
   const scope = candidate.varScopeEvaluation;
+  const automatic = candidate.automaticJudgment;
+  if (automatic?.status === "COMPLETED") return <section className="rule-panel" aria-label="완료된 밀기 규정 평가">
+    <header className="rule-heading"><div><p>자동 규정 평가</p><h2>밀기 규정 평가 완료</h2></div>
+      <span>{automatic.rule.competition} {automatic.rule.season} · {automatic.rule.ifabVersionId}</span></header>
+    <p>{automatic.result.decision === "FOUL" ? "이 장면의 밀기는 반칙에 해당합니다" : "이 장면에서 밀기 반칙은 성립하지 않습니다"}</p>
+    <dl className="fact-grid">
+      <div><dt>재개</dt><dd>{labels[automatic.result.restart ?? "UNKNOWN"]}</dd></div>
+      <div><dt>징계</dt><dd>{automatic.result.disciplinary === "NONE" ? "카드 없음" : labels[automatic.result.disciplinary ?? "UNKNOWN"]}</dd></div>
+    </dl>
+    <p>지원하는 밀기 규정에 대한 평가입니다. 다른 파울 유형과 원심의 정확성, 득점 및 VAR 개입 여부는 평가하지 않았습니다</p>
+    <Citations citations={automatic.result.citations} />
+    {scope?.status === "COMPLETED" ? <section aria-label="완료된 VAR 범위 분석"><h3>VAR 범위 분석</h3>
+      <p>{scope.explanation}</p><Citations citations={scope.citations} /></section> : null}
+  </section>;
   // 완료된 대회요강 범위 평가는 전체 파울 판단의 미완료 필터와 별도로 표시한다
   if (scope?.kind === "COMPETITION_VAR_SCOPE" && scope.status === "COMPLETED") return (
     <section className="rule-panel" aria-label="완료된 VAR 범위 분석">

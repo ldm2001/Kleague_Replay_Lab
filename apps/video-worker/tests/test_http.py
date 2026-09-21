@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import io
+import base64
+import hashlib
 import json
 from pathlib import Path
 from urllib.error import HTTPError
@@ -75,7 +77,7 @@ def test_json_sends_current_worker_protocol() -> None:
     api = Api("http://web.test", "secret", "worker-1", opener=opener)
     api.json("/api/internal/jobs/claim", {"workerId": "worker-1", "jobType": "ANALYZE_VIDEO"})
     headers = {key.lower(): value for key, value in opener.requests[0].header_items()}
-    assert headers["x-worker-protocol"] == "video-observations-v4"
+    assert headers["x-worker-protocol"] == "video-observations-v5"
 
 
 # 작업 결과 요청 확인
@@ -147,6 +149,53 @@ def test_error() -> None:
 
 
 # 증거 업로드 요청 확인
+@pytest.mark.parametrize("content_type", ["image/jpeg", "video/mp4"])
+def test_immutable_media_put_forwards_checksum_and_first_write_headers(tmp_path: Path, content_type: str) -> None:
+    source = tmp_path / "media"
+    source.write_bytes(b"media")
+    opener = Open([Reply(200)])
+    api = Api("http://web.test", "secret", "worker-1", opener=opener)
+    headers = {"x-amz-checksum-sha256": "a" * 43 + "=", "if-none-match": "*"}
+    api.put("http://storage/media", source, content_type, headers)
+    sent = {key.lower(): value for key, value in opener.requests[0].header_items()}
+    assert sent["x-amz-checksum-sha256"] == headers["x-amz-checksum-sha256"]
+    assert sent["if-none-match"] == "*"
+    assert sent["content-type"] == content_type
+    assert "x-worker-key" not in sent
+
+
+def test_artifacts_use_the_real_http_client_for_immutable_media(tmp_path: Path) -> None:
+    from replay_video.runner import artifacts
+    source = tmp_path / "frame.jpg"
+    source.write_bytes(b"frame")
+    sha256 = hashlib.sha256(b"frame").hexdigest()
+    headers = {"x-amz-checksum-sha256": base64.b64encode(bytes.fromhex(sha256)).decode("ascii"), "if-none-match": "*"}
+    job = {"jobId": "job-1", "analysisId": "analysis-1", "jobRevision": 2, "leaseToken": "lease"}
+    grant = {"kind": "GRANTED", "items": [{"name": "frame.jpg", "objectKey": f"evidence/analysis-1/job-1/2/{sha256}/frame.jpg",
+             "uploadUrl": "http://storage/frame.jpg", "headers": headers}]}
+    opener = Open([Reply(200, json.dumps(grant).encode()), Reply(200)])
+    api = Api("http://web.test", "secret", "worker-1", opener=opener)
+    result = artifacts(api, job, tmp_path, [{"path": "frame.jpg", "candidate_index": 0, "kind": "FRAME",
+                       "start_ms": 100, "end_ms": 100}])
+    assert result[0]["contentSha256"] == sha256
+    assert opener.bodies[1] == b"frame"
+    assert opener.streaming[1] is True
+    assert dict((key.lower(), value) for key, value in opener.requests[1].header_items())["if-none-match"] == "*"
+
+
+@pytest.mark.parametrize("headers", [
+    {"x-amz-checksum-sha256": "checksum"}, {"if-none-match": "*"},
+    {"x-amz-checksum-sha256": "checksum", "if-none-match": "not-first-write"},
+    {"x-amz-checksum-sha256": "", "if-none-match": "*"},
+])
+def test_media_put_rejects_incomplete_or_unconditional_headers(tmp_path: Path, headers: dict[str, str]) -> None:
+    opener = Open([])
+    api = Api("http://web.test", "secret", "worker-1", opener=opener)
+    with pytest.raises(HttpError, match="evidence-headers-invalid"):
+        api.put("http://storage/media", tmp_path / "unused.jpg", "image/jpeg", headers)
+    assert opener.requests == []
+
+
 def test_evidence(tmp_path: Path) -> None:
     # 증거 권한 응답 모형 구성
     grant = {

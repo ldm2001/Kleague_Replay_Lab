@@ -58,9 +58,8 @@ const validItems = (items: readonly EvidenceItem[]): boolean => {
       gzip += 1;
       if (gzip > 1 || item.sizeBytes > MAX_DIAGNOSTIC_BYTES ||
         typeof item.contentSha256 !== "string" || !SHA256.test(item.contentSha256)) return false;
-    } else if (item.contentSha256 !== undefined) {
-      return false;
-    } else if (item.sizeBytes > MAX_MEDIA_BYTES) {
+    } else if (item.sizeBytes > MAX_MEDIA_BYTES ||
+      (item.contentSha256 !== undefined && !SHA256.test(item.contentSha256))) {
       return false;
     }
     total += item.sizeBytes;
@@ -118,6 +117,7 @@ export const evidence =
           name: item.name,
           contentType: item.contentType,
           sizeBytes: item.sizeBytes,
+          ...(item.contentSha256 === undefined ? {} : { jobRevision: input.jobRevision, contentSha256: item.contentSha256 }),
         }),
       };
     }));

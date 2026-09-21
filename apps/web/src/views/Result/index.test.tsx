@@ -11,12 +11,21 @@ import { VAR_SCOPE_NOT_ASSESSED } from "@replay/shared-types";
 import { knownVideoSource } from "../../adapters/known-video-sources";
 import { analysis as resultFixture } from "../../../test/fixtures/result";
 import { ResultView } from "./index";
+import { automaticJudgment } from "../../../test/fixtures/automatic";
 
 const ANALYSIS = "22222222-2222-4222-8222-222222222222";
 const view = resultFixture();
 
 // 결과 화면 테스트
 describe("ResultView", () => {
+  it("keeps automatic pushing and competition VAR scope counts separate", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response(JSON.stringify({
+      ...view, resultPolicy: "COMPLETED_ONLY", evaluatedCount: 1, completedScopeCount: 2,
+      candidates: [{ ...view.candidates[0]!, automaticJudgment: automaticJudgment() }],
+    })));
+    render(<ResultView analysisId={ANALYSIS} />);
+    expect(await screen.findByText("밀기 규정 평가 1건 · VAR 범위 분석 2건")).toBeInTheDocument();
+  });
   afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
   // 요청 분석 조회 확인

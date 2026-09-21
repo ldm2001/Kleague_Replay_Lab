@@ -19,10 +19,18 @@ import type {
   EvidenceStore as EvidencePort,
 } from "@replay/application";
 import type { DatabaseClient } from "@replay/database";
+import { validAutomaticBatch, type AutomaticEvidenceBinding } from "./automatic-review-binding";
+import type { AutomaticRuleContext } from "../shared/automatic-review";
+import { perceptionModelPins } from "@replay/rule-engine";
+import { automaticContext } from "./automatic-context";
+import { knownVideoSource } from "./known-video-sources";
 
 type DatabaseHandle = Pick<DatabaseClient, "db">;
 type WallClock = () => Date;
 const MAX_PRIVATE_SUMMARY_BYTES = 1_048_576;
+class RejectedAnalysisWrite extends Error {
+  public constructor(public readonly result: JobResult) { super("Analysis write rejected; transaction must roll back"); }
+}
 
 type JobRow = Readonly<{
   id: string;
@@ -238,7 +246,7 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
     const rows = await this.client.db.execute(sql`
       select job.analysis_id, video.content_sha256, analysis.source_fingerprint,
              analysis.expires_at, analysis.match_id, rule.id as rule_version_id,
-             rule.verification_status, rule.ifab_edition
+             rule.verification_status, rule.ifab_edition, rule.competition, rule.season, video.duration_ms
       from processing_jobs as job
       join analyses as analysis on analysis.id = job.analysis_id
       join video_assets as video on video.id = analysis.video_asset_id
@@ -261,17 +269,48 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
       rule_version_id: string | null;
       verification_status: string | null;
       ifab_edition: string | null;
+      competition: string | null;
+      season: string | null;
+      duration_ms: number | null;
     }>;
     if (row) {
+      if (!row.match_id && !row.rule_version_id && row.content_sha256 && knownVideoSource(row.content_sha256.toString("hex"))) {
+        const linked = await this.client.db.transaction(async (transaction) => {
+          const now = this.wallClock().toISOString();
+          const locked = await transaction.execute(sql`
+            select analysis.id, video.content_sha256
+            from processing_jobs as job join analyses as analysis on analysis.id = job.analysis_id
+            join video_assets as video on video.id = analysis.video_asset_id
+            where job.id = ${command.jobId} and job.job_type = 'ANALYZE_VIDEO' and job.status = 'PROCESSING'
+              and job.job_revision = ${command.jobRevision} and job.lease_owner = ${command.workerId}
+              and job.lease_token_hash = ${Buffer.from(command.leaseTokenHash)} and job.lease_until > ${now}
+              and analysis.expires_at > ${now} and analysis.match_id is null and analysis.applied_rule_version_id is null
+              and analysis.source_fingerprint = video.content_sha256
+              and video.content_sha256 = ${row.content_sha256}
+            for update of job, analysis, video
+          `);
+          const [target] = locked as unknown as Array<{ id: string; content_sha256: Buffer }>;
+          if (!target) return false;
+          const context = await automaticContext(target.content_sha256.toString("hex"), (statement) => transaction.execute(statement));
+          if (!context) return false;
+          const saveNow = this.wallClock().toISOString();
+          const saved = await transaction.execute(sql`update analyses set match_id = ${context.matchId}, applied_rule_version_id = ${context.ruleId},
+            state_version = state_version + 1 where id = ${target.id} and expires_at > ${saveNow}
+              and exists(select 1 from processing_jobs where id = ${command.jobId} and lease_until > ${saveNow}) returning id`);
+          return saved.length === 1;
+        });
+        if (linked) return this.preflight(command);
+      }
       return {
         kind: "AUTHORIZED",
         analysisId: row.analysis_id,
         sourceSha256: Uint8Array.from(row.content_sha256 ?? []),
         analysisSourceSha256: Uint8Array.from(row.source_fingerprint ?? []),
         expiresAt: row.expires_at === null ? null : new Date(row.expires_at).toISOString(),
+        durationMs: row.duration_ms,
         ruleEdition: row.match_id && row.rule_version_id && row.verification_status === "VERIFIED" && row.ifab_edition
           ? { id: row.rule_version_id, verificationStatus: row.verification_status,
-              matchId: row.match_id, ifabEdition: row.ifab_edition }
+              matchId: row.match_id, ifabEdition: row.ifab_edition, ...(row.competition ? { competition: row.competition } : {}), ...(row.season ? { season: row.season } : {}) }
           : null,
       };
     }
@@ -412,7 +451,8 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
         const selected = await transaction.execute(sql`
           select job.id, job.status, job.job_type, job.job_revision, job.attempt, job.lease_owner,
                  job.lease_token_hash, job.lease_until, job.analysis_id,
-                 analysis.source_fingerprint, analysis.expires_at, video.content_sha256
+                 analysis.source_fingerprint, analysis.expires_at, video.content_sha256,
+                 analysis.match_id, analysis.applied_rule_version_id
           from processing_jobs as job
           join analyses as analysis on analysis.id = job.analysis_id
           join video_assets as video on video.id = analysis.video_asset_id
@@ -432,13 +472,15 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
           source_fingerprint: Buffer | null;
           content_sha256: Buffer | null;
           expires_at: string | null;
+          match_id: string | null;
+          applied_rule_version_id: string | null;
         }>;
         // 작업 대상이 없으면 결과 저장 중단
         if (!target) return [{ kind: "NOT_FOUND" }];
         // 완료된 작업은 중복 결과 차단
         if (target.status !== "PROCESSING") return [{ kind: "ALREADY_FINISHED" }];
         // 새 관측 경로는 행 잠금 대기 이후의 실제 벽시계로 Lease와 보존 기한을 다시 확인한다
-        const lockedNow = perception ? this.wallClock().toISOString() : command.now;
+        let lockedNow = perception || command.automaticReview ? this.wallClock().toISOString() : command.now;
         // 현재 Worker Lease 확인
         const validLease =
           target.job_type === "ANALYZE_VIDEO" &&
@@ -469,6 +511,48 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
           !item.objectKey.startsWith(evidencePrefix) || !candidateIndices.has(item.candidateIndex))) {
           return [{ kind: "INVALID_RESULT", reason: "CONTEXT" }];
         }
+
+        const automatic = command.automaticReview;
+        if (automatic) {
+          const rules = target.applied_rule_version_id && target.match_id ? await transaction.execute(sql`
+            select rule.id, rule.competition, rule.season, rule.ifab_edition, rule.verification_status
+            from competition_rule_versions as rule
+            join matches as match on match.id = ${target.match_id}
+              and match.competition = rule.competition and match.season = rule.season
+              and match.match_date >= rule.effective_from
+              and (rule.effective_to is null or match.match_date <= rule.effective_to)
+            where rule.id = ${target.applied_rule_version_id} and nullif(trim(rule.source_document), '') is not null
+            for share of rule, match
+          `) : [];
+          const [rule] = rules as unknown as Array<{ id: string; competition: string; season: string; ifab_edition: string; verification_status: string }>;
+          const currentRule: AutomaticRuleContext | null = rule?.verification_status === "VERIFIED" && target.match_id
+            ? { id: rule.id, matchId: target.match_id, competition: rule.competition, season: rule.season, ifabVersionId: `ifab-${rule.ifab_edition}`, verificationStatus: "VERIFIED" } : null;
+          if (automatic.rows.some((row) => row.status === "COMPLETED") && (!perception ||
+            Object.values(perceptionModelPins).some((pin) => !perception.models.some((model) => model.component === pin.component &&
+              model.modelId === pin.modelId && model.revision === pin.revision && model.weightsSha256 === pin.weightsSha256)))) {
+            return [{ kind: "INVALID_RESULT", reason: "CONTEXT" }];
+          }
+          if (!target.source_fingerprint || !target.content_sha256 || !target.source_fingerprint.equals(target.content_sha256) ||
+            !target.expires_at || new Date(target.expires_at).getTime() <= new Date(lockedNow).getTime() ||
+            !validAutomaticBatch(automatic, { analysisId: target.analysis_id!, jobId: target.id, jobRevision: target.job_revision,
+              sourceSha256: target.source_fingerprint.toString("hex"), pipelineVersion: payload.pipelineVersion,
+              candidateIndices: [...candidateIndices], evidence: payload.evidence ?? [], rule: currentRule }) ||
+            Buffer.byteLength(JSON.stringify(automatic), "utf8") > MAX_PRIVATE_SUMMARY_BYTES) {
+            return [{ kind: "INVALID_RESULT", reason: "CONTEXT" }];
+          }
+        }
+
+        // All potentially blocking validation locks are now held. Refresh the write-time boundary.
+        const expiryFailure = (): JobResult | null => {
+          if (!perception && !automatic) return null;
+          const now = this.wallClock().getTime();
+          if (!target.lease_until || new Date(target.lease_until).getTime() <= now) return { kind: "STALE_LEASE" };
+          if (!target.expires_at || new Date(target.expires_at).getTime() <= now) return { kind: "INVALID_RESULT", reason: "SOURCE" };
+          lockedNow = new Date(now).toISOString();
+          return null;
+        };
+        const beforeWriteFailure = expiryFailure();
+        if (beforeWriteFailure) return [beforeWriteFailure];
 
         // 샷 목록 저장
         for (const item of payload.shots) {
@@ -503,7 +587,8 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
         }
 
         // 후보별 증거 자산 저장
-        for (const item of payload.evidence ?? []) {
+        const evidenceBindings: AutomaticEvidenceBinding[] = [];
+        for (const [evidenceIndex, item] of (payload.evidence ?? []).entries()) {
           const candidates = await transaction.execute(sql`
             select id
             from incident_candidates
@@ -512,8 +597,8 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
             limit 1
           `);
           const [candidate] = candidates as unknown as Array<{ id: string }>;
-          if (!candidate) return [{ kind: "INVALID_RESULT", reason: "CONTEXT" }];
-          await transaction.execute(sql`
+          if (!candidate) throw new RejectedAnalysisWrite({ kind: "INVALID_RESULT", reason: "CONTEXT" });
+          const insertedEvidence = await transaction.execute(sql`
             insert into evidence_assets (
               analysis_id, incident_candidate_id, kind, object_key, content_sha256,
               start_ms, end_ms, width, height, created_at, expires_at
@@ -524,6 +609,22 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
                    ${lockedNow}, expires_at
             from analyses
             where id = ${target.analysis_id}
+            returning id
+          `);
+          const [savedEvidence] = insertedEvidence as unknown as Array<{ id: string }>;
+          if (savedEvidence) evidenceBindings.push({ ...item, evidenceIndex, evidenceId: savedEvidence.id });
+        }
+
+        if (automatic) {
+          if (evidenceBindings.length !== (payload.evidence ?? []).length || Buffer.byteLength(JSON.stringify(evidenceBindings), "utf8") > MAX_PRIVATE_SUMMARY_BYTES) {
+            throw new Error("Automatic evidence bindings exceed storage contract");
+          }
+          await transaction.execute(sql`
+            insert into analysis_automatic_reviews (analysis_id, job_id, job_revision, source_sha256,
+              evaluator_version, pipeline_version, summary, evidence_bindings, created_at, expires_at)
+            values (${target.analysis_id}, ${target.id}, ${target.job_revision}, ${target.source_fingerprint},
+              ${automatic.version}, ${payload.pipelineVersion}, ${JSON.stringify(automatic)}::jsonb,
+              ${JSON.stringify(evidenceBindings)}::jsonb, ${lockedNow}, ${target.expires_at})
           `);
         }
 
@@ -570,7 +671,13 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
             'SUCCEEDED', 'SUCCEEDED', 100, ${lockedNow}
           )
         `);
+        // Expiry during any write (including completion/event writes) must roll back the entire batch.
+        const afterWriteFailure = expiryFailure();
+        if (afterWriteFailure) throw new RejectedAnalysisWrite(afterWriteFailure);
         return [{ kind: "ACCEPTED" }];
+      }).catch((error: unknown) => {
+        if (error instanceof RejectedAnalysisWrite) return [error.result];
+        throw error;
       });
     } else {
       // Worker 실패 결과 저장

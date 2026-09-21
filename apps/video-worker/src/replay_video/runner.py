@@ -296,17 +296,23 @@ def artifacts(
     for batch in batches:
         if check_cancelled:
             check_cancelled()
-        requests = [{"name": path.name, "contentType": content_type, "sizeBytes": size}
-                    for path, content_type, _entry, size, _sha256 in batch]
+        requests = [{"name": path.name, "contentType": content_type, "sizeBytes": size, "contentSha256": sha256}
+                    for path, content_type, _entry, size, sha256 in batch]
         granted = evidence_grants(api, item, requests, "evidence-grant-invalid")
-        if any(granted[path.name].get("headers") not in (None, {})
-               for path, _content_type, _entry, _size, _sha256 in batch):
-            raise RuntimeError("evidence-grant-invalid")
+        # 일부 업로드 전에 모든 권한의 원본 해시·작업 revision·조건부 최초 PUT을 확인한다.
+        for path, _content_type, _entry, _size, sha256 in batch:
+            grant = granted[path.name]
+            checksum = base64.b64encode(bytes.fromhex(sha256)).decode("ascii")
+            expected_key = f"evidence/{item.get('analysisId')}/{item.get('jobId')}/{item.get('jobRevision')}/{sha256}/{path.name}"
+            if grant.get("objectKey") != expected_key or grant.get("headers") != {
+                "x-amz-checksum-sha256": checksum, "if-none-match": "*",
+            }:
+                raise RuntimeError("evidence-grant-invalid")
         for path, content_type, entry, _size, sha256 in batch:
             grant = granted[path.name]
             if check_cancelled:
                 check_cancelled()
-            api.put(str(grant["uploadUrl"]), path, content_type)
+            api.put(str(grant["uploadUrl"]), path, content_type, grant["headers"])
             result.append({
                 "candidateIndex": entry["candidate_index"],
                 "kind": entry["kind"],

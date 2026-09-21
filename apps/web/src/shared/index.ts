@@ -2,6 +2,7 @@
 export * from "./vocabulary";
 export * from "./citation";
 export * from "./facts";
+export * from "./automatic-review";
 export * from "./evaluation";
 export * from "./rule-set";
 export * from "./competition-rules";

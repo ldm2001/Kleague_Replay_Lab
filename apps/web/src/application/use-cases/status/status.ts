@@ -1,5 +1,6 @@
 import type { Clock } from "../../ports/clock/clock";
 import type { MediaStatusStore, MediaView } from "../../ports/repositories/status-store";
+import { publicAnalysis } from "./report";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -30,9 +31,10 @@ export const status =
     const anonymousSessionId = input.anonymousSessionId.toLowerCase();
     const videoAssetId = input.videoAssetId.toLowerCase();
     // 상태 저장소 호출
-    return repository.status({
+    const result = await repository.status({
       anonymousSessionId,
       videoAssetId,
       now: clock.now().toISOString(),
     });
+    return result?.analysis ? { ...result, analysis: publicAnalysis(result.analysis) } : result;
   };

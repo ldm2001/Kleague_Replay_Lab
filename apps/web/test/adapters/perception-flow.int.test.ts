@@ -108,6 +108,12 @@ describe.skipIf(!databaseUrl)("private perception result flow", () => {
     expect(saved?.summary.audio).toEqual((setup.payload.perception as any).audio);
     expect(saved?.summary.admission).toMatchObject({ status: "NOT_ADMITTED",
       reasons: expect.arrayContaining(["AUDIO_CUE_METHOD_NOT_VERIFIED", "SPEECH_NOT_ANALYZED"]) });
+    const [automatic] = await database.sql<{ summary: { rows: Array<{ status: string }>; evaluatedCount: number }; evidence_bindings: unknown[] }[]>`
+      select summary, evidence_bindings from analysis_automatic_reviews where analysis_id = ${setup.analysisId}`;
+    expect(automatic?.summary.evaluatedCount).toBe(0);
+    expect(automatic?.summary.rows.length).toBe(setup.payload.candidates.length);
+    expect(automatic?.summary.rows.every((row) => row.status === "BLOCKED")).toBe(true);
+    expect(automatic?.evidence_bindings.length).toBe(setup.payload.evidence?.length);
     const publicStore = new StatusStore(database);
     const publicReport = await report({ clock: setup.clock, repository: publicStore })({
       anonymousSessionId: setup.sessionId, analysisId: setup.analysisId });
@@ -116,6 +122,8 @@ describe.skipIf(!databaseUrl)("private perception result flow", () => {
     for (const view of [publicReport, publicStatus]) {
       expect(JSON.stringify(view)).not.toContain("audio-observations-v1");
       expect(JSON.stringify(view)).not.toContain("spectral-multitone-v1");
+      expect(JSON.stringify(view)).not.toContain("automaticReviewSummary");
+      expect(JSON.stringify(view)).not.toContain("diagnostics");
     }
     expect(publicReport).toMatchObject({ resultPolicy: "COMPLETED_ONLY", evaluatedCount: 0,
       judgmentStatus: "NOT_EVALUATED" });
