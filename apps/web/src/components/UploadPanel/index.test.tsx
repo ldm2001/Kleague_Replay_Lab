@@ -96,7 +96,7 @@ describe("UploadPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "분석 시작" }));
 
     await waitFor(() => expect(screen.getAllByText("기초 장면 탐색 완료").length).toBeGreaterThan(0));
-    expect(onView).toHaveBeenCalledWith(expect.objectContaining({ videoAssetId: "33333333-3333-4333-8333-333333333333" }));
+    await waitFor(() => expect(onView).toHaveBeenCalledWith(expect.objectContaining({ videoAssetId: "33333333-3333-4333-8333-333333333333" })));
     const uploaded = JSON.parse(String(vi.mocked(fetch).mock.calls[0]?.[1]?.body));
     expect(uploaded).not.toHaveProperty("competition");
     expect(uploaded).not.toHaveProperty("season");
