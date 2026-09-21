@@ -5,6 +5,8 @@ export type EvidenceGrantInput = Readonly<{
   name: string;
   contentType: "image/jpeg" | "video/mp4";
   sizeBytes: number;
+  jobRevision?: number;
+  contentSha256?: string;
 }>;
 
 // 증거 업로드 권한 모델

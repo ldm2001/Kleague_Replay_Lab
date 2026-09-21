@@ -8,8 +8,17 @@ import { competitionRules, ruleSet } from "@replay/rule-data";
 import { knownVideoSource } from "../../adapters/known-video-sources";
 import { analysis, candidate, judgment } from "../../../test/fixtures/result";
 import { RulePanel } from "./index";
+import { automaticJudgment } from "../../../test/fixtures/automatic";
 
 describe("RulePanel", () => {
+  it("shows a completed automatic pushing answer without claiming overall correctness or requesting facts", () => {
+    render(<RulePanel analysis={analysis()} candidate={{ ...candidate(0), automaticJudgment: automaticJudgment() }} />);
+    expect(screen.getByRole("heading", { name: "밀기 규정 평가 완료" })).toBeInTheDocument();
+    expect(screen.getByText("직접 프리킥")).toBeInTheDocument();
+    expect(screen.getByText(/다른 파울 유형과 원심의 정확성/)).toBeInTheDocument();
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    expect(screen.queryByText("규정 판단 근거 부족")).not.toBeInTheDocument();
+  });
   it("shows unknown contact and an explicit missing-facts explanation", () => {
     const unknown = { ...structuredClone(judgment), inconclusiveReason: "FACTS_UNDETERMINED" as const };
     unknown.facts.push.contactDetected.value = null;

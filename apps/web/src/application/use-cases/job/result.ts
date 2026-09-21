@@ -18,6 +18,7 @@ import type {
   ValidationPayload,
 } from "../../ports/repositories/job-store";
 import type { CompletionStorage } from "../../ports/storage/upload-storage";
+import { automaticReview } from "../evaluation/automatic";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CODE = /^[A-Z0-9_]{1,64}$/;
@@ -120,7 +121,7 @@ const evidence = (value: AnalysisEvidence): boolean =>
   Number.isSafeInteger(value.candidateIndex) &&
   value.candidateIndex >= 0 &&
   ["FRAME", "CLIP"].includes(value.kind) &&
-  /^evidence\/[0-9a-f-]+\/[0-9a-f-]+\/[A-Za-z0-9._-]+$/i.test(value.objectKey) &&
+  /^evidence\/[0-9a-f-]+\/[0-9a-f-]+\/(?:[1-9][0-9]*\/[a-f0-9]{64}\/)?[A-Za-z0-9._-]+$/i.test(value.objectKey) &&
   /^[a-f0-9]{64}$/i.test(value.contentSha256) &&
   Number.isSafeInteger(value.startMs) &&
   value.startMs >= 0 &&
@@ -266,6 +267,25 @@ export const result =
           new Date(preflight.expiresAt).getTime() <= completedAt.getTime()) {
           return { kind: "INVALID_RESULT", reason: "SOURCE" };
         }
+        const edition = preflight.ruleEdition;
+        const automatic = automaticReview({
+          analysisId: preflight.analysisId, jobId: input.jobId.toLowerCase(), jobRevision: input.jobRevision,
+          durationMs: preflight.durationMs ?? 0, sourceSha256: bytesHex(preflight.sourceSha256),
+          pipelineVersion: input.payload.pipelineVersion, perception, candidates: input.payload.candidates,
+          rule: edition?.verificationStatus === "VERIFIED" && edition.competition && edition.season ? {
+            id: edition.id, matchId: edition.matchId, competition: edition.competition, season: edition.season,
+            ifabVersionId: `ifab-${edition.ifabEdition}`, verificationStatus: "VERIFIED",
+          } : null,
+          references: references.filter((reference) => reference !== null).map((reference) => {
+            const item = evidence[reference.evidenceIndex]!;
+            const prefix = `evidence/${preflight.analysisId}/${input.jobId.toLowerCase()}/${input.jobRevision}/${item.contentSha256}/`;
+            return { evidenceIndex: reference.evidenceIndex, candidateIndex: reference.candidateIndex,
+              kind: item.kind, startMs: item.startMs, endMs: item.endMs,
+              contentSha256: reference.verifiedContentSha256,
+              immutable: item.objectKey.startsWith(prefix) && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(item.objectKey.slice(prefix.length)),
+            };
+          }),
+        });
         return repository.result({
           jobId: input.jobId.toLowerCase(),
           workerId,
@@ -273,6 +293,7 @@ export const result =
           leaseTokenHash,
           now: completedAt.toISOString(),
           payload: input.payload,
+          automaticReview: automatic,
           perceptionVerification: {
             analysisId: preflight.analysisId,
             sourceSha256: preflight.sourceSha256,

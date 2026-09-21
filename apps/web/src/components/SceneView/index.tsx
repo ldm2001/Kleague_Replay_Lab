@@ -8,7 +8,8 @@ import { SceneList } from "../SceneList";
 
 // 장면 증거 선택
 const media = (candidate: CandidateView, kind: "FRAME" | "CLIP") =>
-  candidate.evidence?.find((item) => item.kind === kind) ?? null;
+  candidate.evidence?.find((item) => item.kind === kind && (kind !== "CLIP" || !candidate.automaticJudgment ||
+    candidate.automaticJudgment.evidenceIds.includes(item.evidenceId))) ?? null;
 
 // 증거 주소 생성
 const source = (analysisId: string, evidenceId: string) =>
@@ -19,7 +20,8 @@ export function SceneView({ analysis }: Readonly<{ analysis: AnalysisView }>) {
   // 완료된 범위 평가를 우선 보여주되 이후 사용자가 선택한 위치는 유지한다
   const [index, setIndex] = useState(() => {
     const completed = analysis.candidates.findIndex((candidate) =>
-      candidate.varScopeEvaluation?.kind === "COMPETITION_VAR_SCOPE" && candidate.varScopeEvaluation.status === "COMPLETED");
+      candidate.automaticJudgment?.status === "COMPLETED" ||
+      (candidate.varScopeEvaluation?.kind === "COMPETITION_VAR_SCOPE" && candidate.varScopeEvaluation.status === "COMPLETED"));
     if (completed >= 0) return completed;
     return Math.max(0, analysis.candidates.findIndex((candidate) =>
       analysis.diagnostics
@@ -65,7 +67,7 @@ export function SceneView({ analysis }: Readonly<{ analysis: AnalysisView }>) {
   const frameSource = frame ? source(analysis.analysisId, frame.evidenceId) : undefined;
   const scope = candidate.varScopeEvaluation;
   const completedGoalScope = scope?.kind === "COMPETITION_VAR_SCOPE" && scope.status === "COMPLETED" && scope.topic === "GOAL_RELATED";
-  const sceneLabel = completedGoalScope ? "득점 관련 장면" : candidate.sceneEvent?.kind === "CORNER_KICK" && candidate.sceneEvent.status === "OBSERVED" ? "코너킥 장면" : "후보 장면";
+  const sceneLabel = candidate.automaticJudgment?.status === "COMPLETED" ? "밀기 평가 장면" : completedGoalScope ? "득점 관련 장면" : candidate.sceneEvent?.kind === "CORNER_KICK" && candidate.sceneEvent.status === "OBSERVED" ? "코너킥 장면" : "후보 장면";
   const evidenceUnavailable = Boolean(analysis.diagnostics) && sceneLabel === "코너킥 장면" && candidate.filter?.reasonCodes.includes("EVIDENCE_UNAVAILABLE");
 
   return (

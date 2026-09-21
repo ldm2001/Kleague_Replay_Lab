@@ -27,6 +27,7 @@ describe("migration discovery", () => {
       "0017_analysis_perception_runs",
       "0018_perception_audio",
       "0019_judgment_contract",
+      "0020_automatic_reviews",
     ]);
     expect(list[0]?.checksum).toMatch(/^[a-f0-9]{64}$/);
     expect(list[0]?.sql).toContain("CREATE TABLE analyses");

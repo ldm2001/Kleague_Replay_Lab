@@ -173,7 +173,11 @@ export class S3Storage implements UploadStorage, CompletionStorage, JobSourceSto
 
   public async evidence(input: EvidenceGrantInput): Promise<EvidenceGrant> {
     // 증거 객체 업로드 주소 생성
-    const objectKey = `evidence/${input.analysisId}/${input.jobId}/${input.name}`;
+    if (input.contentSha256 !== undefined && (!/^[a-f0-9]{64}$/.test(input.contentSha256) ||
+        !Number.isSafeInteger(input.jobRevision) || input.jobRevision! < 1)) throw new Error("invalid-immutable-evidence");
+    const checksum = input.contentSha256 === undefined ? null : Buffer.from(input.contentSha256, "hex").toString("base64");
+    const objectKey = checksum === null ? `evidence/${input.analysisId}/${input.jobId}/${input.name}`
+      : `evidence/${input.analysisId}/${input.jobId}/${input.jobRevision}/${input.contentSha256}/${input.name}`;
     const uploadUrl = await this.sign(
       this.options.client,
       new PutObjectCommand({
@@ -181,10 +185,13 @@ export class S3Storage implements UploadStorage, CompletionStorage, JobSourceSto
         Key: objectKey,
         ContentType: input.contentType,
         ContentLength: input.sizeBytes,
+        ...(checksum === null ? {} : { ChecksumSHA256: checksum, IfNoneMatch: "*" }),
       }),
       this.expiresIn,
     );
-    return { objectKey, uploadUrl };
+    return { objectKey, uploadUrl, ...(checksum === null ? {} : {
+      headers: { "x-amz-checksum-sha256": checksum, "if-none-match": "*" },
+    }) };
   }
 
   public async perception(input: PerceptionGrantInput): Promise<EvidenceGrant> {

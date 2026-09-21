@@ -1,6 +1,6 @@
 import type { Clock } from "../../ports/clock/clock";
 import type { AnalysisResultStore, AnalysisView, CandidateView } from "../../ports/repositories/status-store";
-import { broadcastCueData, VAR_SCOPE_NOT_ASSESSED } from "@replay/shared-types";
+import { AUTOMATIC_NOT_ASSESSED, AUTOMATIC_REVIEW_VERSION, publicAutomaticResult, broadcastCueData, VAR_SCOPE_NOT_ASSESSED } from "@replay/shared-types";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -39,6 +39,50 @@ const completedScope = (candidate: CandidateView): boolean => {
     value.citations.every((item) => item.authority === "KLEAGUE" && item.edition === value.season && item.ruleId.startsWith(`${value.ruleVersionId}-`));
 };
 
+const completedAutomatic = (candidate: CandidateView): boolean => {
+  const value = candidate.automaticJudgment;
+  if (!value || value.kind !== "AUTOMATIC_PUSHING" || value.status !== "COMPLETED" ||
+      value.evaluatorVersion !== AUTOMATIC_REVIEW_VERSION || value.candidateIndex !== candidate.index ||
+      !/^[a-f0-9]{64}$/.test(value.sourceSha256) || !value.producer?.methodId || !value.producer.version ||
+      !/^[a-f0-9]{64}$/.test(value.producer.validationReportSha256) || value.rule?.verificationStatus !== "VERIFIED" ||
+      !UUID.test(value.rule.id) || !UUID.test(value.rule.matchId) || candidate.filter?.status === "EXCLUDED" ||
+      !value.result || !["FOUL", "NO_FOUL"].includes(value.result.decision) ||
+      !value.result.restart || value.result.restart === "UNKNOWN" || value.result.disciplinary === null ||
+      value.result.inconclusiveReason !== null || value.result.varAssessment !== null ||
+      !Array.isArray(value.result.citations) || !value.result.citations.length ||
+      !value.result.citations.some((citation) => citation.authority === "IFAB" && `ifab-${citation.edition}` === value.rule.ifabVersionId) ||
+      !Array.isArray(value.notAssessed) || !AUTOMATIC_NOT_ASSESSED.every((item) => value.notAssessed.includes(item)) ||
+      !Array.isArray(value.evidenceIds) || !value.evidenceIds.length) return false;
+  const evidence = new Map((candidate.evidence ?? []).map((item) => [item.evidenceId, item.kind]));
+  return value.evidenceIds.every((id) => evidence.has(id)) && value.evidenceIds.some((id) => evidence.get(id) === "CLIP");
+};
+
+// 결과 조회와 진행 조회가 같은 공개 경계를 사용한다.
+export const publicAnalysis = (result: AnalysisView): AnalysisView => {
+  if (!result.diagnostics && !result.automaticReviewSummary && result.resultPolicy !== "COMPLETED_ONLY") return result;
+  const { diagnostics: _diagnostics, filterSummary: _filterSummary, automaticReviewSummary: _review, ...publicResult } = result;
+  const candidates = result.candidates.filter((candidate) => completedScope(candidate) || completedAutomatic(candidate))
+    .sort((first, second) => first.startMs - second.startMs || first.index - second.index)
+    .map((candidate): CandidateView => {
+      const { judgment: _judgment, facts: _facts, factRevisionId: _revision, observation: _observation,
+        filter: _filter, tracking: _tracking, sceneEvent: _sceneEvent, automaticJudgment: _automatic,
+        varScopeEvaluation: _scope, broadcastCue: _cue, ...visible } = candidate;
+      const cue = completedScope(candidate) ? candidate.broadcastCue : null;
+      return { ...visible, judgment: null, signalScore: null, reasons: [],
+        ...(completedAutomatic(candidate) ? { automaticJudgment: { ...candidate.automaticJudgment!,
+          result: publicAutomaticResult(candidate.automaticJudgment!.result) } } : {}),
+        ...(cue ? { varScopeEvaluation: candidate.varScopeEvaluation, broadcastCue: { kind: cue.kind, method: cue.method,
+          startMs: cue.startMs, endMs: cue.endMs, evidenceTimestampsMs: [...cue.evidenceTimestampsMs] } } : {}),
+      };
+    });
+  const evaluatedCount = candidates.filter((candidate) => candidate.automaticJudgment != null).length;
+  return { ...publicResult, resultPolicy: "COMPLETED_ONLY",
+    mode: evaluatedCount ? "ADJUDICATED" : "VISUAL_CHANGE_BASELINE",
+    // 지원 밀기 질문의 완료를 영상의 모든 파울 평가 완료로 확대하지 않는다.
+    judgmentStatus: evaluatedCount ? "PARTIAL" : "NOT_EVALUATED", evaluatedCount, rule: null,
+    completedScopeCount: candidates.filter((candidate) => candidate.varScopeEvaluation != null).length, candidates };
+};
+
 export const report =
   ({ clock, repository }: ReportDependencies) =>
   async (input: ReportInput): Promise<ReportResult> => {
@@ -57,28 +101,5 @@ export const report =
       now: clock.now().toISOString(),
     });
     // 과거 수동 평가 이력의 조회 계약은 유지한다
-    if (!result || !result.diagnostics) return result;
-    // 범위 평가의 완료는 전체 파울 판정 완료와 별개이며 기존 MODEL·USER·CURATOR 판정은 재사용하지 않는다
-    const { diagnostics: _diagnostics, filterSummary: _filterSummary, ...publicResult } = result;
-    const candidates = result.candidates.filter(completedScope)
-      .sort((first, second) => first.startMs - second.startMs || first.index - second.index)
-      .map((candidate): CandidateView => {
-        // 독립 범위 평가에 사용하지 않은 과거 사실·판정·원시 진단은 공개 결과에 섞지 않는다
-        const { judgment: _judgment, facts: _facts, factRevisionId: _revision, observation: _observation,
-          filter: _filter, tracking: _tracking, sceneEvent: _sceneEvent, ...visible } = candidate;
-        const cue = candidate.broadcastCue!;
-        return { ...visible, judgment: null, signalScore: null, reasons: [],
-          broadcastCue: { kind: cue.kind, method: cue.method, startMs: cue.startMs, endMs: cue.endMs,
-            evidenceTimestampsMs: [...cue.evidenceTimestampsMs] } };
-      });
-    return {
-      ...publicResult,
-      resultPolicy: "COMPLETED_ONLY",
-      mode: "VISUAL_CHANGE_BASELINE",
-      judgmentStatus: "NOT_EVALUATED",
-      evaluatedCount: 0,
-      rule: null,
-      completedScopeCount: candidates.length,
-      candidates,
-    };
+    return result ? publicAnalysis(result) : null;
   };

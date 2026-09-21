@@ -219,6 +219,21 @@ class ResultStorage {
 }
 
 describe("result", () => {
+  it("automatically reviews verified local output without trusting Worker facts or completion claims", async () => {
+    const repository = new PerceptionResultStore();
+    const payload = perceptionPayload();
+    const operation = result({ clock, repository, storage: new ResultStorage(),
+      hasher: { sha256: async () => Uint8Array.from([1, 2, 3]) } });
+    expect(await operation({ jobId: PERCEPTION_JOB_ID, workerId: "worker-1", jobRevision: 2,
+      leaseToken: "lease-token", payload: { ...payload, automaticReview: { evaluatedCount: 999 } } as never,
+    })).toEqual({ kind: "ACCEPTED" });
+    expect(repository.commands[0]).toHaveProperty("automaticReview");
+    expect(repository.commands[0]).toMatchObject({ automaticReview: {
+      analysisId: PERCEPTION_ANALYSIS_ID, jobId: PERCEPTION_JOB_ID, jobRevision: 2,
+      sourceSha256: PERCEPTION_SOURCE_SHA256, evaluatedCount: 0, blockedCount: 1,
+      rows: [{ status: "BLOCKED", facts: null, result: null }],
+    } });
+  });
   it("preflights and verifies both visual and audio-associated references for a v2 run", async () => {
     const repository = new PerceptionResultStore();
     const storage = new ResultStorage();

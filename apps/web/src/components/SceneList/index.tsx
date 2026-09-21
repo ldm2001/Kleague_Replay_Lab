@@ -31,12 +31,13 @@ const SceneRow = memo(function SceneRow({ analysisId, candidate, index, active, 
   // 대표 프레임 선택
   const frame = candidate.evidence?.find((item) => item.kind === "FRAME");
   const scope = candidate.varScopeEvaluation;
+  const automaticCompleted = candidate.automaticJudgment?.status === "COMPLETED";
   const scopeCompleted = scope?.kind === "COMPETITION_VAR_SCOPE" && scope.status === "COMPLETED";
   const cornerObserved = candidate.sceneEvent?.kind === "CORNER_KICK" && candidate.sceneEvent.status === "OBSERVED";
   const cornerEvidenceUnavailable = !scopeCompleted && cornerObserved && candidate.filter?.status === "UNDETERMINED" &&
     candidate.filter.reasonCodes.includes("EVIDENCE_UNAVAILABLE");
-  const sceneLabel = scopeCompleted && scope.topic === "GOAL_RELATED" ? "득점 관련 장면" : cornerObserved ? "코너킥 장면" : "후보 장면";
-  const filterLabel = scopeCompleted ? "범위 평가 완료" : candidate.filter ? {
+  const sceneLabel = automaticCompleted ? "밀기 평가 장면" : scopeCompleted && scope.topic === "GOAL_RELATED" ? "득점 관련 장면" : cornerObserved ? "코너킥 장면" : "후보 장면";
+  const filterLabel = automaticCompleted ? "밀기 규정 평가 완료" : scopeCompleted ? "범위 평가 완료" : candidate.filter ? {
     EXCLUDED: "표시 대상 제외",
     UNDETERMINED: cornerEvidenceUnavailable ? "영상 근거 제공 불가" : "규정 판단 근거 부족",
     OBSERVED: "재개 장면 관찰 · 참고 규정",
@@ -69,7 +70,7 @@ const SceneRow = memo(function SceneRow({ analysisId, candidate, index, active, 
           <em>{filterLabel}</em>
         </span>
         {/* 완료 범위 평가와 재개 장면은 변화 신호 점수로 표시하지 않는다 */}
-        {scopeCompleted ? <span className="rail-score">범위 평가</span> : cornerObserved ? <span className="rail-score">재개</span> : <span className="rail-score" aria-label="화면 변화 점수이며 파울 확률이 아님">{candidate.signalScore === null ? "—" : `${Math.round(candidate.signalScore * 100)}%`}</span>}
+        {automaticCompleted ? <span className="rail-score">규정 평가</span> : scopeCompleted ? <span className="rail-score">범위 평가</span> : cornerObserved ? <span className="rail-score">재개</span> : <span className="rail-score" aria-label="화면 변화 점수이며 파울 확률이 아님">{candidate.signalScore === null ? "—" : `${Math.round(candidate.signalScore * 100)}%`}</span>}
       </button>
     </li>
   );

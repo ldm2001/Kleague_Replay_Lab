@@ -7,6 +7,7 @@ export type EvidenceView = Readonly<{
 
 // 후보 화면 모델
 export type CandidateView = Readonly<{
+  automaticJudgment?: import("@replay/shared-types").AutomaticJudgment | null;
   tracking?: import("@replay/shared-types").TrackingSummary | null;
   sceneEvent?: import("@replay/shared-types").SceneEvent | null;
   broadcastCue?: import("@replay/shared-types").BroadcastCue | null;
@@ -49,6 +50,7 @@ export type JudgmentView = Readonly<{
 
 // 분석 화면 모델
 export type AnalysisView = Readonly<{
+  automaticReviewSummary?: Readonly<{ videoCoverage: "FULL" | "PARTIAL"; summaryTruncated: boolean; checkedCount: number; completedCount: number; blockedCount: number }>;
   resultPolicy?: "COMPLETED_ONLY";
   filterSummary?: Readonly<{ checkedCount: number; excludedCount: number; undeterminedCount: number; observedCount?: number; applicableCount?: number }>;
   diagnostics?: Readonly<{

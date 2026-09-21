@@ -9,6 +9,7 @@ import type { AnalysisView } from "@replay/application";
 import type { VarScopeEvaluation } from "@replay/shared-types";
 import { analysis } from "../../../test/fixtures/result";
 import { SceneView } from "./index";
+import { automaticJudgment } from "../../../test/fixtures/automatic";
 
 // UI 표시 전용 서버 응답 모형이며 실제 영상 출처 일치나 규정 평가를 검증하지 않는다.
 const completedScope: VarScopeEvaluation = {
@@ -27,6 +28,13 @@ const completedScope: VarScopeEvaluation = {
 
 // 장면 보기 테스트
 describe("SceneView", () => {
+  it("labels automatic pushing as a rule result rather than a visual change score", () => {
+    const base = analysis(1);
+    render(<SceneView analysis={{ ...base, resultPolicy: "COMPLETED_ONLY",
+      candidates: [{ ...base.candidates[0]!, automaticJudgment: automaticJudgment(), signalScore: null }] }} />);
+    expect(screen.getByRole("button", { name: /밀기 평가 장면 01/ })).toBeInTheDocument();
+    expect(screen.queryByLabelText("화면 변화 점수이며 파울 확률이 아님")).not.toBeInTheDocument();
+  });
   afterEach(() => {
     // 테스트 DOM 정리
     cleanup();

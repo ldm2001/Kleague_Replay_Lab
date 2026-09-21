@@ -6,6 +6,7 @@ describe("database schema public contract", () => {
   it("exports every MVP table", () => {
     expect(Object.keys(schema).sort()).toEqual([
       "analyses",
+      "analysisAutomaticReviews",
       "analysisPerceptionRuns",
       "anonymousSessions",
       "clubs",

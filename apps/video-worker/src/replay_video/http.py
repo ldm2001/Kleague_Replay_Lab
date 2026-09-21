@@ -165,7 +165,8 @@ class Api:
                 raise HttpError("evidence-headers-invalid")
             maximum = 128 * 1024 * 1024
         elif content_type in {"image/jpeg", "video/mp4"}:
-            if forwarded:
+            if forwarded and (set(forwarded) != allowed or forwarded.get("if-none-match") != "*" or
+                              not forwarded.get("x-amz-checksum-sha256")):
                 raise HttpError("evidence-headers-invalid")
             maximum = 50 * 1024 * 1024
         else:

@@ -208,6 +208,27 @@ export const processingJobs = pgTable("processing_jobs", {
 });
 
 // 비공개 운영 관측 결과 테이블
+export const analysisAutomaticReviews = pgTable("analysis_automatic_reviews", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  analysisId: uuid("analysis_id").notNull().references(() => analyses.id, { onDelete: "cascade" }),
+  jobId: uuid("job_id").notNull().references(() => processingJobs.id, { onDelete: "cascade" }),
+  jobRevision: integer("job_revision").notNull(),
+  sourceSha256: bytea("source_sha256").notNull(),
+  evaluatorVersion: varchar("evaluator_version", { length: 32 }).notNull(),
+  pipelineVersion: varchar("pipeline_version", { length: 64 }).notNull(),
+  summary: jsonb("summary").notNull(),
+  evidenceBindings: jsonb("evidence_bindings").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+}, (table) => [
+  uniqueIndex("analysis_automatic_reviews_job_revision_unique").on(table.jobId, table.jobRevision),
+  index("analysis_automatic_reviews_analysis_idx").on(table.analysisId),
+  check("analysis_automatic_reviews_revision_check", sql`${table.jobRevision} > 0`),
+  check("analysis_automatic_reviews_source_check", sql`octet_length(${table.sourceSha256}) = 32`),
+  check("analysis_automatic_reviews_version_check", sql`${table.evaluatorVersion} = 'automatic-review-v1'`),
+  check("analysis_automatic_reviews_expiry_check", sql`${table.expiresAt} > ${table.createdAt}`),
+]);
+
 export const analysisPerceptionRuns = pgTable(
   "analysis_perception_runs",
   {

@@ -52,6 +52,16 @@ class Storage implements EvidenceStorage {
 }
 
 describe("evidence grants", () => {
+  it("passes verified-format media hash and revision into an immutable grant", async () => {
+    const storage = new Storage();
+    const value = await evidence({ clock: { now: () => NOW }, hasher: { sha256: async () => new Uint8Array(32) },
+      repository: new EvidenceStoreFake(), storage })({
+      jobId: "11111111-1111-4111-8111-111111111111", workerId: "worker", jobRevision: 2, leaseToken: "lease",
+      items: [{ name: "clip.mp4", contentType: "video/mp4", sizeBytes: 128, contentSha256: "c".repeat(64) }],
+    });
+    expect(value.kind).toBe("GRANTED");
+    expect(storage.inputs[0]).toMatchObject({ jobRevision: 2, contentSha256: "c".repeat(64) });
+  });
   it("authorizes a lease and grants only bounded evidence files", async () => {
     // 유효한 Lease 증거 권한 실행
     const repository = new EvidenceStoreFake();

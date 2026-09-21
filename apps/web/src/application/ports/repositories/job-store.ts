@@ -147,6 +147,7 @@ export type JobResultPayload = ValidationPayload | AnalysisPayload | JobFailureP
 
 // 작업 결과 저장 입력
 export type JobResultCommand = Readonly<{
+  automaticReview?: import("@replay/shared-types").AutomaticReviewBatch;
   jobId: string;
   workerId: string;
   jobRevision: number;
@@ -180,11 +181,14 @@ export type JobResultPreflight =
       sourceSha256: Uint8Array;
       analysisSourceSha256: Uint8Array;
       expiresAt: string | null;
+      durationMs?: number | null;
       ruleEdition: Readonly<{
         id: string;
         verificationStatus: string;
         matchId: string;
         ifabEdition: string;
+        competition?: string;
+        season?: string;
       }> | null;
     }>
   | Readonly<{ kind: "NOT_FOUND" | "STALE_LEASE" | "ALREADY_FINISHED" }>;

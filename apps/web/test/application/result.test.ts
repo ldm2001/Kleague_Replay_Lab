@@ -10,6 +10,7 @@ import { analysis as fixture } from "../fixtures/result";
 import { competitionRules } from "@replay/rule-data";
 import { evaluateVarScope } from "@replay/rule-engine";
 import { knownVideoSource } from "../../src/adapters/known-video-sources";
+import { automaticJudgment } from "../fixtures/automatic";
 
 const SESSION = "11111111-1111-4111-8111-111111111111";
 const ANALYSIS = "22222222-2222-4222-8222-222222222222";
@@ -38,6 +39,36 @@ class ResultDouble implements AnalysisResultStore {
 }
 
 describe("analysis result", () => {
+  it("publishes a completed server automatic judgment independently of VAR scope and strips private diagnostics", async () => {
+    const base = fixture();
+    const automatic = automaticJudgment();
+    const privateAutomatic = { ...automatic, result: { ...automatic.result,
+      factSignatureInput: "private contactDetected", accounts: [{ privateObservation: true }],
+    } };
+    const internal: AnalysisView = { ...base,
+      candidates: [{ ...base.candidates[0]!, automaticJudgment: privateAutomatic }, base.candidates[1]!],
+      automaticReviewSummary: { videoCoverage: "FULL", summaryTruncated: false, checkedCount: 2, completedCount: 1, blockedCount: 1 },
+      diagnostics: { rawProposalCount: 2, invalidOutputCount: 0, recognizedEventCount: 0, supportedEventTypes: [], reasons: [] },
+    };
+    const operation = report({ clock: { now: () => NOW }, repository: { analysis: async () => internal } });
+    const output = await operation({ anonymousSessionId: SESSION, analysisId: ANALYSIS });
+    expect(output).toMatchObject({ resultPolicy: "COMPLETED_ONLY", evaluatedCount: 1, completedScopeCount: 0, judgmentStatus: "PARTIAL",
+      candidates: [{ automaticJudgment: automatic, judgment: null, signalScore: null }] });
+    expect(output).not.toHaveProperty("automaticReviewSummary");
+    expect(JSON.stringify(output)).not.toContain("factSignatureInput");
+    expect(JSON.stringify(output)).not.toContain("contactDetected");
+    for (const changed of [
+      { ...automatic, candidateIndex: 2 }, { ...automatic, status: "BLOCKED" },
+      { ...automatic, evidenceIds: [] }, { ...automatic, producer: null },
+      { ...automatic, result: { ...automatic.result, decision: "INCONCLUSIVE" } },
+      { ...automatic, result: { ...automatic.result, restart: null } },
+    ]) {
+      const result = await report({ clock: { now: () => NOW }, repository: { analysis: async () => ({ ...internal,
+        candidates: [{ ...base.candidates[0]!, automaticJudgment: changed }],
+      } as AnalysisView) } })({ anonymousSessionId: SESSION, analysisId: ANALYSIS });
+      expect(result).toMatchObject({ candidates: [], evaluatedCount: 0 });
+    }
+  });
   it("publishes a completed competition-scope answer without inventing a foul judgment", async () => {
     const base = fixture();
     const candidate = base.candidates[0]!;

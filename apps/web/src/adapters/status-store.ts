@@ -1,10 +1,12 @@
 import { sql } from "drizzle-orm";
 import type { AnalysisResultCommand, AnalysisResultStore as ResultPort, AnalysisView, CandidateView, EvidenceMedia, EvidenceMediaCommand, EvidenceMediaStore as EvidencePort, LatestMediaCommand, LatestMediaStore as LatestPort, MediaStatusCommand, MediaStatusStore as StatusPort, MediaView } from "@replay/application";
 import type { DatabaseClient } from "@replay/database";
-import { evaluateVarScope, pipelineFilter } from "@replay/rule-engine";
+import { evaluateVarScope, pipelineFilter, perceptionModelPins } from "@replay/rule-engine";
 import { competitionRules, ruleSet } from "@replay/rule-data";
 import { broadcastCueData, sceneEventData, type ScopeEvidence } from "@replay/shared-types";
 import { knownVideoSource } from "./known-video-sources";
+import { automaticJudgments, type AutomaticEvidenceBinding } from "./automatic-review-binding";
+import type { AutomaticReviewBatch, AutomaticRuleContext } from "../shared/automatic-review";
 
 type DatabaseHandle = Pick<DatabaseClient, "db">;
 
@@ -26,6 +28,7 @@ type MediaRow = Readonly<{
   verification_status: string | null;
   source_document: string | null;
   match_id: string | null;
+  rule_version_id: string | null;
 }>;
 
 type CandidateRow = Readonly<{
@@ -68,6 +71,8 @@ type CandidateRow = Readonly<{
 }>;
 
 type EvidenceRow = Readonly<{
+  object_key: string;
+  content_sha256: string;
   id: string;
   candidate_index: number;
   kind: "FRAME" | "CLIP";
@@ -98,7 +103,7 @@ export class StatusStore implements StatusPort, ResultPort, EvidencePort, Latest
              rule.ifab_edition,
              rule.verification_status,
              rule.source_document,
-             analysis.match_id
+             analysis.match_id, rule.id as rule_version_id
       from video_assets as video
       join anonymous_sessions as session on session.id = video.anonymous_session_id
       left join analyses as analysis on analysis.video_asset_id = video.id
@@ -178,7 +183,8 @@ export class StatusStore implements StatusPort, ResultPort, EvidencePort, Latest
     `);
     // 증거 파일 목록 조회
     const evidence = await this.client.db.execute(sql`
-      select asset.id, candidate.candidate_index, asset.kind::text as kind, asset.start_ms, asset.end_ms
+      select asset.id, candidate.candidate_index, asset.kind::text as kind, asset.start_ms, asset.end_ms,
+             asset.object_key, encode(asset.content_sha256, 'hex') as content_sha256
       from evidence_assets as asset
       join incident_candidates as candidate on candidate.id = asset.incident_candidate_id
       where asset.analysis_id = ${row.analysis_id}
@@ -205,6 +211,39 @@ export class StatusStore implements StatusPort, ResultPort, EvidencePort, Latest
     const pipelineOutput = row.pipeline_version != null;
     const source = knownVideoSource(row.source_sha256 ?? "");
     const book = source ? competitionRules(source.competition, source.season) : null;
+    const automaticRows = pipelineOutput ? await this.client.db.execute(sql`
+      select review.summary, review.evidence_bindings, perception.model_provenance,
+             exists(select 1 from matches as match join competition_rule_versions as rule
+               on rule.id = analysis.applied_rule_version_id and rule.competition = match.competition and rule.season = match.season
+               and match.match_date >= rule.effective_from and (rule.effective_to is null or match.match_date <= rule.effective_to)
+               and rule.verification_status = 'VERIFIED' and nullif(trim(rule.source_document), '') is not null
+               where match.id = analysis.match_id) as match_context_valid
+      from analysis_automatic_reviews as review
+      join analyses as analysis on analysis.id = review.analysis_id
+      join processing_jobs as job on job.id = review.job_id and job.analysis_id = analysis.id
+      join video_assets as video on video.id = analysis.video_asset_id
+      left join analysis_perception_runs as perception on perception.job_id = review.job_id
+        and perception.analysis_id = review.analysis_id and perception.job_revision = review.job_revision
+        and perception.source_sha256 = review.source_sha256 and perception.pipeline_version = review.pipeline_version
+        and perception.expires_at > ${command.now}
+      where review.analysis_id = ${row.analysis_id}
+        and review.source_sha256 = analysis.source_fingerprint and review.source_sha256 = video.content_sha256
+        and review.pipeline_version = analysis.pipeline_version
+        and review.evaluator_version = 'automatic-review-v1'
+        and job.status = 'SUCCEEDED' and job.job_type = 'ANALYZE_VIDEO' and job.job_revision = review.job_revision
+        and review.expires_at > ${command.now} and analysis.expires_at > ${command.now}
+      order by review.created_at desc, review.id desc limit 1
+    `) : [];
+    const [automatic] = automaticRows as unknown as Array<{ summary: AutomaticReviewBatch; evidence_bindings: AutomaticEvidenceBinding[];
+      match_context_valid: boolean; model_provenance: import("@replay/shared-types").PerceptionRun["models"] | null }>;
+    const currentRule: AutomaticRuleContext | null = row.rule_version_id && row.match_id && row.competition && row.season && row.ifab_edition && row.verification_status === "VERIFIED"
+      ? { id: row.rule_version_id, matchId: row.match_id, competition: row.competition, season: row.season, ifabVersionId: `ifab-${row.ifab_edition}`, verificationStatus: "VERIFIED" } : null;
+    const currentPins = automatic?.model_provenance && Object.values(perceptionModelPins).every((pin) =>
+      automatic.model_provenance!.some((model) => model.component === pin.component && model.modelId === pin.modelId && model.revision === pin.revision && model.weightsSha256 === pin.weightsSha256));
+    const automaticViews = automatic && currentPins && automatic.match_context_valid ? automaticJudgments(automatic.summary, automatic.evidence_bindings,
+      (evidence as unknown as EvidenceRow[]).map((item, evidenceIndex) => ({ evidenceIndex, evidenceId: item.id,
+        candidateIndex: item.candidate_index, kind: item.kind, objectKey: item.object_key, contentSha256: item.content_sha256,
+        startMs: item.start_ms, endMs: item.end_ms, width: null, height: null })), currentRule) : new Map();
     const views: CandidateView[] = (candidates as unknown as CandidateRow[]).map((item) => {
       const filter = pipelineFilter({
         startMs: item.start_ms, endMs: item.end_ms, anchorMs: item.anchor_ms,
@@ -214,6 +253,7 @@ export class StatusStore implements StatusPort, ResultPort, EvidencePort, Latest
         evidenceIds: (grouped.get(item.candidate_index) ?? []).map((entry) => entry.evidenceId),
       }, rules);
       return {
+      automaticJudgment: automaticViews.get(item.candidate_index) ?? null,
       filter,
       varScopeEvaluation: pipelineOutput && filter.status !== "EXCLUDED" ? evaluateVarScope({
         broadcastCue: item.broadcast_cue ?? null, startMs: item.start_ms, endMs: item.end_ms,
@@ -276,7 +316,7 @@ export class StatusStore implements StatusPort, ResultPort, EvidencePort, Latest
     const diagnosticReasons = [...new Set([...raw, ...invalid].flatMap((candidate) => candidate.filter?.reasonCodes ?? []))].sort();
     // 버전 없는 과거 분석은 기존 이력 조회를 유지하며 자동 파이프라인과 합치지 않는다
     const hasBroadcast = views.some((candidate) => broadcastCueData(candidate.broadcastCue, candidate.startMs, candidate.endMs));
-    const publicCandidates = pipelineOutput ? recognized : views.filter((candidate) => candidate.filter?.status !== "EXCLUDED");
+    const publicCandidates = pipelineOutput ? views.filter((candidate) => recognized.includes(candidate) || candidate.automaticJudgment != null) : views.filter((candidate) => candidate.filter?.status !== "EXCLUDED");
     const judgmentViews = pipelineOutput ? recognized : views;
     // 화면에 연결한 현재 버전 판정만 완료 건수에 포함
     const evaluated = judgmentViews.filter((item) => item.judgment !== null).length;
@@ -287,6 +327,9 @@ export class StatusStore implements StatusPort, ResultPort, EvidencePort, Latest
       videoStatus: row.video_status,
       validationErrorCode: row.validation_error_code,
       analysis: {
+        ...(automatic ? { automaticReviewSummary: { videoCoverage: automatic.summary.videoCoverage,
+          summaryTruncated: automatic.summary.summaryTruncated, checkedCount: automatic.summary.rows.length,
+          completedCount: automaticViews.size, blockedCount: automatic.summary.blockedCount } } : {}),
         analysisId: row.analysis_id,
         mode: allJudged ? "ADJUDICATED" : "VISUAL_CHANGE_BASELINE",
         judgmentStatus: allJudged ? "EVALUATED" : evaluated > 0 ? "PARTIAL" : "NOT_EVALUATED",
