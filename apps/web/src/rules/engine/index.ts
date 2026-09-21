@@ -1,5 +1,8 @@
 // 규정 엔진 공개 모듈
 export { pushAccounts } from "./interpreter/accounts";
+export { evaluateHolding, publicIncidentConclusions } from "./incidents/holding";
+export { incidentRecordSignature, readIncidentAssertion } from "./incidents/evidence";
+export type { IncidentAdmission, IncidentAssertionRead } from "./incidents/evidence";
 export type { PushAccountView } from "./interpreter/accounts";
 export { pushGates, discipline } from "./gates/push-gates";
 export type { PushVerdict } from "./gates/push-gates";

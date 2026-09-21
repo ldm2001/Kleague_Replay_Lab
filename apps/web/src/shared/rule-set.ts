@@ -4,6 +4,14 @@ import type { SendOffCategory, VarCategory, ReviewScenario } from "./vocabulary"
 // 엔진과 규정 데이터 사이의 질문 목록
 // 규정 개념 키
 export const CONCEPT_KEYS = Object.freeze([
+  "LAW_12_HOLDING_DEFINITION",
+  "LAW_12_HOLDING_OFFENCE",
+  "LAW_12_IN_PLAY",
+  "LAW_12_CONTINUING_HOLDING",
+  "LAW_13_BENEFICIARY",
+  "LAW_14_PENALTY",
+  "LAW_5_ADVANTAGE",
+  "LAW_5_MULTIPLE_OFFENCES",
   "LAW_17_CORNER_PROCEDURE",
   "LAW_11_DIRECT_RESTART_OFFSIDE",
   "LAW_12_DIRECT_FREE_KICK",

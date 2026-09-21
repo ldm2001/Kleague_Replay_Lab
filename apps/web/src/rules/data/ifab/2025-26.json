@@ -3,6 +3,94 @@
   "authority": "IFAB",
   "edition": "2025-26",
   "concepts": {
+    "LAW_12_HOLDING_DEFINITION": [
+      {
+        "key": "holding-definition",
+        "revision": 1,
+        "law": "Glossary",
+        "section": "Holding offence",
+        "relevance": "PRIMARY",
+        "sourcePage": "178",
+        "quoteSnapshot": "규정 요약: 선수의 상대 신체 또는 장비에 대한 접촉이 상대 움직임을 방해하는 경우에만 잡기 반칙이 성립한다."
+      }
+    ],
+    "LAW_12_HOLDING_OFFENCE": [
+      {
+        "key": "law-12-1-holding",
+        "revision": 1,
+        "law": "12",
+        "section": "1",
+        "relevance": "PRIMARY",
+        "sourcePage": "110",
+        "quoteSnapshot": "규정 요약: 상대를 잡는 반칙에는 직접 프리킥이 주어진다. 잡기 성립에 부주의·무모함·과도한 힘 분류를 필수 조건으로 요구하지 않는다."
+      }
+    ],
+    "LAW_12_IN_PLAY": [
+      {
+        "key": "law-12-in-play",
+        "revision": 1,
+        "law": "12",
+        "section": "Introduction",
+        "relevance": "PRIMARY",
+        "sourcePage": "109",
+        "quoteSnapshot": "규정 요약: 직접·간접 프리킥과 페널티킥은 공이 인플레이일 때 발생한 반칙에 대해서만 부여할 수 있다."
+      }
+    ],
+    "LAW_12_CONTINUING_HOLDING": [
+      {
+        "key": "law-12-continuing-holding",
+        "revision": 1,
+        "law": "12",
+        "section": "3",
+        "relevance": "PRIMARY",
+        "sourcePage": "115",
+        "quoteSnapshot": "규정 요약: 수비수가 페널티 지역 밖에서 공격수를 잡기 시작해 지역 안에서도 계속 잡으면 페널티킥을 부여한다."
+      }
+    ],
+    "LAW_13_BENEFICIARY": [
+      {
+        "key": "law-13-1-beneficiary",
+        "revision": 1,
+        "law": "13",
+        "section": "1",
+        "relevance": "PRIMARY",
+        "sourcePage": "125",
+        "quoteSnapshot": "규정 요약: 직접·간접 프리킥은 위반 선수 등의 상대 팀에 부여한다."
+      }
+    ],
+    "LAW_14_PENALTY": [
+      {
+        "key": "law-14-penalty",
+        "revision": 1,
+        "law": "14",
+        "section": "Introduction",
+        "relevance": "PRIMARY",
+        "sourcePage": "129",
+        "quoteSnapshot": "규정 요약: 선수가 자기 페널티 지역 안에서 직접 프리킥 반칙을 하면 페널티킥을 부여한다. 필드 밖 사건은 Law 12와 13의 별도 조건을 따른다."
+      }
+    ],
+    "LAW_5_ADVANTAGE": [
+      {
+        "key": "law-5-3-advantage",
+        "revision": 1,
+        "law": "5",
+        "section": "3",
+        "relevance": "PRIMARY",
+        "sourcePage": "70",
+        "quoteSnapshot": "규정 요약: 반칙이 발생했어도 피해 팀이 이익을 얻으면 어드밴티지로 경기를 계속할 수 있다. 그때 또는 몇 초 안에 예상한 이익이 실현되지 않으면 반칙을 처벌한다."
+      }
+    ],
+    "LAW_5_MULTIPLE_OFFENCES": [
+      {
+        "key": "law-5-3-multiple-offences",
+        "revision": 1,
+        "law": "5",
+        "section": "3",
+        "relevance": "PRIMARY",
+        "sourcePage": "70",
+        "quoteSnapshot": "규정 요약: 여러 위반이 동시에 발생하면 제재·재개·신체적 심각성·전술적 영향을 고려해 더 심각한 위반을 처벌한다."
+      }
+    ],
     "LAW_17_CORNER_PROCEDURE": [
       {
         "key": "law-17-1-corner-procedure",

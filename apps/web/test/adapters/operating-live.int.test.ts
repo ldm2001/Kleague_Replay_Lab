@@ -12,6 +12,7 @@ import { evidence, report, result, status, type AnalysisPayload } from "@replay/
 import { perceptionRunData } from "@replay/shared-types";
 import { evidence as evidenceRoute, result as resultRoute, type JobApiDependencies } from "../../src/apis/job";
 import { knownVideoSource } from "../../src/adapters/known-video-sources";
+import type { AutomaticReviewBatch } from "@replay/shared-types";
 
 const enabled = process.env.REPLAY_LOCAL_STORAGE_TEST === "1";
 const reportPath = process.env.REPLAY_OPERATING_REPORT;
@@ -39,7 +40,21 @@ async function hashSource(path: string): Promise<Buffer> {
   return hash.digest();
 }
 
+const expectedMediaKey = (analysisId: string, jobId: string, input: Parameters<S3Storage["evidence"]>[0]): string => {
+  if (input.jobRevision !== 1 || !/^[a-f0-9]{64}$/.test(input.contentSha256 ?? "")) throw new Error("Invalid test evidence provenance");
+  return `evidence/${analysisId}/${jobId}/1/${input.contentSha256}/${input.name}`;
+};
+
 describe.skipIf(!enabled)("explicit local operating storage integration", () => {
+  it("checks the real-report harness against the current immutable media grant contract", async () => {
+    const { client, adapter } = storage();
+    const input = { analysisId: randomUUID(), jobId: randomUUID(), jobRevision: 1,
+      contentSha256: "a".repeat(64), name: "frame.jpg", contentType: "image/jpeg" as const, sizeBytes: 128 };
+    try {
+      const grant = await adapter.evidence(input);
+      expect(grant.objectKey).toBe(expectedMediaKey(input.analysisId, input.jobId, input));
+    } finally { client.destroy(); }
+  });
   it("enforces signed checksum and conditional first-write semantics on real local storage", async () => {
     const { client, adapter } = storage();
     const analysisId = randomUUID(), jobId = randomUUID();
@@ -100,7 +115,7 @@ describe.skipIf(!enabled)("explicit local operating storage integration", () => 
     const trackedStorage = {
       evidence: async (input: Parameters<S3Storage["evidence"]>[0]) => {
         const grant = await objectStorage.evidence(input);
-        const expected = `evidence/${analysisId}/${jobId}/${input.name}`;
+        const expected = expectedMediaKey(analysisId, jobId, input);
         if (grant.objectKey !== expected) throw new Error("Unexpected test evidence scope");
         uploadedKeys.add(expected);
         return grant;
@@ -192,6 +207,16 @@ print(json.dumps({'payload':payload,'ack':ack}))`;
       expect(saved?.summary.admission.reasons).toContain("RULE_EDITION_UNVERIFIED");
       expect(saved?.summary.coverage).toEqual(local.perception.coverage);
       expect(saved?.summary.incidents).toEqual(submitted.payload.perception?.incidents);
+      const [automatic] = await database.sql<{ summary: AutomaticReviewBatch }[]>`
+        select summary from analysis_automatic_reviews where analysis_id = ${analysisId}`;
+      expect(automatic?.summary).toMatchObject({ version: "automatic-review-v1", sourceSha256: sourceSha.toString("hex"),
+        evaluatedCount: 0, blockedCount: submitted.payload.candidates.length });
+      expect(automatic?.summary.rows).toHaveLength(submitted.payload.candidates.length);
+      expect(automatic?.summary.rows.every((row) => row.status === "BLOCKED" && row.facts === null && row.result === null)).toBe(true);
+      const automaticReasons: Record<string, number> = {};
+      for (const row of automatic!.summary.rows) {
+        for (const reason of row.reasonCodes) automaticReasons[reason] = (automaticReasons[reason] ?? 0) + 1;
+      }
       if (submitted.payload.perception?.schemaVersion === "perception-run-v2") {
         expect(saved?.summary.audio).toEqual(submitted.payload.perception.audio);
       } else {
@@ -205,6 +230,8 @@ print(json.dumps({'payload':payload,'ack':ack}))`;
         expect(JSON.stringify(view)).not.toContain("sourceFilesSha256");
         expect(JSON.stringify(view)).not.toContain("roleHypotheses");
         expect(JSON.stringify(view)).not.toContain("audio-observations-v1");
+        expect(JSON.stringify(view)).not.toContain("automaticReviewSummary");
+        expect(JSON.stringify(view)).not.toContain("factSignatureInput");
         if (submitted.payload.perception?.schemaVersion === "perception-run-v2") {
           expect(JSON.stringify(view)).not.toContain(JSON.stringify(submitted.payload.perception.audio));
         }
@@ -224,10 +251,16 @@ print(json.dumps({'payload':payload,'ack':ack}))`;
           coverage: submitted.payload.perception?.coverage, observationCounts: submitted.payload.perception?.summary,
           candidateCount: submitted.payload.candidates.length, evidenceCount: submitted.payload.evidence?.length,
           privateAdmission: saved?.summary.admission,
+          automaticReview: { version: automatic!.summary.version, videoCoverage: automatic!.summary.videoCoverage,
+            summaryTruncated: automatic!.summary.summaryTruncated, evaluatedCount: automatic!.summary.evaluatedCount,
+            blockedCount: automatic!.summary.blockedCount, reasonCounts: automaticReasons },
           publicResult: { status: (publicReport as any)?.status, resultPolicy: (publicReport as any)?.resultPolicy,
             completedScopeCount: (publicReport as any)?.completedScopeCount, evaluatedCount: (publicReport as any)?.evaluatedCount,
             judgmentStatus: (publicReport as any)?.judgmentStatus, candidateCount: (publicReport as any)?.candidates.length },
         }, null, 2), { flag: "wx" });
+      }
+      if (process.env.REPLAY_OPERATING_PUBLIC_OUT) {
+        writeFileSync(process.env.REPLAY_OPERATING_PUBLIC_OUT, JSON.stringify(publicReport, null, 2), { flag: "wx" });
       }
     } finally {
       server.closeAllConnections();
