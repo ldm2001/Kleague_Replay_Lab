@@ -9,7 +9,7 @@ import time
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 
@@ -317,7 +317,19 @@ def _probe_audio(path: Path, duration_ms: int | None) -> _MediaAudioMetadata | A
     )
 
 
-def _scan_pcm(path: Path, metadata: _MediaAudioMetadata) -> AudioScan:
+class _AudioCancelled(Exception):
+    def __init__(self, cause: Exception) -> None:
+        self.cause = cause
+
+
+def _scan_pcm(path: Path, metadata: _MediaAudioMetadata,
+              check_cancelled: Callable[[], None] | None = None) -> AudioScan:
+    def checkpoint() -> None:
+        if check_cancelled is not None:
+            try:
+                check_cancelled()
+            except Exception as error:
+                raise _AudioCancelled(error) from error
     decode_duration_ms = max(0, metadata.video_duration_ms - metadata.audio_offset_ms)
     if decode_duration_ms == 0:
         return AudioScan(
@@ -333,7 +345,7 @@ def _scan_pcm(path: Path, metadata: _MediaAudioMetadata) -> AudioScan:
             decoded_frame_count=0,
         )
     command = [
-        "ffmpeg", "-nostdin", "-v", "error", "-i", str(path),
+        "ffmpeg", "-nostdin", "-v", "error", "-xerror", "-i", str(path),
         "-map", f"0:{metadata.stream_index}", "-vn", "-sn", "-dn",
         "-af", (
             f"asetpts=PTS-STARTPTS,aresample={DECODE_SAMPLE_RATE_HZ}:"
@@ -352,6 +364,7 @@ def _scan_pcm(path: Path, metadata: _MediaAudioMetadata) -> AudioScan:
     decoded_frames = 0
     failure_reason: str | None = None
     try:
+        checkpoint()
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
         if process.stdout is None:
             raise RuntimeError("decode-output-unavailable")
@@ -360,6 +373,7 @@ def _scan_pcm(path: Path, metadata: _MediaAudioMetadata) -> AudioScan:
         deadline = time.monotonic() + MAX_DECODE_RUNTIME_SECONDS
         reached_eof = False
         while not reached_eof:
+            checkpoint()
             remaining_seconds = deadline - time.monotonic()
             if remaining_seconds <= 0:
                 failure_reason = "DECODE_TIMEOUT"
@@ -375,6 +389,7 @@ def _scan_pcm(path: Path, metadata: _MediaAudioMetadata) -> AudioScan:
                 continue
             pending.extend(chunk)
             while len(pending) >= frame_bytes:
+                checkpoint()
                 frame_data = bytes(pending[:frame_bytes])
                 del pending[:frame_bytes]
                 waveform = np.frombuffer(frame_data, dtype="<f4").reshape(-1, metadata.channels)
@@ -400,6 +415,8 @@ def _scan_pcm(path: Path, metadata: _MediaAudioMetadata) -> AudioScan:
             final_cue = detector.finish()
             if final_cue is not None:
                 cues.append(final_cue)
+    except _AudioCancelled as error:
+        raise error.cause
     except FileNotFoundError:
         failure_reason = "DECODER_UNAVAILABLE"
     except (OSError, RuntimeError, ValueError):
@@ -451,12 +468,17 @@ def _scan_pcm(path: Path, metadata: _MediaAudioMetadata) -> AudioScan:
     )
 
 
-def audio_cues(source: Path | str, duration_ms: int | None = None) -> AudioScan:
+def audio_cues(source: Path | str, duration_ms: int | None = None, *,
+               check_cancelled: Callable[[], None] | None = None) -> AudioScan:
     """Stream a bounded media audio track and return observed whistle-like cues on the video timeline."""
     path = Path(source).expanduser().resolve()
+    if check_cancelled is not None:
+        check_cancelled()
     if not path.is_file():
         return _empty_scan(AudioScanStatus.FAILED, "SOURCE_NOT_FOUND")
     metadata = _probe_audio(path, duration_ms)
+    if check_cancelled is not None:
+        check_cancelled()
     if isinstance(metadata, AudioScan):
         return metadata
-    return _scan_pcm(path, metadata)
+    return _scan_pcm(path, metadata, check_cancelled)

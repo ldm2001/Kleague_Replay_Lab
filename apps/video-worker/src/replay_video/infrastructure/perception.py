@@ -7,7 +7,8 @@ import os
 from pathlib import Path
 from typing import Any, Callable
 
-from ..domain.models import Candidate, PerceptionOutput, Shot, VideoMetadata
+from ..domain.models import AV_OBSERVER_PIPELINE_VERSION, LOCAL_OBSERVER_PIPELINE_VERSION, Candidate, PerceptionOutput, Shot, VideoMetadata
+from .audio_observations import observe_audio as source_audio_observations
 from .tracking import tracking_summaries
 
 
@@ -18,7 +19,7 @@ EVIDENCE_REASON = "LOCAL_OBSERVER_EVIDENCE_REQUIRED"
 
 
 def local_observations(source: Path, output: Path, *, duration_ms: int,
-                       progress=None, check_cancelled=None) -> dict[str, Any]:
+                       progress=None, check_cancelled=None, audio_input=None) -> dict[str, Any]:
     # Model imports are isolated from validation, legacy diagnostics and ordinary Worker unit tests.
     try:
         from replay_perception.detector import RtdetrDetector
@@ -43,7 +44,7 @@ def local_observations(source: Path, output: Path, *, duration_ms: int,
     pose = VitPoseEstimator(default_observer_model_dir("pose"), device=device)
     checkpoint()
     return run_observers(source, output, ObserverModels(detector, role, pose), duration_ms=duration_ms,
-                         progress=progress, check_cancelled=check_cancelled)
+                         progress=progress, check_cancelled=check_cancelled, audio_input=audio_input)
 
 
 def adapt_observations(raw: dict[str, Any], root: Path, metadata: VideoMetadata,
@@ -55,6 +56,11 @@ def adapt_observations(raw: dict[str, Any], root: Path, metadata: VideoMetadata,
         raise ValueError("PERCEPTION_ARTIFACT_PATH_INVALID")
     artifact["path"] = path.relative_to(root).as_posix()
     summary = deepcopy(raw["summary"])
+    if raw["schemaVersion"] == "perception-run-v2":
+        if not isinstance(raw.get("audio"), dict):
+            raise ValueError("PERCEPTION_AUDIO_REQUIRED")
+        if raw["audio"].get("sourceSha256") != raw["sourceSha256"]:
+            raise ValueError("PERCEPTION_AUDIO_SOURCE_MISMATCH")
     result = list(candidates)
     incidents = []
     next_index = max((item.index for item in candidates), default=-1) + 1
@@ -114,6 +120,8 @@ def adapt_observations(raw: dict[str, Any], root: Path, metadata: VideoMetadata,
               for item in result]
     perception = {key: deepcopy(raw[key]) for key in ("schemaVersion", "sourceSha256", "processingStatus", "coverage", "models")}
     perception.update(artifact=artifact, summary=summary, incidents=incidents)
+    if raw["schemaVersion"] == "perception-run-v2":
+        perception["audio"] = deepcopy(raw["audio"])
     return PerceptionOutput(tuple(result), perception)
 
 
@@ -155,18 +163,32 @@ def refresh_tracking(root: Path, result: PerceptionOutput, check_cancelled=None)
 
 class PerceptionAdapter:
     def __init__(self, *, progress: Callable[[str, int, str], None] | None = None,
-                 check_cancelled: Callable[[], None] | None = None, observe=None) -> None:
+                 check_cancelled: Callable[[], None] | None = None, observe=None,
+                 audio_enabled: bool = False, observe_audio=None) -> None:
         self.progress = progress
         self.check_cancelled = check_cancelled
         self.observe = observe or local_observations
+        self.audio_enabled = audio_enabled
+        self.observe_audio = observe_audio or source_audio_observations
+        self.pipeline_version = AV_OBSERVER_PIPELINE_VERSION if audio_enabled else LOCAL_OBSERVER_PIPELINE_VERSION
 
     def __call__(self, source, root, metadata, candidates, shots) -> PerceptionOutput:
         def progress(value):
             if self.progress is not None:
                 percent = 55 + min(14, int(14 * value["processedSamples"] / max(1, value["expectedSamples"])))
                 self.progress("EXTRACTING_FACTS", percent, "local-observer-processing")
-        raw = self.observe(Path(source), Path(root) / "perception", duration_ms=metadata.duration_ms,
-                           progress=progress, check_cancelled=self.check_cancelled)
+        kwargs = {"duration_ms": metadata.duration_ms, "progress": progress, "check_cancelled": self.check_cancelled}
+        if self.audio_enabled:
+            if self.progress is not None:
+                self.progress("EXTRACTING_FACTS", 55, "source-audio-observation")
+            kwargs["audio_input"] = self.observe_audio(Path(source), duration_ms=metadata.duration_ms,
+                                                       check_cancelled=self.check_cancelled)
+        raw = self.observe(Path(source), Path(root) / "perception", **kwargs)
+        if self.audio_enabled:
+            if raw.get("schemaVersion") != "perception-run-v2" or not isinstance(raw.get("audio"), dict):
+                raise ValueError("PERCEPTION_AUDIO_REQUIRED")
+            if raw["sourceSha256"] != kwargs["audio_input"]["observations"]["sourceSha256"]:
+                raise ValueError("PERCEPTION_AUDIO_SOURCE_MISMATCH")
         if self.check_cancelled is not None:
             self.check_cancelled()
         result = refresh_tracking(Path(root), adapt_observations(raw, Path(root), metadata, candidates, shots), self.check_cancelled)

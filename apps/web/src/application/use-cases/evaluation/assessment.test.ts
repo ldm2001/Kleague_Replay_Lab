@@ -4,6 +4,7 @@ import type { CompetitionOptions, PushFacts, VarFacts } from "@replay/shared-typ
 import { combineCompetitionRules, ruleSet } from "@replay/rule-data";
 import { pushResult, varResult } from "@replay/rule-engine";
 import { assessment } from "./assessment.js";
+import { context } from "../../../../test/fixtures/push-context";
 
 const push: PushFacts = {
   contactDetected: { value: true, observedAtSpeed: "NORMAL", shotIds: ["shot-1"] },
@@ -11,6 +12,7 @@ const push: PushFacts = {
   opponentDisplacement: { value: "clear", observedAtSpeed: "NORMAL", shotIds: ["shot-1"] },
   insidePenaltyArea: { value: false, observedAtSpeed: "NORMAL", shotIds: ["shot-1"] },
   cameraSufficiency: "HIGH",
+  context: context(),
 };
 
 const variable: VarFacts = {
@@ -155,13 +157,39 @@ describe("assessment", () => {
     expect(result).toMatchObject({ kind: "EVALUATED", value: { decisionMatch: match } });
   });
 
-  it("파울 없음과 카드 없음 관측 일치", async () => {
-    // 규정 결과의 null 징계와 관측의 카드 없음은 같은 의미
+  it("파울 없음과 카드 없음은 득점·수혜 팀도 확인됐을 때만 일치", async () => {
     const result = await assessment({
       rule: (id) => ruleSet(id), push: pushResult, variable: varResult,
       hash: async () => new Uint8Array(32).fill(1),
     })({ ruleVersionId: "ifab-2025-26", push: { ...push, contactDetected: { ...push.contactDetected, value: false } },
-      variable, options: {}, observed: { ...observed, restartType: "PLAY_CONTINUED", card: "NONE" } });
+      variable, options: {}, observed: { ...observed, restartType: "PLAY_CONTINUED", restartBeneficiary: "NONE", card: "NONE", goalDecision: "NOT_APPLICABLE" } });
     expect(result).toMatchObject({ kind: "EVALUATED", value: { decisionMatch: "MATCH" } });
+  });
+
+  it.each([
+    ["ATTACKING_TEAM", "MISMATCH"], ["DEFENDING_TEAM", "MATCH"],
+    ["UNKNOWN", "UNDETERMINED"], ["NONE", "MISMATCH"],
+  ] as const)("수혜 팀 %s를 독립적인 기대 팀과 비교한다", async (restartBeneficiary, expected) => {
+    const result = await assessment({ rule: ruleSet, push: pushResult, variable: varResult, hash: async () => new Uint8Array(32) })({
+      ruleVersionId: "ifab-2025-26", push, variable, options: {},
+      observed: { ...observed, restartType: "DIRECT_FREE_KICK", restartBeneficiary, card: "CAUTION", goalDecision: "NOT_APPLICABLE" },
+    });
+    expect(result).toMatchObject({ kind: "EVALUATED", value: { decisionMatch: expected } });
+  });
+
+  it.each(["GOAL", "NO_GOAL", "UNKNOWN"] as const)("밀기 평가만으로 득점 %s의 전체 일치를 주장하지 않는다", async (goalDecision) => {
+    const result = await assessment({ rule: ruleSet, push: pushResult, variable: varResult, hash: async () => new Uint8Array(32) })({
+      ruleVersionId: "ifab-2025-26", push, variable, options: {},
+      observed: { ...observed, restartType: "DIRECT_FREE_KICK", restartBeneficiary: "DEFENDING_TEAM", card: "CAUTION", goalDecision },
+    });
+    expect(result).toMatchObject({ kind: "EVALUATED", value: { decisionMatch: "UNDETERMINED" } });
+  });
+
+  it("원심 관측도 재현 서명 입력에 포함한다", async () => {
+    const result = await assessment({ rule: ruleSet, push: pushResult, variable: varResult, hash: async () => new Uint8Array(32) })({
+      ruleVersionId: "ifab-2025-26", push, variable, options: {}, observed,
+    });
+    if (result.kind !== "EVALUATED") throw new Error("evaluation failed");
+    expect(JSON.parse(result.value.factSignatureInput).observed).toEqual(observed);
   });
 });

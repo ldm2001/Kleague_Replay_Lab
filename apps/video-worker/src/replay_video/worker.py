@@ -6,7 +6,7 @@ from typing import Callable, Mapping
 
 from .application.pipeline import pipeline
 from .application.ports import PipelinePorts
-from .domain.models import LOCAL_OBSERVER_PIPELINE_VERSION
+from .domain.models import AV_OBSERVER_PIPELINE_VERSION, LOCAL_OBSERVER_PIPELINE_VERSION
 from .infrastructure.probe import probe
 from .infrastructure.ports import operating
 
@@ -70,7 +70,9 @@ def job(value: Mapping[str, object], *, progress: Callable[[str, int, str], None
         output = Path(text(value.get("output_path"))).expanduser()
         # 영상 파이프라인 실행
         selected_ports = ports if ports is not None else operating(progress=progress, check_cancelled=check_cancelled)
-        version = LOCAL_OBSERVER_PIPELINE_VERSION if ports is None or selected_ports.perception is not None else "video-baseline-v1"
+        version = (AV_OBSERVER_PIPELINE_VERSION if ports is None else
+                   getattr(selected_ports.perception, "pipeline_version", LOCAL_OBSERVER_PIPELINE_VERSION)
+                   if selected_ports.perception is not None else "video-baseline-v1")
         result = pipeline(source, output, ports=selected_ports, pipeline_version=version, progress=progress)
         # 분석 결과 반환
         return JobResult(

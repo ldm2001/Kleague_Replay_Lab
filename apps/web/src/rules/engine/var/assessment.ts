@@ -91,6 +91,15 @@ export const varResult = (
   rules: RuleSet,
   competitionOptions: CompetitionOptions,
 ): VarOutcome => {
+  const missing = (["restartOccurred", "mistakenIdentity", "seriousMissedIncident"] as const)
+    .filter((field) => typeof facts[field] !== "boolean");
+  if (missing.length > 0) {
+    return {
+      ok: false,
+      error: "INSUFFICIENT_FACTS",
+      message: `VAR 평가에 필요한 사실이 미확인 상태임: ${missing.join(", ")}`,
+    };
+  }
   // 조건 수가 큰 규칙 우선 선택
   const candidates = rules
     .varCategories()
@@ -160,11 +169,12 @@ export const varResult = (
     assessment.noInterventionReason = "THRESHOLD_NOT_MET";
     assessment.explanation = "검토 대상에는 해당하나 명백하고 분명한 오류로 보기 어려움";
   } else if (thresholdMet === "UNDETERMINED") {
+    assessment.intervention = "UNDETERMINED";
     // 미확정 문턱 사유
     assessment.explanation = "문턱 판단에 필요한 사실값이 확정되지 않아 개입 여부를 말할 수 없음";
   } else {
-    assessment.intervention = "OVERTURNED";
-    assessment.explanation = "명백하고 분명한 오류에 해당해 원심이 변경될 사안";
+    assessment.intervention = "INTERVENTION_RECOMMENDED";
+    assessment.explanation = "규정상 VAR 개입 요건을 충족함. 실제 개입이나 원심 변경을 관측한 결과는 아님";
   }
 
   const citations: RuleCitation[] = [

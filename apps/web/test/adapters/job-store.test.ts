@@ -7,6 +7,7 @@ import {
   PERCEPTION_ANALYSIS_ID,
   PERCEPTION_JOB_ID,
   PERCEPTION_SOURCE_SHA256,
+  avPerceptionPayload,
   perceptionPayload,
 } from "../fixtures/perception";
 
@@ -58,6 +59,41 @@ const database = (rows: unknown[]) => ({
 
 // 작업 저장소 테스트
 describe("JobStore", () => {
+  it("stores v2 audio only in the private perception summary envelope", async () => {
+    const queries: ReturnType<PgDialect["sqlToQuery"]>[] = [];
+    const payload = avPerceptionPayload();
+    const repository = new JobStore({ db: { transaction: async (operation: (tx: unknown) => unknown) => operation({
+      execute: async (statement: SQL) => {
+        const query = new PgDialect().sqlToQuery(statement);
+        queries.push(query);
+        if (queries.length === 1) return [{ id: PERCEPTION_JOB_ID, status: "PROCESSING", job_type: "ANALYZE_VIDEO",
+          job_revision: 2, attempt: 1, lease_owner: "worker-1", lease_token_hash: Buffer.from([1, 2, 3]),
+          lease_until: "2030-01-01T00:00:00.000Z", analysis_id: PERCEPTION_ANALYSIS_ID,
+          source_fingerprint: Buffer.from(PERCEPTION_SOURCE_SHA256, "hex"),
+          content_sha256: Buffer.from(PERCEPTION_SOURCE_SHA256, "hex"),
+          expires_at: "2030-01-01T00:00:00.000Z" }];
+        if (query.sql.includes("select id") && query.sql.includes("incident_candidates")) {
+          return [{ id: "55555555-5555-4555-8555-555555555555" }];
+        }
+        return [];
+      },
+    }) } } as never, () => new Date("2026-09-03T00:00:05.000Z"));
+    await expect(repository.result({
+      jobId: PERCEPTION_JOB_ID, workerId: "worker-1", jobRevision: 2,
+      leaseTokenHash: Uint8Array.from([1, 2, 3]), now: "2026-09-03T00:00:05.000Z", payload,
+      perceptionVerification: { analysisId: PERCEPTION_ANALYSIS_ID,
+        sourceSha256: Uint8Array.from(Buffer.from(PERCEPTION_SOURCE_SHA256, "hex")),
+        admission: { status: "NOT_ADMITTED", reasons: ["AUDIO_CUE_METHOD_NOT_VERIFIED"] } },
+    })).resolves.toEqual({ kind: "ACCEPTED" });
+    const insert = queries.find((query) => query.sql.includes("insert into analysis_perception_runs"));
+    expect(insert?.params).toContain("perception-run-v2");
+    expect(insert?.params).toContain("video-local-observers-av-v1");
+    expect(insert?.params).toContain(JSON.stringify({ ...payload.perception!.summary,
+      processingStatus: payload.perception!.processingStatus, coverage: payload.perception!.coverage,
+      incidents: payload.perception!.incidents, audio: (payload.perception as any).audio,
+      admission: { status: "NOT_ADMITTED", reasons: ["AUDIO_CUE_METHOD_NOT_VERIFIED"] } }));
+    expect(queries.find((query) => query.sql.includes("update analyses"))?.params).not.toContain("audio-observations-v1");
+  });
   it("stores the corner observation JSON separately from the review scenario", async () => {
     const sceneEvent = {
       kind: "CORNER_KICK" as const, status: "OBSERVED" as const, startMs: 600, endMs: 1400, restartMs: 1000,

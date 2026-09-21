@@ -75,7 +75,7 @@ def test_json_sends_current_worker_protocol() -> None:
     api = Api("http://web.test", "secret", "worker-1", opener=opener)
     api.json("/api/internal/jobs/claim", {"workerId": "worker-1", "jobType": "ANALYZE_VIDEO"})
     headers = {key.lower(): value for key, value in opener.requests[0].header_items()}
-    assert headers["x-worker-protocol"] == "video-observations-v2"
+    assert headers["x-worker-protocol"] == "video-observations-v4"
 
 
 # 작업 결과 요청 확인

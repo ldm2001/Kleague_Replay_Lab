@@ -28,7 +28,7 @@ it("does not let a valid legacy claim consume a queued job", async () => {
 });
 
 describe.each(routes)("worker protocol at %s", (_name, invoke) => {
-  it.each([undefined, "", "video-baseline-v1", "video-observations-v99"])(
+  it.each([undefined, "", "video-baseline-v1", "video-observations-v2", "video-observations-v3", "video-observations-v99"])(
     "rejects an incompatible worker before parsing its body or touching a job: %s",
     async (protocol) => {
       const ports = dependencies();
@@ -40,7 +40,7 @@ describe.each(routes)("worker protocol at %s", (_name, invoke) => {
 
       expect(response.status).toBe(409);
       expect(await response.json()).toEqual({
-        kind: "UNSUPPORTED_WORKER_PROTOCOL", requiredProtocol: "video-observations-v2",
+        kind: "UNSUPPORTED_WORKER_PROTOCOL", requiredProtocol: "video-observations-v4",
       });
       expect(response.headers.get("cache-control")).toBe("no-store");
       for (const port of [ports.claim, ports.progress, ports.result, ports.evidence]) {

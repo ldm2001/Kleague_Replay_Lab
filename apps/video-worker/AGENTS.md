@@ -8,7 +8,9 @@
 - `src/replay_video/runner.py` API 작업 선점과 결과 제출
 - `tests/` Worker 단위 테스트
 - `src/replay_video/inspect.py` 세트피스 원시 신호의 독립 개발 진단
-- `src/replay_video/inspect_audio.py` 휘슬 유사 음향의 독립 개발 진단이며 운영 판정에 사용하지 않음
+- `src/replay_video/inspect_audio.py` 고정 DSP 음향의 독립 진단. 같은 관측기를 운영 비공개 근거에 연결하지만 판정 사실로 사용하지 않음
+- `src/replay_video/infrastructure/audio_observations.py` 원본 결합 음향 관측과 출처, `domain/audio.py` 기존 후보·소리 포함 클립과의 시간 대응
+- `src/replay_video/evaluate_av.py` 알려진 합성 신호의 보존·시간 정렬 비교이며 실제 휘슬·파울 정확도 시험이 아님
 - `src/replay_video/domain/setpieces.py` 근거 입력을 받는 재개 상태 전이
 - `src/replay_video/domain/ball.py` 공 후보의 카메라 보정 추적과 움직임 시작 신호
 - `src/replay_video/domain/paths.py` 복수 후보 경로 연결과 선택
@@ -34,6 +36,7 @@ Python 패키지는 `apps/video-worker/pyproject.toml`을 기준으로 한다
 - rules 적용은 웹 서버의 규정 엔진 책임이며 Worker가 파울을 판정하지 않는다
 - `report.json`의 제한사항과 원본 시간축과 증거 경로를 보존한다
 - 영상 파일은 저장소에 추가하지 않는다
+- 소리가 없거나 디코딩되지 않은 상태를 사건 없음으로 바꾸지 않으며 발화 전사와 화자 모델은 추가하지 않는다
 
 상세 파이프라인 계약은 [README.md](README.md)와 [자동 처리 설계](../../docs/design/자동처리.md)를 본다
 모델 관측과 사건·규정 연결의 승인 범위는 [운영판정연결](../../docs/design/운영판정연결.md)을 따른다

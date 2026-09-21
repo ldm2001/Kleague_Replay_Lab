@@ -5,6 +5,7 @@ import observerManifest from "../../../../../experiments/perception/src/replay_p
 export type VerifiedPerceptionReference = Readonly<{
   evidenceIndex: number;
   candidateIndex: number;
+  kind?: "FRAME" | "CLIP";
   startMs: number;
   endMs: number;
   declaredContentSha256: string;
@@ -94,7 +95,10 @@ export const perceptionAdmission = (
 ): PerceptionAdmission => {
   const reasons: string[] = [];
   if (!context.serverVerified) reasons.push("SERVER_CONTEXT_UNVERIFIED");
-  if (context.pipelineVersion !== "video-local-observers-v1") reasons.push("PIPELINE_VERSION_UNVERIFIED");
+  if ((run.schemaVersion === "perception-run-v1" && context.pipelineVersion !== "video-local-observers-v1") ||
+    (run.schemaVersion === "perception-run-v2" && context.pipelineVersion !== "video-local-observers-av-v1")) {
+    reasons.push("PIPELINE_VERSION_UNVERIFIED");
+  }
   if (run.processingStatus !== "COMPLETE") reasons.push("PROCESSING_NOT_COMPLETE");
   if (run.summary.truncated) reasons.push("SUMMARY_TRUNCATED");
   if (context.sourceSha256 !== run.sourceSha256) reasons.push("SOURCE_HASH_UNVERIFIED");
@@ -141,6 +145,12 @@ export const perceptionAdmission = (
     if (!covered) reasons.push(`REFERENCE_COVERAGE_INSUFFICIENT:${incident.id}`);
     if (incident.officialRole === "UNKNOWN") reasons.push(`OFFICIAL_ROLE_UNKNOWN:${incident.id}`);
     if (incident.signal === "UNKNOWN") reasons.push(`SIGNAL_UNKNOWN:${incident.id}`);
+  }
+
+  if (run.schemaVersion === "perception-run-v2") {
+    if (run.audio.cueCount > 0) reasons.push("AUDIO_CUE_METHOD_NOT_VERIFIED");
+    if (run.audio.associations.length > 0) reasons.push("AUDIOVISUAL_ASSOCIATION_NOT_VERIFIED");
+    reasons.push("SPEECH_NOT_ANALYZED");
   }
 
   // 닫힌 서버 registry: 저장 무결성은 영상 의미의 검증이나 규정 사실 승인이 아니다

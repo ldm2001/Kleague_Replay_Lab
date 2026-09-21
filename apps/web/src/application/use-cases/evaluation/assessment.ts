@@ -55,17 +55,27 @@ const citations = (value: EvaluationResult, variable: Extract<VarOutcome, { ok: 
 const hex = (value: Uint8Array): string => Array.from(value, (item) => item.toString(16).padStart(2, "0")).join("");
 
 // 규정 재개와 관측 원심 비교
-const comparison = (value: EvaluationResult, observed: ObservedDecision): EvaluationResult["decisionMatch"] => {
+const comparison = (value: EvaluationResult, observed: ObservedDecision, facts: PushFacts): EvaluationResult["decisionMatch"] => {
   // 관측되지 않은 재개 방식은 비교 보류
-  if (observed.restartType === "UNKNOWN" || value.restart === null) return "UNDETERMINED";
+  if (value.decision === "INCONCLUSIVE" || value.decision === "OUT_OF_SCOPE" ||
+      observed.restartType === "UNKNOWN" || value.restart === null || value.restart === "UNKNOWN") return "UNDETERMINED";
   // 재개 방식이 다르면 불일치
   if (observed.restartType !== value.restart) return "MISMATCH";
   // 카드 관측이 없으면 전체 비교 보류
   if (observed.card === null) return "UNDETERMINED";
-  // 징계 null은 명시적인 카드 없음과 같은 의미
-  const disciplinary = value.disciplinary ?? "NONE";
+  // 계산되지 않은 징계를 카드 없음으로 바꾸지 않는다.
+  if (value.disciplinary === null) return "UNDETERMINED";
+  const disciplinary = value.disciplinary;
   // 확인된 카드가 다르면 불일치
   if (observed.card !== disciplinary) return "MISMATCH";
+  const role = facts.context?.offenderRole.value;
+  const beneficiary = value.restart === "PLAY_CONTINUED" ? "NONE"
+    : role === "ATTACKING_TEAM" ? "DEFENDING_TEAM"
+    : role === "DEFENDING_TEAM" ? "ATTACKING_TEAM" : "UNKNOWN";
+  if (beneficiary === "UNKNOWN" || observed.restartBeneficiary === "UNKNOWN") return "UNDETERMINED";
+  if (observed.restartBeneficiary !== beneficiary) return "MISMATCH";
+  // 밀기 평가는 득점의 적합성을 평가하지 않는다.
+  if (observed.goalDecision !== "NOT_APPLICABLE") return "UNDETERMINED";
   // 비교 가능한 항목이 모두 같으면 일치
   return "MATCH";
 };
@@ -89,7 +99,7 @@ export const assessment =
     }
 
     // 사실 입력 직렬화
-    const factSignatureInput = JSON.stringify({ push: input.push, variable: input.variable });
+    const factSignatureInput = JSON.stringify({ push: input.push, variable: input.variable, observed: input.observed });
     // 사실 입력 해시 생성
     const factSignature = hex(await hash(factSignatureInput));
     // 통합 판정 결과 반환
@@ -97,7 +107,7 @@ export const assessment =
       kind: "EVALUATED",
       value: {
         ...pushing,
-        decisionMatch: comparison(pushing, input.observed),
+        decisionMatch: comparison(pushing, input.observed, input.push),
         varAssessment: varValue.assessment,
         factSignature,
         factSignatureInput,

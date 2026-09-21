@@ -17,12 +17,12 @@ export type PushAccountView = {
 };
 
 // 규정 질문에 답하지 못하는 값
-const UNRESOLVED_VALUES: ReadonlySet<unknown> = new Set(["uncertain", "possible"]);
+const UNRESOLVED_VALUES: ReadonlySet<unknown> = new Set(["uncertain", "possible", "UNKNOWN", null, undefined]);
 
 // 사실값별 차단 사유
 const requirement = (
   fact: string,
-  observation: Observed<unknown>,
+  observation: Observed<unknown> | undefined,
   options: { cameraSufficiency: PushFacts["cameraSufficiency"]; needsNormalSpeed: boolean },
   narrowsTo: RuleCitation | null,
 ): FactRequirement => {
@@ -33,6 +33,9 @@ const requirement = (
 
   if (options.cameraSufficiency === "LOW") {
     blockedBy = "CAMERA";
+    established = false;
+  } else if (!observation) {
+    blockedBy = "NOT_IN_FOOTAGE";
     established = false;
   } else if (options.needsNormalSpeed && observation.observedAtSpeed !== "NORMAL") {
     blockedBy = "SPEED";
@@ -67,6 +70,9 @@ export const pushAccounts = (facts: PushFacts, rules: RuleSet): PushAccountView 
     requirement("severity", facts.severity, cameraAndSpeed, disciplineEntry),
     requirement("opponentDisplacement", facts.opponentDisplacement, camera, disciplineEntry),
     requirement("insidePenaltyArea", facts.insidePenaltyArea, camera, offenceCitations[0] ?? null),
+    ...(["ballInPlay", "onField", "againstOpponent", "offenderRole", "insideOwnPenaltyArea", "disciplinaryContext"] as const)
+      .map((key) => requirement(`context.${key}`, facts.context?.[key], camera,
+        key === "disciplinaryContext" ? disciplineEntry : offenceCitations[0] ?? null)),
   ];
 
   const blockedFrom = requires.filter((entry) => entry.status === "UNMET");

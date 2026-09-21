@@ -6,7 +6,15 @@
     "severity": { "value": "RECKLESS", "observedAtSpeed": "NORMAL" },
     "opponentDisplacement": { "value": "clear", "observedAtSpeed": "NORMAL" },
     "insidePenaltyArea": { "value": false, "observedAtSpeed": "NORMAL" },
-    "cameraSufficiency": "HIGH"
+    "cameraSufficiency": "HIGH",
+    "context": {
+      "ballInPlay": { "value": true, "observedAtSpeed": "NORMAL", "shotIds": [] },
+      "onField": { "value": true, "observedAtSpeed": "NORMAL", "shotIds": [] },
+      "againstOpponent": { "value": true, "observedAtSpeed": "NORMAL", "shotIds": [] },
+      "offenderRole": { "value": "ATTACKING_TEAM", "observedAtSpeed": "NORMAL", "shotIds": [] },
+      "insideOwnPenaltyArea": { "value": false, "observedAtSpeed": "NORMAL", "shotIds": [] },
+      "disciplinaryContext": { "value": "NONE", "observedAtSpeed": "NORMAL", "shotIds": [] }
+    }
   },
   "cases": [
     {
@@ -75,15 +83,15 @@
     {
       "id": "push-06",
       "gate": "SEVERITY",
-      "concern": "밀림 없는 부주의 접촉은 반칙이 아니라 정상적인 몸싸움이다",
-      "note": "접촉이 있으면 곧 반칙이라는 결론이 나오면 이 케이스가 깨진다. Law 12는 접촉 유무가 아니라 부주의·무모·과도한 힘으로 가른다.",
+      "concern": "확정된 부주의한 밀기를 밀림 없음으로 면책하지 않는다",
+      "note": "CARELESS는 규정상 부주의한 밀기로 확인된 입력이다. 단순 접촉 감지로 이 강도를 생성하지 않는다.",
       "given": {
         "facts": {
           "severity": { "value": "CARELESS", "observedAtSpeed": "NORMAL" },
           "opponentDisplacement": { "value": "none", "observedAtSpeed": "NORMAL" }
         }
       },
-      "expect": { "decision": "NORMAL_CONTACT", "restart": "PLAY_CONTINUED", "disciplinary": "NONE" }
+      "expect": { "decision": "FOUL", "restart": "DIRECT_FREE_KICK", "disciplinary": "NONE" }
     },
     {
       "id": "push-07",
@@ -101,6 +109,14 @@
       "given": {
         "facts": {
           "insidePenaltyArea": { "value": true, "observedAtSpeed": "NORMAL" },
+          "context": {
+            "ballInPlay": { "value": true, "observedAtSpeed": "NORMAL", "shotIds": [] },
+            "onField": { "value": true, "observedAtSpeed": "NORMAL", "shotIds": [] },
+            "againstOpponent": { "value": true, "observedAtSpeed": "NORMAL", "shotIds": [] },
+            "offenderRole": { "value": "DEFENDING_TEAM", "observedAtSpeed": "NORMAL", "shotIds": [] },
+            "insideOwnPenaltyArea": { "value": true, "observedAtSpeed": "NORMAL", "shotIds": [] },
+            "disciplinaryContext": { "value": "NONE", "observedAtSpeed": "NORMAL", "shotIds": [] }
+          },
           "severity": { "value": "EXCESSIVE_FORCE", "observedAtSpeed": "NORMAL" }
         }
       },

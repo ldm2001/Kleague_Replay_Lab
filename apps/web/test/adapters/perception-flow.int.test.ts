@@ -1,10 +1,11 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
-import { JobStore, StatusStore } from "@replay/adapters";
+import { JobStore, Sha256, StatusStore } from "@replay/adapters";
 import { client } from "@replay/database";
-import { report, status, type AnalysisPayload } from "@replay/application";
+import { report, result as submitResult, status, type AnalysisPayload } from "@replay/application";
 import { perceptionAdmission } from "@replay/rule-engine";
 import { perceptionRunData } from "@replay/shared-types";
+import { avPerceptionPayload, PERCEPTION_ANALYSIS_ID, PERCEPTION_JOB_ID } from "../fixtures/perception";
 
 const databaseUrl = process.env.DATABASE_URL;
 const NOW = "2030-01-01T12:00:00.000Z";
@@ -32,6 +33,118 @@ describe.skipIf(!databaseUrl)("private perception result flow", () => {
     }
   });
   afterAll(async () => { await database.close(); });
+
+  const createV2Job = async () => {
+    const sessionId = randomUUID(), videoId = randomUUID(), analysisId = randomUUID(), jobId = randomUUID();
+    const source = randomBytes(32), sourceHex = source.toString("hex");
+    const leaseToken = randomBytes(32).toString("hex"), hasher = new Sha256();
+    sessions.push(sessionId);
+    await database.sql`insert into anonymous_sessions(id, token_hash, created_at, expires_at)
+      values (${sessionId}, ${randomBytes(32)}, ${NOW}, ${EXPIRES})`;
+    await database.sql`insert into video_assets(id, anonymous_session_id, object_key, content_sha256, content_type,
+      size_bytes, status, rights_confirmed_at, created_at, expires_at)
+      values (${videoId}, ${sessionId}, ${`tests/${videoId}.mp4`}, ${source}, 'video/mp4', 100, 'VALID', ${NOW}, ${NOW}, ${EXPIRES})`;
+    await database.sql`insert into analyses(id, anonymous_session_id, video_asset_id, status, retention_class,
+      source_fingerprint, pipeline_version, media_policy_version, created_at, expires_at)
+      values (${analysisId}, ${sessionId}, ${videoId}, 'QUEUED', 'TEMPORARY', ${source},
+      'video-local-observers-av-v1', 'media-v1', ${NOW}, ${EXPIRES})`;
+    await database.sql`insert into processing_jobs(id, analysis_id, job_type, status, payload_version, job_revision,
+      attempt, max_attempts, lease_owner, lease_token_hash, lease_until, created_at, updated_at)
+      values (${jobId}, ${analysisId}, 'ANALYZE_VIDEO', 'PROCESSING', 1, 2, 1, 3, 'worker-1',
+      ${Buffer.from(await hasher.sha256(leaseToken))}, ${EXPIRES}, ${NOW}, ${NOW})`;
+    const payload = structuredClone(avPerceptionPayload()) as any;
+    payload.perception.sourceSha256 = sourceHex;
+    payload.perception.audio.sourceSha256 = sourceHex;
+    payload.perception.artifact.objectKey = payload.perception.artifact.objectKey
+      .replace(PERCEPTION_ANALYSIS_ID, analysisId).replace(PERCEPTION_JOB_ID, jobId);
+    for (const item of payload.evidence) {
+      item.objectKey = item.objectKey.replace(PERCEPTION_ANALYSIS_ID, analysisId).replace(PERCEPTION_JOB_ID, jobId);
+    }
+    expect(perceptionRunData(payload.perception)).toBe(true);
+    const heads = new Map<string, { sizeBytes: number; contentSha256: Uint8Array }>([
+      [payload.perception.artifact.objectKey, { sizeBytes: 1_024,
+        contentSha256: Uint8Array.from(Buffer.from(payload.perception.artifact.contentSha256, "hex")) }],
+      ...payload.evidence.map((item: any, index: number) => [item.objectKey,
+        { sizeBytes: index === 0 ? 2_048 : 4_096,
+          contentSha256: Uint8Array.from(Buffer.from(item.contentSha256, "hex")) }] as const),
+    ]);
+    const storage = { head: async (key: string, maximum?: number) => {
+      const head = heads.get(key);
+      return head && head.sizeBytes <= (maximum ?? Infinity) ? head : null;
+    } };
+    const repository = new JobStore(database, () => new Date(NOW));
+    const clock = { now: () => new Date(NOW) };
+    const input = { jobId, workerId: "worker-1", jobRevision: 2, leaseToken,
+      payload: payload as AnalysisPayload };
+    return { sessionId, videoId, analysisId, jobId, source, payload: payload as AnalysisPayload,
+      heads, storage, repository, clock, hasher, input };
+  };
+
+  const expectNoV2Writes = async (analysisId: string, jobId: string) => {
+    const [counts] = await database.sql<{ shots: number; candidates: number; evidence: number; runs: number }[]>`
+      select (select count(*)::int from shots where analysis_id = ${analysisId}) as shots,
+             (select count(*)::int from incident_candidates where analysis_id = ${analysisId}) as candidates,
+             (select count(*)::int from evidence_assets where analysis_id = ${analysisId}) as evidence,
+             (select count(*)::int from analysis_perception_runs where analysis_id = ${analysisId}) as runs`;
+    expect(counts).toEqual({ shots: 0, candidates: 0, evidence: 0, runs: 0 });
+    const [state] = await database.sql<{ analysis_status: string; job_status: string }[]>`
+      select analysis.status as analysis_status, job.status as job_status
+      from analyses as analysis join processing_jobs as job on job.analysis_id = analysis.id
+      where analysis.id = ${analysisId} and job.id = ${jobId}`;
+    expect(state).toEqual({ analysis_status: "QUEUED", job_status: "PROCESSING" });
+  };
+
+  it("completes v2 through result use case and JobStore with audio private and not public", async () => {
+    const setup = await createV2Job();
+    await expect(submitResult({ clock: setup.clock, hasher: setup.hasher,
+      repository: setup.repository, storage: setup.storage })(setup.input))
+      .resolves.toEqual({ kind: "ACCEPTED" });
+    const [saved] = await database.sql<{ schema_version: string; pipeline_version: string;
+      summary: Record<string, any> }[]>`
+      select schema_version, pipeline_version, summary from analysis_perception_runs
+      where analysis_id = ${setup.analysisId}`;
+    expect(saved).toMatchObject({ schema_version: "perception-run-v2",
+      pipeline_version: "video-local-observers-av-v1" });
+    expect(saved?.summary.audio).toEqual((setup.payload.perception as any).audio);
+    expect(saved?.summary.admission).toMatchObject({ status: "NOT_ADMITTED",
+      reasons: expect.arrayContaining(["AUDIO_CUE_METHOD_NOT_VERIFIED", "SPEECH_NOT_ANALYZED"]) });
+    const publicStore = new StatusStore(database);
+    const publicReport = await report({ clock: setup.clock, repository: publicStore })({
+      anonymousSessionId: setup.sessionId, analysisId: setup.analysisId });
+    const publicStatus = await status({ clock: setup.clock, repository: publicStore })({
+      anonymousSessionId: setup.sessionId, videoAssetId: setup.videoId });
+    for (const view of [publicReport, publicStatus]) {
+      expect(JSON.stringify(view)).not.toContain("audio-observations-v1");
+      expect(JSON.stringify(view)).not.toContain("spectral-multitone-v1");
+    }
+    expect(publicReport).toMatchObject({ resultPolicy: "COMPLETED_ONLY", evaluatedCount: 0,
+      judgmentStatus: "NOT_EVALUATED" });
+  });
+
+  it("rejects a changed source at locked storage write with no partial rows", async () => {
+    const setup = await createV2Job();
+    const repository = {
+      preflight: (command: Parameters<JobStore["preflight"]>[0]) => setup.repository.preflight(command),
+      result: async (command: Parameters<JobStore["result"]>[0]) => {
+        await database.sql`update analyses set source_fingerprint = ${randomBytes(32)} where id = ${setup.analysisId}`;
+        return setup.repository.result(command);
+      },
+    };
+    await expect(submitResult({ clock: setup.clock, hasher: setup.hasher,
+      repository, storage: setup.storage })(setup.input))
+      .resolves.toEqual({ kind: "INVALID_RESULT", reason: "SOURCE" });
+    await expectNoV2Writes(setup.analysisId, setup.jobId);
+  });
+
+  it("rejects an audio clip checksum mismatch before any v2 row is written", async () => {
+    const setup = await createV2Job();
+    setup.heads.set(setup.payload.evidence![1]!.objectKey, { sizeBytes: 4_096,
+      contentSha256: Uint8Array.from(Buffer.from("e".repeat(64), "hex")) });
+    await expect(submitResult({ clock: setup.clock, hasher: setup.hasher,
+      repository: setup.repository, storage: setup.storage })(setup.input))
+      .resolves.toEqual({ kind: "INVALID_RESULT", reason: "REFERENCE" });
+    await expectNoV2Writes(setup.analysisId, setup.jobId);
+  });
 
   it("persists one immutable private run without exposing it as media or an evaluation", async () => {
     const sessionId = randomUUID(), videoId = randomUUID(), analysisId = randomUUID(), jobId = randomUUID();
@@ -121,6 +234,19 @@ describe.skipIf(!databaseUrl)("private perception result flow", () => {
     await expect(database.sql`update analysis_perception_runs set summary = jsonb_build_object(
       'incidents', '[]'::jsonb, 'admission', jsonb_build_object('padding', repeat('x', 1048576))
     ) where analysis_id = ${analysisId}`).rejects.toThrow();
+    await expect(database.sql`update analysis_perception_runs set schema_version = 'perception-run-v2'
+      where analysis_id = ${analysisId}`).rejects.toThrow();
+    await expect(database.sql`update analysis_perception_runs set pipeline_version = 'video-local-observers-av-v1'
+      where analysis_id = ${analysisId}`).rejects.toThrow();
+    await expect(database.sql`update analysis_perception_runs set schema_version = 'perception-run-v2',
+      pipeline_version = 'video-local-observers-av-v1' where analysis_id = ${analysisId}`).rejects.toThrow();
+    await database.sql`update analysis_perception_runs set schema_version = 'perception-run-v2',
+      pipeline_version = 'video-local-observers-av-v1',
+      summary = jsonb_set(summary, '{audio}', ${JSON.stringify({ version: "audio-observations-v1" })}::jsonb)
+      where analysis_id = ${analysisId}`;
+    const [audioRow] = await database.sql<{ summary: Record<string, unknown> }[]>`
+      select summary from analysis_perception_runs where analysis_id = ${analysisId}`;
+    expect(audioRow?.summary.audio).toEqual({ version: "audio-observations-v1" });
 
     const adapter = new StatusStore(database);
     const internal = await adapter.analysis({ anonymousSessionId: sessionId, analysisId, now: NOW });

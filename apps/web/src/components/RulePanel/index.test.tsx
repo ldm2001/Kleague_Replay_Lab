@@ -10,6 +10,13 @@ import { analysis, candidate, judgment } from "../../../test/fixtures/result";
 import { RulePanel } from "./index";
 
 describe("RulePanel", () => {
+  it("shows unknown contact and an explicit missing-facts explanation", () => {
+    const unknown = { ...structuredClone(judgment), inconclusiveReason: "FACTS_UNDETERMINED" as const };
+    unknown.facts.push.contactDetected.value = null;
+    render(<RulePanel analysis={analysis()} candidate={candidate(1, unknown)} />);
+    expect(screen.getByText("접촉").nextElementSibling).toHaveTextContent("미확인");
+    expect(screen.getByText("판단에 필요한 사실이 확인되지 않음")).toBeInTheDocument();
+  });
   afterEach(() => {
     // 테스트 DOM 정리
     cleanup();

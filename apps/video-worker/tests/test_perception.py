@@ -108,7 +108,9 @@ def test_observation_candidates_always_receive_temporal_clip_even_over_legacy_bu
     candidate = Candidate(0, "OTHER", 1000, 2000, 1500, 0., "LOW",
                           ("LOCAL_OBSERVER_EVIDENCE_REQUIRED",), (0,))
     monkeypatch.setattr("replay_video.infrastructure.evidence.frame", lambda source, path, ms: path.write_bytes(b"frame"))
-    monkeypatch.setattr("replay_video.infrastructure.evidence.clip", lambda source, path, start, end: path.write_bytes(b"clip"))
+    def saved_clip(source, path, start, end):
+        path.write_bytes(b"clip")
+    monkeypatch.setattr("replay_video.infrastructure.evidence.clip", saved_clip)
     result = evidence(source, tmp_path / "out", metadata, (candidate,), max_clips=0)
     assert [item.kind for item in result] == ["FRAME", "CLIP"]
 
@@ -147,12 +149,19 @@ def test_default_analyze_job_selects_operating_ports_but_validation_never_loads_
     from replay_video.worker import job
     source, metadata, shots = setup(tmp_path)
     called = []
+    def observed(source, target, meta, candidates, shots):
+        from replay_video.infrastructure.audio import AudioScan, AudioScanStatus
+        from replay_video.infrastructure.audio_observations import observe_audio
+        raw = local_report(source, target, observations=[])
+        absent = AudioScan(AudioScanStatus.ABSENT, "AUDIO_STREAM_ABSENT", (), None, None, None, None, None, None, 0)
+        raw.update(schemaVersion="perception-run-v2", pipelineVersion="video-local-observers-av-v1",
+                   audio=observe_audio(source, duration_ms=meta.duration_ms, scan=lambda *a, **kw: absent)["observations"])
+        return api().adapt_observations(raw, target, meta, candidates, shots)
     def operating(**kwargs):
         called.append(kwargs)
         return PipelinePorts(probe=lambda value: metadata, shots=lambda source, meta: shots,
                              candidates=lambda source, meta, shots: (), evidence=lambda *args: (),
-                             perception=lambda source, target, meta, candidates, shots:
-                                 api().adapt_observations(local_report(source, target, observations=[]), target, meta, candidates, shots))
+                             perception=observed)
     monkeypatch.setattr("replay_video.worker.operating", operating)
     monkeypatch.setattr("replay_video.worker.probe", lambda source: metadata)
     value = {"job_id": "one", "job_type": "VALIDATE_VIDEO", "source_path": str(source)}
@@ -160,7 +169,7 @@ def test_default_analyze_job_selects_operating_ports_but_validation_never_loads_
     assert called == []
     result = job({**value, "job_type": "ANALYZE_VIDEO", "output_path": str(tmp_path / "out")})
     assert len(called) == 1
-    assert json.loads(Path(result.payload["report_path"]).read_text())["pipeline_version"] == "video-local-observers-v1"
+    assert json.loads(Path(result.payload["report_path"]).read_text())["pipeline_version"] == "video-local-observers-av-v1"
 
 
 def test_default_operating_factory_cannot_fall_back_to_baseline_after_losing_its_port(tmp_path, monkeypatch):

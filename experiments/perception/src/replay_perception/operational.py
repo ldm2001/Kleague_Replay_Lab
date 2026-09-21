@@ -31,6 +31,7 @@ MAX_PROCESSED_FRAMES = 30_000
 MAX_PEOPLE_PER_FRAME = 64
 MAX_RETAINED_EPISODES = 128
 MAX_INDEXED_EPISODES = 30_000
+MAX_RETAINED_AUDIO_CUES = 256
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,6 +68,81 @@ def _implementation() -> dict[str, Any]:
     sources = sorted(path for path in directory.rglob("*") if path.is_file() and path.suffix in (".py", ".json"))
     return {"pipelineVersion": PIPELINE_VERSION, "runtimeVersions": _runtime_versions(),
             "sourceFilesSha256": {path.relative_to(directory).as_posix(): _hash_file(path) for path in sources}}
+
+
+def _audio_input(value: dict[str, Any], source_sha256: str, duration_ms: int) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]]]:
+    if not isinstance(value, dict) or not isinstance(value.get("observations"), dict):
+        raise ValueError("AUDIO_INPUT_INVALID")
+    observations = value["observations"]
+    source = observations.get("sourceSha256")
+    if not isinstance(source, str) or re.fullmatch(r"[0-9a-f]{64}", source) is None:
+        raise ValueError("AUDIO_INPUT_INVALID")
+    if source != source_sha256:
+        raise ValueError("AUDIO_SOURCE_MISMATCH")
+    implementation = value.get("implementation")
+    hashes = implementation.get("sourceFilesSha256") if isinstance(implementation, dict) else None
+    if (not isinstance(hashes, dict) or not {"audio.py", "audio_observations.py"}.issubset(hashes) or any(
+            not isinstance(name, str) or not name or len(name) > 256
+            or Path(name).is_absolute() or ".." in Path(name).parts
+            or not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None
+            for name, digest in hashes.items())):
+        raise ValueError("AUDIO_INPUT_INVALID")
+    cues = observations.get("cues")
+    reasons = observations.get("reasons")
+    timeline = observations.get("timeline")
+    if (observations.get("version") != "audio-observations-v1"
+            or observations.get("status") not in ("COMPLETE", "ABSENT", "UNSUPPORTED", "FAILED")
+            or observations.get("method") != "spectral-multitone-v1"
+            or observations.get("speechStatus") != "NOT_ANALYZED"
+            or type(observations.get("cueCount")) is not int
+            or not isinstance(cues, list) or observations["cueCount"] != len(cues)
+            or observations.get("associations") != [] or observations.get("truncated") is not False
+            or not isinstance(reasons, list) or any(not isinstance(reason, str) for reason in reasons)
+            or not isinstance(timeline, dict)):
+        raise ValueError("AUDIO_INPUT_INVALID")
+    timeline_keys = ("videoOriginSeconds", "audioOffsetMs", "scannedStartMs", "scannedEndMs",
+                     "decodedFrameCount", "frameDurationMs", "gapPolicy")
+    def nullable_nonnegative_int(item: Any) -> bool:
+        return item is None or (type(item) is int and item >= 0)
+
+    origin = timeline.get("videoOriginSeconds")
+    sample_rate = observations.get("sourceSampleRateHz")
+    channels = observations.get("sourceChannels")
+    if (any(key not in timeline for key in timeline_keys)
+            or timeline["frameDurationMs"] != 100
+            or timeline["gapPolicy"] != "PRESERVED_WITH_SYNTHETIC_SILENCE"
+            or type(timeline["decodedFrameCount"]) is not int or timeline["decodedFrameCount"] < 0
+            or (origin is not None and (type(origin) not in (int, float) or not math.isfinite(origin)))
+            or (timeline["audioOffsetMs"] is not None and type(timeline["audioOffsetMs"]) is not int)
+            or not all(nullable_nonnegative_int(timeline[key]) for key in (
+                "scannedStartMs", "scannedEndMs"))
+            or (timeline["scannedStartMs"] is not None and timeline["scannedEndMs"] is not None
+                and timeline["scannedStartMs"] > timeline["scannedEndMs"])
+            or (timeline["scannedStartMs"] is None) != (timeline["scannedEndMs"] is None)
+            or (timeline["scannedEndMs"] is not None and timeline["scannedEndMs"] > duration_ms)
+            or (sample_rate is not None and (type(sample_rate) is not int or sample_rate <= 0))
+            or (channels is not None and (type(channels) is not int or channels <= 0))):
+        raise ValueError("AUDIO_INPUT_INVALID")
+    cue_fields = ("id", "startMs", "endMs", "peakFrequenciesHz", "frameCount")
+    if any(not isinstance(cue, dict) or any(field not in cue for field in cue_fields)
+           or not isinstance(cue["id"], str) or not cue["id"]
+           or type(cue["startMs"]) is not int or type(cue["endMs"]) is not int
+           or cue["startMs"] < 0 or cue["endMs"] <= cue["startMs"] or cue["endMs"] > duration_ms
+           or timeline["scannedStartMs"] is None or cue["startMs"] < timeline["scannedStartMs"]
+           or cue["endMs"] > timeline["scannedEndMs"]
+           or type(cue["frameCount"]) is not int or cue["frameCount"] <= 0
+           or not isinstance(cue["peakFrequenciesHz"], list)
+           or any(type(frequency) not in (int, float) or not math.isfinite(frequency) or frequency < 0
+                  for frequency in cue["peakFrequenciesHz"]) for cue in cues):
+        raise ValueError("AUDIO_INPUT_INVALID")
+    metadata = {key: observations[key] for key in (
+        "version", "sourceSha256", "status", "method", "speechStatus", "sourceSampleRateHz",
+        "sourceChannels", "timeline", "cueCount", "associations", "truncated", "reasons") if key in observations}
+    if "sourceSampleRateHz" not in metadata or "sourceChannels" not in metadata:
+        raise ValueError("AUDIO_INPUT_INVALID")
+    metadata["timeline"] = {key: timeline[key] for key in timeline_keys}
+    raw_cues = [{key: cue[key] for key in cue_fields} for cue in cues]
+    return metadata, {"sourceFilesSha256": dict(hashes)}, raw_cues
 
 
 class _Retained:
@@ -106,7 +182,8 @@ def _official_episode(value: dict[str, Any], source_sha256: str) -> dict[str, An
 def run_observers(source: Path | str, output: Path | str, models: ObserverModels, *, duration_ms: int,
                   start_ms: int = 0, end_ms: int | None = None,
                   progress: Callable[[dict[str, Any]], None] | None = None,
-                  check_cancelled: Callable[[], None] | None = None) -> dict[str, Any]:
+                  check_cancelled: Callable[[], None] | None = None,
+                  audio_input: dict[str, Any] | None = None) -> dict[str, Any]:
     source_path = Path(source).expanduser().resolve()
     output_path = Path(output).expanduser().absolute()
     if os.path.lexists(output_path):
@@ -121,6 +198,11 @@ def run_observers(source: Path | str, output: Path | str, models: ObserverModels
     source_sha256 = _hash_file(source_path)
     if _fingerprint(source_path) != before:
         raise ValueError("VIDEO_SOURCE_CHANGED")
+    audio_metadata = audio_implementation = audio_cues = None
+    if audio_input is not None:
+        audio_metadata, audio_implementation, audio_cues = _audio_input(audio_input, source_sha256, duration_ms)
+    schema_version = "perception-run-v2" if audio_metadata is not None else SCHEMA_VERSION
+    pipeline_version = "video-local-observers-av-v1" if audio_metadata is not None else PIPELINE_VERSION
     compact_models = _models(models)
     tracker = TrackAssociator(frame_rate=1000 / SAMPLE_INTERVAL_MS)
     continuity, official_observer = AppearanceContinuity(), OfficialObserver()
@@ -148,12 +230,22 @@ def run_observers(source: Path | str, output: Path | str, models: ObserverModels
             raise ValueError("OBSERVATION_SAMPLE_LIMIT")
 
     with DiagnosticArtifact(output_path / "perception.jsonl.gz") as artifact:
-        artifact.append({"kind": "HEADER", "schemaVersion": SCHEMA_VERSION, "sourceSha256": source_sha256,
-                         "implementation": _implementation(), "models": {
+        implementation = _implementation()
+        implementation["pipelineVersion"] = pipeline_version
+        if audio_implementation is not None:
+            implementation["audio"] = audio_implementation
+        header = {"kind": "HEADER", "schemaVersion": schema_version, "sourceSha256": source_sha256,
+                         "implementation": implementation, "models": {
                              "detector": models.detector.provenance, "role": models.role.provenance,
                              "pose": models.pose.provenance}, "tracker": tracker.provenance,
                          "sampling": {"startMs": start_ms, "endMs": requested_end,
-                                      "intervalMs": SAMPLE_INTERVAL_MS}, "admission": "NOT_ADMITTED"})
+                                      "intervalMs": SAMPLE_INTERVAL_MS}, "admission": "NOT_ADMITTED"}
+        if audio_metadata is not None:
+            header["audio"] = audio_metadata
+        artifact.append(header)
+        if audio_cues is not None:
+            for cue in audio_cues:
+                artifact.append({"kind": "AUDIO_CUE", "sourceSha256": source_sha256, **cue})
         try:
             with reader:
                 stage = "DECODING"
@@ -228,9 +320,13 @@ def run_observers(source: Path | str, output: Path | str, models: ObserverModels
         reasons.append("SAMPLING_COVERAGE_INCOMPLETE")
     if truncated:
         reasons.append("SUMMARY_TRUNCATED_RAW_PRESERVED")
+    if audio_metadata is not None and audio_metadata["status"] in ("FAILED", "UNSUPPORTED"):
+        reasons.append(f"AUDIO_{audio_metadata['status']}")
     result = {
-        "schemaVersion": SCHEMA_VERSION, "pipelineVersion": PIPELINE_VERSION, "sourceSha256": source_sha256,
-        "processingStatus": "COMPLETE" if failure is None and processed == expected else "PARTIAL",
+        "schemaVersion": schema_version, "pipelineVersion": pipeline_version, "sourceSha256": source_sha256,
+        "processingStatus": "COMPLETE" if failure is None and processed == expected
+                            and (audio_metadata is None or audio_metadata["status"] not in ("FAILED", "UNSUPPORTED"))
+                            else "PARTIAL",
         "coverage": {"startMs": start_ms, "endMs": requested_end, "sampleIntervalMs": SAMPLE_INTERVAL_MS,
                      "expectedSamples": expected, "processedSamples": processed, "failedSamples": max(0, expected - processed)},
         "models": compact_models, "artifact": artifact.metadata(),
@@ -240,6 +336,12 @@ def run_observers(source: Path | str, output: Path | str, models: ObserverModels
         "observations": list(officials_retained.rows.values()),
         "interactions": list(interactions_retained.rows.values()), "links": list(links_retained.rows.values()),
     }
+    if audio_metadata is not None and audio_cues is not None:
+        audio_truncated = len(audio_cues) > MAX_RETAINED_AUDIO_CUES
+        result["audio"] = {**audio_metadata, "cues": audio_cues[:MAX_RETAINED_AUDIO_CUES],
+                           "truncated": audio_truncated,
+                           "reasons": [*audio_metadata["reasons"], *(
+                               ["AUDIO_SUMMARY_TRUNCATED_RAW_PRESERVED"] if audio_truncated else [])]}
     with (output_path / "summary.json").open("x", encoding="utf-8") as stream:
         json.dump(result, stream, ensure_ascii=False, allow_nan=False, indent=2)
     return result

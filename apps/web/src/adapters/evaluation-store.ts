@@ -104,6 +104,8 @@ export class EvaluationStore implements EvaluationStorePort {
         ...command.facts.push.severity.shotIds,
         ...command.facts.push.opponentDisplacement.shotIds,
         ...command.facts.push.insidePenaltyArea.shotIds,
+        ...(["ballInPlay", "onField", "againstOpponent", "offenderRole", "insideOwnPenaltyArea", "disciplinaryContext"] as const)
+          .flatMap((key) => command.facts.push.context?.[key]?.shotIds ?? []),
       ])];
       // 연결 샷이 있으면 소유권 확인
       if (shotIds.length > 0) {
@@ -125,7 +127,7 @@ export class EvaluationStore implements EvaluationStorePort {
           source, extraction_confidence, model_version, created_at
         ) values (
           ${command.analysisId}, ${command.candidateId}, ${next.revision},
-          ${JSON.stringify(command.facts)}::jsonb, 1, 'USER', null, null, ${command.now}
+          ${JSON.stringify(command.facts)}::jsonb, 2, 'USER', null, null, ${command.now}
         )
         returning id, revision
       `);

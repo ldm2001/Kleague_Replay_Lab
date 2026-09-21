@@ -5,6 +5,7 @@ from pathlib import Path
 
 
 LOCAL_OBSERVER_PIPELINE_VERSION = "video-local-observers-v1"
+AV_OBSERVER_PIPELINE_VERSION = "video-local-observers-av-v1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,7 +27,7 @@ class Shot:
     start_ms: int
     end_ms: int
     playback_speed: str = "UNKNOWN"
-    is_replay: bool = False
+    is_replay: bool | None = None
     camera_angle: str | None = None
 
 
@@ -59,6 +60,8 @@ class Evidence:
     timestamp_ms: int
     start_ms: int
     end_ms: int
+    audio_status: str | None = None
+    audio_reason: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

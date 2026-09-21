@@ -59,7 +59,8 @@ describe("decision competition context", () => {
   it("uses a new engine version for competition-composed evaluations", async () => {
     const { saved } = await execute({ competition: "K리그1", season: "2026" });
 
-    expect(saved[0]?.ruleEngineVersion).toBe("rule-engine-v2-competition");
+    expect(saved[0]?.ruleEngineVersion).toBe("rule-engine-v3-judgment-contract");
+    expect(saved[0]?.evaluationSchemaVersion).toBe(2);
   });
 
   it.each([

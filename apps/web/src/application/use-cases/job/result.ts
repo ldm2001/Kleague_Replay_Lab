@@ -84,7 +84,7 @@ const shot = (value: AnalysisShot): boolean =>
   Number.isSafeInteger(value.endMs) &&
   value.endMs >= value.startMs &&
   ["NORMAL", "SLOW", "UNKNOWN"].includes(value.playbackSpeed) &&
-  typeof value.isReplay === "boolean" &&
+  (value.isReplay === null || typeof value.isReplay === "boolean") &&
   (value.cameraAngle === null || typeof value.cameraAngle === "string");
 
 // 후보 payload 확인
@@ -146,7 +146,10 @@ const analysis = (value: AnalysisPayload): boolean => {
       value.evidence.every(evidence)
     ));
   if (!valid) return false;
-  if (value.pipelineVersion !== "video-local-observers-v1") return value.perception === undefined;
+  const schemaVersion = value.pipelineVersion === "video-local-observers-v1" ? "perception-run-v1" :
+    value.pipelineVersion === "video-local-observers-av-v1" ? "perception-run-v2" : null;
+  if (schemaVersion === null) return value.perception === undefined;
+  if (value.perception?.schemaVersion !== schemaVersion) return false;
   if (new Set(value.shots.map((item) => item.index)).size !== value.shots.length ||
     new Set(value.candidates.map((item) => item.index)).size !== value.candidates.length ||
     new Set((value.evidence ?? []).map((item) => item.objectKey)).size !== (value.evidence ?? []).length) {
@@ -194,7 +197,8 @@ export const result =
 
     // Lease 토큰 해시 생성
     const leaseTokenHash = Uint8Array.from(await hasher.sha256(input.leaseToken));
-    if (input.payload.kind === "ANALYZED" && input.payload.pipelineVersion === "video-local-observers-v1") {
+    if (input.payload.kind === "ANALYZED" &&
+      ["video-local-observers-v1", "video-local-observers-av-v1"].includes(input.payload.pipelineVersion)) {
       if (!input.payload.perception || !repository.preflight || !storage) {
         return { kind: "INVALID_RESULT", reason: "VERIFICATION_UNAVAILABLE" };
       }
@@ -223,7 +227,9 @@ export const result =
           return { kind: "INVALID_RESULT", reason: "ARTIFACT" };
         }
         const evidence = input.payload.evidence ?? [];
-        const indices = [...new Set(perception.incidents.flatMap((incident) => incident.evidenceIndices))];
+        const audioIndices = perception.schemaVersion === "perception-run-v2" ?
+          perception.audio.associations.flatMap((association) => association.evidenceIndices) : [];
+        const indices = [...new Set([...perception.incidents.flatMap((incident) => incident.evidenceIndices), ...audioIndices])];
         const references = await Promise.all(indices.map(async (evidenceIndex) => {
           const item = evidence[evidenceIndex]!;
           const expectedPrefix = `evidence/${preflight.analysisId}/${input.jobId.toLowerCase()}/`;
@@ -233,6 +239,7 @@ export const result =
           return {
             evidenceIndex,
             candidateIndex: item.candidateIndex,
+            kind: item.kind,
             startMs: item.startMs,
             endMs: item.endMs,
             declaredContentSha256: item.contentSha256.toLowerCase(),

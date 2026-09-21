@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Callable, Mapping, Protocol
 from .http import Api, HttpError
 from .worker import job
+from .domain.models import AV_OBSERVER_PIPELINE_VERSION, LOCAL_OBSERVER_PIPELINE_VERSION
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +49,6 @@ MAX_GRANT_ITEMS = 128
 MAX_MEDIA_BYTES = 50 * 1024 * 1024
 MAX_DIAGNOSTIC_BYTES = 128 * 1024 * 1024
 MAX_GRANT_BYTES = 200 * 1024 * 1024
-LOCAL_OBSERVER_PIPELINE_VERSION = "video-local-observers-v1"
 UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}")
 
 
@@ -335,6 +335,12 @@ def perception_artifact(
         raise RuntimeError("perception-raw-data-invalid")
     required = {"schemaVersion", "sourceSha256", "processingStatus", "coverage", "models",
                 "artifact", "summary", "incidents"}
+    if value.get("schemaVersion") == "perception-run-v2":
+        required.add("audio")
+        if not isinstance(value.get("audio"), dict):
+            raise RuntimeError("perception-audio-required")
+    elif value.get("schemaVersion") != "perception-run-v1":
+        raise RuntimeError("perception-invalid")
     if set(value) != required or not isinstance(value.get("artifact"), dict):
         raise RuntimeError("perception-invalid")
     local = value["artifact"]
@@ -417,8 +423,11 @@ def report(
         "broadcastCue": item.get("broadcast_cue"),
     } for item in value["candidates"]]
     perception = value.get("perception")
-    if value["pipeline_version"] == LOCAL_OBSERVER_PIPELINE_VERSION and perception is None:
+    if value["pipeline_version"] in (LOCAL_OBSERVER_PIPELINE_VERSION, AV_OBSERVER_PIPELINE_VERSION) and perception is None:
         raise RuntimeError("perception-required")
+    if value["pipeline_version"] == AV_OBSERVER_PIPELINE_VERSION and (
+            perception.get("schemaVersion") != "perception-run-v2" or not isinstance(perception.get("audio"), dict)):
+        raise RuntimeError("perception-audio-required")
     evidence = artifacts(api, item, path.parent, value["evidence"], check_cancelled)
     uploaded_perception = (perception_artifact(api, item, path.parent, perception, check_cancelled)
                            if perception is not None else None)

@@ -29,6 +29,7 @@ export const pushResult = (facts: PushFacts, rules: RuleSet): EvaluationResult =
     opponentDisplacement: facts.opponentDisplacement,
     insidePenaltyArea: facts.insidePenaltyArea,
     cameraSufficiency: facts.cameraSufficiency,
+    context: facts.context ?? null,
   });
 
   // 판정 경로의 조항 결합

@@ -37,3 +37,30 @@ export const perceptionPayload = (): AnalysisPayload => ({
       originalDecision: "UNKNOWN", restart: "UNVERIFIED", reasons: ["method-not-verified"] }],
   },
 });
+
+export const avPerceptionPayload = (): AnalysisPayload => {
+  const legacy = perceptionPayload();
+  return {
+    ...legacy,
+    pipelineVersion: "video-local-observers-av-v1",
+    evidence: [...(legacy.evidence ?? []), {
+      candidateIndex: 1, kind: "CLIP",
+      objectKey: `evidence/${PERCEPTION_ANALYSIS_ID}/${PERCEPTION_JOB_ID}/candidate-0001.mp4`,
+      contentSha256: "d".repeat(64), startMs: 500, endMs: 1_500, width: 1_920, height: 1_080,
+    }],
+    perception: { ...legacy.perception!, schemaVersion: "perception-run-v2",
+      audio: {
+        version: "audio-observations-v1", sourceSha256: PERCEPTION_SOURCE_SHA256, status: "COMPLETE",
+        method: "spectral-multitone-v1", speechStatus: "NOT_ANALYZED",
+        sourceSampleRateHz: 48_000, sourceChannels: 2,
+        timeline: { videoOriginSeconds: 0, audioOffsetMs: 0, scannedStartMs: 0, scannedEndMs: 2_000,
+          decodedFrameCount: 20, frameDurationMs: 100, gapPolicy: "PRESERVED_WITH_SYNTHETIC_SILENCE" },
+        cueCount: 1, cues: [{ id: "cue-1", startMs: 800, endMs: 1_000,
+          peakFrequenciesHz: [3_700, 4_100], frameCount: 2 }],
+        associations: [{ cueId: "cue-1", candidateIndex: 1, evidenceIndices: [1],
+          relation: "TEMPORAL_OVERLAP_ONLY" }],
+        truncated: false, reasons: [],
+      },
+    },
+  };
+};

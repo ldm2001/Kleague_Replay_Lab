@@ -20,6 +20,7 @@ const filterReasons: Record<PipelineFilterReason, string> = {
 };
 // 내부 판정 어휘의 화면 표기
 const labels: Record<string, string> = {
+  FACTS_UNDETERMINED: "판단에 필요한 사실이 확인되지 않음", CONTEXT_UNSUPPORTED: "현재 규칙 엔진이 지원하지 않는 경기 상황",
   CARELESS: "부주의", RECKLESS: "무모함", EXCESSIVE_FORCE: "과도한 힘", uncertain: "판단 보류", possible: "가능성 있음", clear: "명확함", none: "없음",
   NORMAL: "정상 속도", SLOW: "슬로모션", UNKNOWN: "미확인", MET: "충족", NOT_MET: "미충족", UNDETERMINED: "판단 보류", OFR: "주심 직접 검토", VAR_ONLY: "VAR 사실 확인", NONE: "해당 없음",
   CAMERA_INSUFFICIENT: "카메라 각도나 가림으로 판단 근거 부족", SLOW_MOTION_ONLY: "정상 속도에서 강도를 확인하지 못함", SEVERITY_UNDETERMINED: "접촉 강도나 밀림을 확정하지 못함", OUT_OF_SCOPE: "현재 규칙의 검토 범위 밖",
@@ -161,7 +162,7 @@ export function RulePanel({ analysis, candidate }: Readonly<{ analysis: Analysis
         <section aria-label="확인된 사실">
           <h3>확인된 사실</h3>
           <dl className="fact-grid">
-            <div><dt>접촉</dt><dd>{facts.contactDetected.value ? "확인" : "없음"}</dd></div>
+            <div><dt>접촉</dt><dd>{facts.contactDetected.value === null ? "미확인" : facts.contactDetected.value ? "확인" : "없음"}</dd></div>
             <div><dt>강도</dt><dd>{labels[facts.severity.value]}</dd></div>
             <div><dt>밀림</dt><dd>{labels[facts.opponentDisplacement.value]}</dd></div>
             <div><dt>관측 속도</dt><dd>{labels[facts.severity.observedAtSpeed]}</dd></div>

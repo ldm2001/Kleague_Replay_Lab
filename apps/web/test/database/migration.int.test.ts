@@ -97,7 +97,8 @@ describeDatabase("initial PostgreSQL migration", () => {
         'analysis_perception_runs_summary_check',
         'analysis_perception_runs_expiry_check',
         'analysis_perception_runs_job_revision_check',
-        'analysis_perception_runs_artifact_key_check'
+        'analysis_perception_runs_artifact_key_check',
+        'analysis_perception_runs_version_pair_check'
       )
       order by conname
     `;
@@ -113,6 +114,7 @@ describeDatabase("initial PostgreSQL migration", () => {
       "analysis_perception_runs_model_provenance_check",
       "analysis_perception_runs_source_sha256_check",
       "analysis_perception_runs_summary_check",
+      "analysis_perception_runs_version_pair_check",
       "competition_rule_versions_no_overlap",
       "decision_results_citations_check",
       "fact_revision_shots_fact_fk",
