@@ -1,7 +1,7 @@
 import type { ConceptKey, RuleSet } from "../../../shared/rule-set";
 import type { RuleCitation } from "../../../shared/citation";
 import type { IncidentAssertion, IncidentRecordV1 } from "../../../shared/incident-record";
-import type { IncidentConclusion, IncidentEvaluationV1, IncidentQuestion } from "../../../shared/incident-evaluation";
+import type { IncidentConclusion, IncidentEvaluationV1, IncidentFactDiagnostic, IncidentQuestion } from "../../../shared/incident-evaluation";
 import { incidentRecordData } from "../../../shared/incident-validation";
 import { incidentAdmissionMatches, incidentRecordSignature, readIncidentAssertion, type IncidentAdmission, type IncidentAssertionRead } from "./evidence";
 
@@ -18,10 +18,11 @@ export const evaluateHolding = (record: IncidentRecordV1, actionId: string, inpu
   if (!incidentRecordData(record)) throw new Error("INCIDENT_RECORD_INVALID");
   const action = record.actions.find((action) => action.id === actionId);
   if (!action) throw new Error("INCIDENT_ACTION_NOT_FOUND");
+  const diagnostics: IncidentFactDiagnostic[] = [];
   const result: IncidentEvaluationV1 = {
-    schemaVersion: "incident-evaluation-v1", evaluatorVersion: "holding-criteria-v1", incidentId: record.incidentId,
+    schemaVersion: "incident-evaluation-v1", evaluatorVersion: "holding-criteria-v2", incidentId: record.incidentId,
     actionId, sourceSha256: record.sourceSha256, recordSha256: incidentRecordSignature(record),
-    ruleVersionId: record.match.ifabVersionId, scope: "HOLDING_ONLY",
+    ruleVersionId: record.match.ifabVersionId, scope: "HOLDING_ONLY", factDiagnostics: diagnostics,
     conclusions: {
       offence: pending("UNSUPPORTED", "ACTION_EVALUATOR_UNSUPPORTED"),
       risk: pending("UNSUPPORTED", "RISK_EVALUATOR_UNSUPPORTED"),
@@ -49,7 +50,13 @@ export const evaluateHolding = (record: IncidentRecordV1, actionId: string, inpu
   const offenceCitations = cite(["LAW_12_HOLDING_DEFINITION", "LAW_12_HOLDING_OFFENCE", "LAW_12_IN_PLAY"]);
   if (!offenceCitations) return stopBoth("RULE_CLAUSE_OR_EDITION_UNAVAILABLE");
   result.conclusions.risk = pending("NOT_APPLICABLE", "SEVERITY_NOT_A_HOLDING_ESTABLISHMENT_CONDITION", [], offenceCitations);
-  const read = (fact: IncidentAssertion, temporal = false) => readIncidentAssertion(record, action, fact, input.admission, { temporal });
+  const read = (fact: IncidentAssertion, temporal = false) => {
+    const outcome = readIncidentAssertion(record, action, fact, input.admission, { temporal });
+    if (!diagnostics.some((item) => item.factId === fact.id && item.temporal === temporal)) {
+      diagnostics.push({ factId: fact.id, state: outcome.state, temporal, evidenceIds: outcome.evidenceIds, reasons: outcome.reasons });
+    }
+    return outcome;
+  };
   const context = action.context;
   const actionRead = read(action.observations.actionObserved);
   const playerRead = read(context.actorIsPlayer), targetRead = read(context.targetIsPlayer), opponentRead = read(context.opponents);
@@ -71,6 +78,18 @@ export const evaluateHolding = (record: IncidentRecordV1, actionId: string, inpu
   }
   const contact = read(action.observations.bodyOrEquipmentContact, action.observations.bodyOrEquipmentContact.state === "REFUTED");
   const impeded = read(action.observations.movementImpeded, true);
+  const grip = read(action.observations.gripMaintained, true);
+  const pulling = read(action.observations.pulling, true);
+  // These claims concern this action's contact with the same target. They are
+  // optional corroboration, never new mandatory holding conditions.
+  const conflicting = [impeded, grip, pulling].filter((item) => item.state === "CONFIRMED");
+  if (contact.state === "REFUTED" && conflicting.length) {
+    const ids = new Set([action.observations.bodyOrEquipmentContact.id, ...conflicting.flatMap((item) => item.factIds)]);
+    for (const item of diagnostics) {
+      if (ids.has(item.factId)) item.reasons = unique([...item.reasons, "OBSERVATION_CONFLICT"]);
+    }
+    return stopBoth("OBSERVATION_CONFLICT");
+  }
   if (contact.state === "REFUTED" || impeded.state === "REFUTED") {
     result.conclusions.offence = completed("NO_HOLDING_OFFENCE", [...applicable, contact.state === "REFUTED" ? contact : impeded], offenceCitations);
     result.conclusions.restart = pending("NOT_APPLICABLE", "NO_HOLDING_OFFENCE_TO_RESTART", [], offenceCitations);
