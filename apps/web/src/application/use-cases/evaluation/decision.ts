@@ -68,8 +68,8 @@ export const decision =
       ruleVersionId: context.value.ruleVersionDbId,
       facts: context.value.facts,
       evaluation: result.value as EvaluationResult,
-      ruleEngineVersion: "rule-engine-v2-competition",
-      evaluationSchemaVersion: 1,
+      ruleEngineVersion: "rule-engine-v3-judgment-contract",
+      evaluationSchemaVersion: 2,
       now: clock.now().toISOString(),
     });
   };

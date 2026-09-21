@@ -4,6 +4,7 @@ import { observation } from "@replay/shared-types";
 import { ruleSet } from "@replay/rule-data";
 import { describe, expect, it } from "vitest";
 import { pushResult } from "@replay/rule-engine";
+import { context } from "../fixtures/push-context";
 
 const rules = ruleSet("ifab-2025-26")!;
 
@@ -13,6 +14,7 @@ const base: PushFacts = {
   opponentDisplacement: observation("clear", "NORMAL", ["shot-1"]),
   insidePenaltyArea: observation(false, "NORMAL", ["shot-1"]),
   cameraSufficiency: "HIGH",
+  context: context(),
 };
 
 describe("pushResult", () => {
@@ -50,7 +52,7 @@ describe("pushResult", () => {
 
   it("파울 경로는 강도·재개·징계를 함께 채운다", () => {
     const result = pushResult(
-      { ...base, insidePenaltyArea: observation(true, "NORMAL", ["shot-1"]) },
+      { ...base, context: context(true), insidePenaltyArea: observation(true, "NORMAL", ["shot-1"]) },
       rules,
     );
     expect(result.decision).toBe("FOUL");
@@ -58,5 +60,11 @@ describe("pushResult", () => {
     expect(result.restart).toBe("PENALTY_KICK");
     expect(result.disciplinary).toBe("CAUTION");
     expect(result.inconclusiveReason).toBeNull();
+  });
+
+  it("판정 맥락이 달라지면 서명도 달라진다", () => {
+    const first = pushResult(base, rules);
+    const second = pushResult({ ...base, context: { ...context(), ballInPlay: observation(null, "NORMAL", []) } }, rules);
+    expect(first.factSignature).not.toBe(second.factSignature);
   });
 });

@@ -97,7 +97,7 @@ export type AnalysisShot = Readonly<{
   startMs: number;
   endMs: number;
   playbackSpeed: "NORMAL" | "SLOW" | "UNKNOWN";
-  isReplay: boolean;
+  isReplay: boolean | null;
   cameraAngle: string | null;
 }>;
 

@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { facts, type Clock, type EvaluationStore, type Hasher } from "@replay/application";
 import { observation, type EvaluationFacts } from "@replay/shared-types";
+import { context } from "../fixtures/push-context";
 
 const SESSION = "11111111-1111-4111-8111-111111111111";
 const ANALYSIS = "22222222-2222-4222-8222-222222222222";
@@ -53,6 +54,35 @@ class EvaluationDouble implements EvaluationStore {
 const clock: Clock = { now: () => NOW };
 
 describe("facts", () => {
+  it("preserves unknown booleans and explicit context without false defaults", async () => {
+    const repository = new EvaluationDouble();
+    const unknown = { ...value, push: { ...value.push, contactDetected: observation(null, "UNKNOWN", []),
+      insidePenaltyArea: observation(null, "UNKNOWN", []), context: context() },
+      variable: { ...value.variable, restartOccurred: null, mistakenIdentity: null, seriousMissedIncident: null } };
+    const result = await facts({ clock, hasher: new HashFake(), repository })({
+      anonymousSessionId: SESSION, analysisId: ANALYSIS, candidateId: CANDIDATE, idempotencyKey: "unknown", facts: unknown,
+    });
+    expect(result.kind).toBe("CREATED");
+    expect(repository.calls[0]).toMatchObject({ facts: unknown });
+  });
+
+  it.each([
+    { ...context(), ballInPlay: observation("false", "NORMAL", []) },
+    { ...context(), offenderRole: observation("NONE", "NORMAL", []) },
+    { ...context(), disciplinaryContext: observation("LOW", "NORMAL", []) },
+    { ...context(), onField: observation(true, "NORMAL", ["not-a-shot-id"]) },
+    { ...context(), extra: null },
+    { ballInPlay: observation(true, "NORMAL", []) },
+    null,
+  ])("rejects malformed context rather than ignoring it", async (invalidContext) => {
+    const repository = new EvaluationDouble();
+    const result = await facts({ clock, hasher: new HashFake(), repository })({
+      anonymousSessionId: SESSION, analysisId: ANALYSIS, candidateId: CANDIDATE, idempotencyKey: "invalid",
+      facts: { ...value, push: { ...value.push, context: invalidContext } },
+    });
+    expect(result).toEqual({ kind: "INVALID_INPUT", reason: "FACTS" });
+    expect(repository.calls).toHaveLength(0);
+  });
   it("keeps valid observed facts in a user revision command", async () => {
     const repository = new EvaluationDouble();
     const result = await facts({ clock, hasher: new HashFake(), repository })({

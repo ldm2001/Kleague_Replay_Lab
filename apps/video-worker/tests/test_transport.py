@@ -209,7 +209,8 @@ def perception_value(
     }
 
 
-def test_report_uploads_perception_separately_and_replaces_only_local_path(tmp_path: Path) -> None:
+@pytest.mark.parametrize("av", [False, True])
+def test_report_uploads_perception_separately_and_replaces_only_local_path(tmp_path: Path, av: bool) -> None:
     artifact = tmp_path / "perception" / "perception.jsonl.gz"
     artifact.parent.mkdir()
     artifact.write_bytes(b"gzip-data")
@@ -217,6 +218,19 @@ def test_report_uploads_perception_separately_and_replaces_only_local_path(tmp_p
     frame.write_bytes(b"frame")
     value = report_value(pipeline="video-local-observers-v1", evidence=[evidence_entry("frame.jpg", 0, "FRAME")])
     value["perception"] = perception_value(artifact)
+    if av:
+        value["pipeline_version"] = "video-local-observers-av-v1"
+        value["perception"]["schemaVersion"] = "perception-run-v2"
+        value["perception"]["audio"] = {
+            "version": "audio-observations-v1", "sourceSha256": "a" * 64, "status": "COMPLETE",
+            "method": "spectral-multitone-v1", "speechStatus": "NOT_ANALYZED",
+            "sourceSampleRateHz": 48000, "sourceChannels": 2,
+            "timeline": {"videoOriginSeconds": 0., "audioOffsetMs": 0, "scannedStartMs": 0,
+                         "scannedEndMs": 1000, "decodedFrameCount": 10, "frameDurationMs": 100,
+                         "gapPolicy": "PRESERVED_WITH_SYNTHETIC_SILENCE"},
+            "cueCount": 0, "cues": [], "associations": [], "truncated": False,
+            "reasons": ["SPEECH_NOT_ANALYZED"],
+        }
     report_path = tmp_path / "report.json"
     report_path.write_text(json.dumps(value))
     sha256 = digest(artifact)
@@ -239,6 +253,8 @@ def test_report_uploads_perception_separately_and_replaces_only_local_path(tmp_p
                               {"x-amz-checksum-sha256": checksum, "if-none-match": "*"})
     perception = payload["perception"]
     assert isinstance(perception, dict)
+    if av:
+        assert perception["audio"] == value["perception"]["audio"]
     assert "path" not in perception["artifact"]
     assert perception["artifact"] == {
                                       "objectKey": f"perception/{ANALYSIS_ID}/{JOB_ID}/{JOB_REVISION}/{sha256}.jsonl.gz",

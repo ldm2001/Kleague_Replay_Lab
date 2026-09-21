@@ -22,7 +22,9 @@ export type PerceptionIncident = Readonly<{
   reasons: readonly string[];
 }>;
 
-export type PerceptionRun = Readonly<{
+import { audioObservationsData, type AudioObservations } from "./audio-observations";
+
+export type PerceptionRunV1 = Readonly<{
   schemaVersion: "perception-run-v1";
   sourceSha256: string;
   processingStatus: "COMPLETE" | "PARTIAL";
@@ -53,6 +55,13 @@ export type PerceptionRun = Readonly<{
   incidents: readonly PerceptionIncident[];
 }>;
 
+export type PerceptionRunV2 = Omit<PerceptionRunV1, "schemaVersion"> & Readonly<{
+  schemaVersion: "perception-run-v2";
+  audio: AudioObservations;
+}>;
+
+export type PerceptionRun = PerceptionRunV1 | PerceptionRunV2;
+
 export type PerceptionCandidateReference = Readonly<{
   index: number;
   startMs: number;
@@ -61,6 +70,7 @@ export type PerceptionCandidateReference = Readonly<{
 
 export type PerceptionEvidenceReference = Readonly<{
   candidateIndex: number;
+  kind?: "FRAME" | "CLIP";
   startMs: number;
   endMs: number;
 }>;
@@ -161,16 +171,23 @@ const jsonSize = (value: unknown): number | null => {
 
 export const perceptionRunData = (value: unknown): value is PerceptionRun => {
   const size = jsonSize(value);
-  if (size === null || size > MAX_RUN_BYTES || !object(value, [
+  if (size === null || size > MAX_RUN_BYTES || typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const version = (value as Record<string, unknown>).schemaVersion;
+  if (version !== "perception-run-v1" && version !== "perception-run-v2") return false;
+  if (!object(value, [
     "schemaVersion", "sourceSha256", "processingStatus", "coverage", "models", "artifact", "summary", "incidents",
+    ...(version === "perception-run-v2" ? ["audio"] : []),
   ])) return false;
-  if (value.schemaVersion !== "perception-run-v1" || typeof value.sourceSha256 !== "string" ||
+  if (typeof value.sourceSha256 !== "string" ||
     !SHA256.test(value.sourceSha256) || !["COMPLETE", "PARTIAL"].includes(value.processingStatus as string) ||
     !coverageData(value.coverage) || !Array.isArray(value.models) || value.models.length !== 3 ||
     !value.models.every(modelData) || !artifactData(value.artifact) || !summaryData(value.summary) ||
     !Array.isArray(value.incidents) || value.incidents.length > MAX_INCIDENTS || !value.incidents.every(incidentData)) {
     return false;
   }
+  if (version === "perception-run-v2" && !audioObservationsData(
+    value.audio, value.sourceSha256, (value.coverage as { endMs: number }).endMs,
+  )) return false;
   const run = value as unknown as PerceptionRun;
   const components = new Set(run.models.map((item) => item.component));
   if (components.size !== 3 || !["detector", "role", "pose"].every((item) => components.has(item as PerceptionModelComponent))) {
@@ -180,7 +197,8 @@ export const perceptionRunData = (value: unknown): value is PerceptionRun => {
     return false;
   }
   return run.processingStatus !== "COMPLETE" ||
-    (run.coverage.processedSamples === run.coverage.expectedSamples && run.coverage.failedSamples === 0);
+    (run.coverage.processedSamples === run.coverage.expectedSamples && run.coverage.failedSamples === 0 &&
+      (run.schemaVersion === "perception-run-v1" || ["COMPLETE", "ABSENT"].includes(run.audio.status)));
 };
 
 export const perceptionReferencesData = (
@@ -197,6 +215,20 @@ export const perceptionReferencesData = (
       const item = evidence[index];
       if (!item || item.candidateIndex !== incident.candidateIndex ||
         item.startMs < candidate.startMs || item.endMs > candidate.endMs) return false;
+    }
+  }
+  if (run.schemaVersion === "perception-run-v2") {
+    for (const association of run.audio.associations) {
+      const cue = run.audio.cues.find((item) => item.id === association.cueId);
+      const candidate = byIndex.get(association.candidateIndex);
+      if (!cue || !candidate || association.evidenceIndices.length === 0 ||
+        cue.startMs < candidate.startMs || cue.endMs > candidate.endMs) return false;
+      for (const index of association.evidenceIndices) {
+        const item = evidence[index];
+        if (!item || item.kind !== "CLIP" || item.candidateIndex !== association.candidateIndex ||
+          item.startMs > cue.startMs || item.endMs < cue.endMs ||
+          item.startMs < candidate.startMs || item.endMs > candidate.endMs) return false;
+      }
     }
   }
   return true;

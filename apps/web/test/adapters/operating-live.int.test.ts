@@ -82,7 +82,9 @@ describe.skipIf(!enabled)("explicit local operating storage integration", () => 
       throw new Error("Actual report integration requires an explicitly named local test database");
     }
     const local = JSON.parse(readFileSync(reportPath, "utf8"));
-    expect(local.pipeline_version).toBe("video-local-observers-v1");
+    expect(["video-local-observers-v1", "video-local-observers-av-v1"]).toContain(local.pipeline_version);
+    expect(local.perception.schemaVersion).toBe(local.pipeline_version === "video-local-observers-av-v1"
+      ? "perception-run-v2" : "perception-run-v1");
     const sourceSha = await hashSource(sourcePath);
     expect(local.perception.sourceSha256).toBe(sourceSha.toString("hex"));
     const { client: storageClient, adapter: objectStorage } = storage();
@@ -154,7 +156,7 @@ describe.skipIf(!enabled)("explicit local operating storage integration", () => 
       await database.sql`insert into analyses(id, anonymous_session_id, video_asset_id, status, retention_class,
         source_fingerprint, pipeline_version, media_policy_version, created_at, expires_at)
         values (${analysisId}, ${sessionId}, ${videoId}, 'QUEUED', 'TEMPORARY', ${sourceSha},
-        'video-local-observers-v1', 'media-v1', ${now}, ${expires})`;
+        ${local.pipeline_version}, 'media-v1', ${now}, ${expires})`;
       await database.sql`insert into processing_jobs(id, analysis_id, job_type, status, payload_version, job_revision,
         attempt, max_attempts, lease_owner, lease_token_hash, lease_until, created_at, updated_at)
         values (${jobId}, ${analysisId}, 'ANALYZE_VIDEO', 'PROCESSING', 1, 1, 1, 3, 'live-test-worker',
@@ -190,6 +192,11 @@ print(json.dumps({'payload':payload,'ack':ack}))`;
       expect(saved?.summary.admission.reasons).toContain("RULE_EDITION_UNVERIFIED");
       expect(saved?.summary.coverage).toEqual(local.perception.coverage);
       expect(saved?.summary.incidents).toEqual(submitted.payload.perception?.incidents);
+      if (submitted.payload.perception?.schemaVersion === "perception-run-v2") {
+        expect(saved?.summary.audio).toEqual(submitted.payload.perception.audio);
+      } else {
+        expect(saved?.summary).not.toHaveProperty("audio");
+      }
       const views = new StatusStore(database);
       const publicReport = await report({ clock, repository: views })({ anonymousSessionId: sessionId, analysisId });
       const publicStatus = await status({ clock, repository: views })({ anonymousSessionId: sessionId, videoAssetId: videoId });
@@ -197,6 +204,10 @@ print(json.dumps({'payload':payload,'ack':ack}))`;
         expect(JSON.stringify(view)).not.toContain("perception/");
         expect(JSON.stringify(view)).not.toContain("sourceFilesSha256");
         expect(JSON.stringify(view)).not.toContain("roleHypotheses");
+        expect(JSON.stringify(view)).not.toContain("audio-observations-v1");
+        if (submitted.payload.perception?.schemaVersion === "perception-run-v2") {
+          expect(JSON.stringify(view)).not.toContain(JSON.stringify(submitted.payload.perception.audio));
+        }
       }
       expect(publicReport).toMatchObject({ resultPolicy: "COMPLETED_ONLY", evaluatedCount: 0, judgmentStatus: "NOT_EVALUATED" });
       if (knownVideoSource(sourceSha.toString("hex")) && submitted.payload.candidates.some((candidate) => candidate.broadcastCue)) {

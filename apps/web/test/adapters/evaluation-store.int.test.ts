@@ -7,6 +7,7 @@ import { pushResult, varResult } from "@replay/rule-engine";
 import { combineCompetitionRules, ruleSet } from "@replay/rule-data";
 import { client } from "@replay/database";
 import { observation, type EvaluationFacts, type EvaluationResult, type RuleCitation } from "@replay/shared-types";
+import { context as pushContext } from "../fixtures/push-context";
 
 const databaseUrl = process.env.DATABASE_URL;
 const describeDatabase = databaseUrl ? describe : describe.skip;
@@ -64,7 +65,7 @@ describeDatabase("PostgreSQL evaluation repository", () => {
     `;
     await database.sql`
       insert into shots (id, analysis_id, shot_index, start_ms, end_ms, playback_speed, is_replay, camera_angle_label)
-      values (${shotId}, ${analysisId}, 0, 0, 2000, 'NORMAL', false, 'MAIN')
+      values (${shotId}, ${analysisId}, 0, 0, 2000, 'NORMAL', null, 'MAIN')
     `;
     await database.sql`
       insert into incident_candidates (id, analysis_id, candidate_index, review_scenario, start_ms, end_ms, anchor_ms, detection_confidence, camera_sufficiency, reasons, shot_indices, review_status)
@@ -74,10 +75,11 @@ describeDatabase("PostgreSQL evaluation repository", () => {
     const facts: EvaluationFacts = {
       push: {
         contactDetected: observation(true, "NORMAL", [shotId]),
-        severity: observation("RECKLESS", "NORMAL", [shotId]),
-        opponentDisplacement: observation("clear", "NORMAL", [shotId]),
+        severity: observation("CARELESS", "NORMAL", [shotId]),
+        opponentDisplacement: observation("none", "NORMAL", [shotId]),
         insidePenaltyArea: observation(true, "NORMAL", [shotId]),
         cameraSufficiency: "HIGH",
+        context: pushContext(true),
       },
       variable: {
         reviewScenario: "PENALTY_NOT_GIVEN",
@@ -106,6 +108,10 @@ describeDatabase("PostgreSQL evaluation repository", () => {
     const judged = await run({ ruleVersionId: context.value.ruleVersionId, ...(context.value.competition ? { competition: context.value.competition } : {}), push: facts.push, variable: facts.variable, observed: facts.observed, options: context.value.competitionOptions });
     expect(judged.kind).toBe("EVALUATED");
     if (judged.kind !== "EVALUATED") return;
+    expect(judged.value).toMatchObject({ decision: "FOUL", restart: "PENALTY_KICK", disciplinary: "NONE",
+      varAssessment: { intervention: "INTERVENTION_RECOMMENDED" } });
+    const [shotState] = await database.sql<{ is_replay: boolean | null }[]>`select is_replay from shots where id = ${shotId}`;
+    expect(shotState?.is_replay).toBeNull();
     const leagueCitations = judged.value.citations.filter((item) => item.authority === "KLEAGUE");
     expect(leagueCitations.length).toBeGreaterThan(0);
     expect(leagueCitations.every((item) => item.ruleId.startsWith(`${versionId}-`) && item.edition === "2026")).toBe(true);
@@ -222,7 +228,7 @@ describeDatabase("PostgreSQL evaluation repository", () => {
     expect(previous?.citations).toEqual(legacy.value.citations);
     expect(previous?.evaluation_snapshot).toEqual(legacy.value);
     const latest = history.find((item) => item.id === current.decisionId);
-    expect(latest?.rule_engine_version).toBe("rule-engine-v2-competition");
+    expect(latest?.rule_engine_version).toBe("rule-engine-v3-judgment-contract");
     expect(latest?.evaluation_snapshot.varAssessment?.notReviewableReason).toBe("OUTSIDE_REVIEWABLE_CATEGORIES");
     const leagueCitations = latest?.citations.filter((item) => item.authority === "KLEAGUE") ?? [];
     expect(leagueCitations.length).toBeGreaterThan(0);

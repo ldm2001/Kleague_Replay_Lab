@@ -17,4 +17,4 @@ def media() -> PipelinePorts:
 
 
 def operating(*, progress=None, check_cancelled=None) -> PipelinePorts:
-    return replace(media(), perception=PerceptionAdapter(progress=progress, check_cancelled=check_cancelled))
+    return replace(media(), perception=PerceptionAdapter(progress=progress, check_cancelled=check_cancelled, audio_enabled=True))

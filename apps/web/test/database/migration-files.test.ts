@@ -25,6 +25,8 @@ describe("migration discovery", () => {
       "0015_candidate_scene_event",
       "0016_broadcast_cue",
       "0017_analysis_perception_runs",
+      "0018_perception_audio",
+      "0019_judgment_contract",
     ]);
     expect(list[0]?.checksum).toMatch(/^[a-f0-9]{64}$/);
     expect(list[0]?.sql).toContain("CREATE TABLE analyses");
@@ -55,5 +57,9 @@ describe("migration discovery", () => {
     expect(perception?.sql).toContain("artifact_object_key =");
     expect(perception?.sql).toContain("jsonb_typeof(summary->'incidents') = 'array'");
     expect(perception?.sql).toContain("jsonb_typeof(summary->'admission') = 'object'");
+    const audio = list.find((migration) => migration.name === "0018_perception_audio");
+    expect(audio?.sql).toContain("DROP CONSTRAINT analysis_perception_runs_schema_version_check");
+    expect(audio?.sql).toContain("analysis_perception_runs_version_pair_check");
+    expect(audio?.sql).toContain("jsonb_typeof(summary->'audio') = 'object'");
   });
 });

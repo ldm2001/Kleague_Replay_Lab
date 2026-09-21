@@ -108,7 +108,7 @@ export const varThresholdResult = pgEnum(
 // VAR 개입 결과
 export const varIntervention = pgEnum(
   "var_intervention",
-  values(["NO_INTERVENTION", "OVERTURNED", "CONFIRMED"]),
+  values(["NO_INTERVENTION", "OVERTURNED", "CONFIRMED", "INTERVENTION_RECOMMENDED", "UNDETERMINED"]),
 );
 // VAR 미개입 사유
 export const varNoInterventionReason = pgEnum(
@@ -142,7 +142,7 @@ export const varReviewProcedure = pgEnum("var_review_procedure", values(["OFR", 
 // 판정 보류 사유
 export const inconclusiveReason = pgEnum(
   "inconclusive_reason",
-  values(["CAMERA_INSUFFICIENT", "SEVERITY_UNDETERMINED", "SLOW_MOTION_ONLY", "OUT_OF_SCOPE"]),
+  values(["CAMERA_INSUFFICIENT", "SEVERITY_UNDETERMINED", "SLOW_MOTION_ONLY", "OUT_OF_SCOPE", "FACTS_UNDETERMINED", "CONTEXT_UNSUPPORTED"]),
 );
 // 공식 판정 발표 주체
 export const announcedBy = pgEnum(

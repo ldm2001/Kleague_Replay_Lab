@@ -23,7 +23,7 @@
         "withinTimeWindow": true,
         "thresholdMet": "MET",
         "reviewProcedure": "OFR",
-        "intervention": "OVERTURNED",
+        "intervention": "INTERVENTION_RECOMMENDED",
         "noInterventionReason": null
       }
     },
@@ -104,7 +104,7 @@
       "concern": "속행 판정도 심각한 미인지 사건으로 검토 대상이 된다",
       "note": "'판정을 내리지 않았다'를 검토 불가로 접으면 미인지 사건 경로가 통째로 사라진다.",
       "given": { "facts": { "seriousMissedIncident": true, "errorMagnitude": "UNDETERMINED" } },
-      "expect": { "reviewable": true, "thresholdMet": "MET", "intervention": "OVERTURNED" }
+      "expect": { "reviewable": true, "thresholdMet": "MET", "intervention": "INTERVENTION_RECOMMENDED" }
     },
     {
       "id": "var-08",
@@ -210,7 +210,7 @@
       "expect": {
         "reviewable": true,
         "thresholdMet": "UNDETERMINED",
-        "intervention": "NO_INTERVENTION",
+        "intervention": "UNDETERMINED",
         "noInterventionReason": null
       }
     },

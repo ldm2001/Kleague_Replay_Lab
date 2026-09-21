@@ -10,5 +10,6 @@ export * from "./pipeline-filter";
 export * from "./tracking";
 export * from "./worker-protocol";
 export * from "./perception";
+export * from "./audio-observations";
 // 과거 관찰 payload 하위 호환 공개
 export * from "./observation";

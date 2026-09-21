@@ -54,6 +54,15 @@ const observed = (value: unknown, check: (value: unknown) => boolean): boolean =
   return Array.isArray(value.shotIds) && value.shotIds.every((item) => typeof item === "string" && UUID.test(item));
 };
 
+const nullableBoolean = (value: unknown): boolean => value === null || typeof value === "boolean";
+
+const validContext = (value: unknown): boolean => object(value) &&
+  Object.keys(value).every((key) => ["ballInPlay", "onField", "againstOpponent", "insideOwnPenaltyArea", "offenderRole", "disciplinaryContext"].includes(key)) &&
+  ["ballInPlay", "onField", "againstOpponent", "insideOwnPenaltyArea"]
+    .every((key) => observed(value[key], nullableBoolean)) &&
+  observed(value.offenderRole, (item) => one(item, ["ATTACKING_TEAM", "DEFENDING_TEAM", "UNKNOWN"])) &&
+  observed(value.disciplinaryContext, (item) => one(item, ["NONE", "DOGSO", "SPA", "UNKNOWN"]));
+
 const validFacts = (value: unknown): value is EvaluationFacts => {
   // 사실 묶음의 최상위 구조 확인
   if (!object(value) || !object(value.push) || !object(value.variable) || !object(value.observed)) return false;
@@ -61,18 +70,19 @@ const validFacts = (value: unknown): value is EvaluationFacts => {
   const variable = value.variable;
   const decision = value.observed;
   return (
-    observed(push.contactDetected, (item) => typeof item === "boolean") &&
+    observed(push.contactDetected, nullableBoolean) &&
     observed(push.severity, (item) => one(item, OBSERVED_SEVERITIES)) &&
     observed(push.opponentDisplacement, (item) => one(item, DISPLACEMENT_LEVELS)) &&
-    observed(push.insidePenaltyArea, (item) => typeof item === "boolean") &&
+    observed(push.insidePenaltyArea, nullableBoolean) &&
+    (push.context === undefined || validContext(push.context)) &&
     one(push.cameraSufficiency, CAMERA_SUFFICIENCY_LEVELS) &&
     one(variable.reviewScenario, REVIEW_SCENARIOS) &&
-    typeof variable.restartOccurred === "boolean" &&
+    nullableBoolean(variable.restartOccurred) &&
     one(variable.sendOffCategory, SEND_OFF_CATEGORIES) &&
-    typeof variable.mistakenIdentity === "boolean" &&
+    nullableBoolean(variable.mistakenIdentity) &&
     one(variable.decisionNature, DECISION_NATURES) &&
     one(variable.errorMagnitude, ERROR_MAGNITUDES) &&
-    typeof variable.seriousMissedIncident === "boolean" &&
+    nullableBoolean(variable.seriousMissedIncident) &&
     one(decision.restartType, RESTART_TYPES) &&
     one(decision.restartBeneficiary, RESTART_BENEFICIARIES) &&
     (decision.card === null || one(decision.card, DISCIPLINARY_ACTIONS)) &&

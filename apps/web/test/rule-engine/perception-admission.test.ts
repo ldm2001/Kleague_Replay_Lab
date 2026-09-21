@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { perceptionAdmission, perceptionRecognitionMethods, type PerceptionAdmissionContext } from "@replay/rule-engine";
 import type { PerceptionRun } from "@replay/shared-types";
+import { avPerceptionPayload } from "../fixtures/perception";
 
 const SOURCE = "a".repeat(64);
 const ARTIFACT = "b".repeat(64);
@@ -33,6 +34,15 @@ const context = (): PerceptionAdmissionContext => ({
 });
 
 describe("perception admission", () => {
+  it("keeps a truncated-away audio cue method unverified", () => {
+    const value = avPerceptionPayload().perception as any;
+    value.audio.cues = [];
+    value.audio.associations = [];
+    value.audio.truncated = true;
+    const verified = context();
+    expect(perceptionAdmission(value, { ...verified, pipelineVersion: "video-local-observers-av-v1" }).reasons)
+      .toContain("AUDIO_CUE_METHOD_NOT_VERIFIED");
+  });
   it("keeps pinned and storage-verified observations private while recognition methods are closed", () => {
     expect(Object.values(perceptionRecognitionMethods)).not.toContain("VERIFIED");
     const result = perceptionAdmission(run(), context());

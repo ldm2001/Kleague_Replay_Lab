@@ -381,11 +381,13 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
     } else if (command.payload.kind === "ANALYZED") {
       // 영상 분석 결과와 증거 저장
       const payload = command.payload;
-      const perception = payload.pipelineVersion === "video-local-observers-v1" ? payload.perception : undefined;
-      if (payload.pipelineVersion === "video-local-observers-v1" && (!perception || !command.perceptionVerification)) {
+      const localPipeline = ["video-local-observers-v1", "video-local-observers-av-v1"].includes(payload.pipelineVersion);
+      const perception = localPipeline ? payload.perception : undefined;
+      if (localPipeline && (!perception || !command.perceptionVerification ||
+        perception.schemaVersion !== (payload.pipelineVersion === "video-local-observers-v1" ? "perception-run-v1" : "perception-run-v2"))) {
         return { kind: "INVALID_RESULT", reason: "CONTEXT" };
       }
-      if (payload.pipelineVersion !== "video-local-observers-v1" && command.perceptionVerification) {
+      if (!localPipeline && command.perceptionVerification) {
         return { kind: "INVALID_RESULT", reason: "CONTEXT" };
       }
       let privateSummaryJson: string | undefined;
@@ -396,6 +398,7 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
             processingStatus: perception.processingStatus,
             coverage: perception.coverage,
             incidents: perception.incidents,
+            ...(perception.schemaVersion === "perception-run-v2" ? { audio: perception.audio } : {}),
             admission: command.perceptionVerification.admission,
           });
         } catch {

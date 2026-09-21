@@ -62,13 +62,31 @@ export const pushGates = (facts: PushFacts, rules: RuleSet): PushVerdict => {
     return inconclusive("CAMERA_INSUFFICIENT", offence);
   }
 
-  // 접촉 없음 판정
-  if (!facts.contactDetected.value) {
+  // 과거 입력이나 미확인 관측을 적용 맥락으로 추정하지 않는다.
+  const context = facts.context;
+  if (typeof facts.contactDetected.value !== "boolean" ||
+      typeof facts.insidePenaltyArea.value !== "boolean" || !context ||
+      typeof context.ballInPlay?.value !== "boolean" ||
+      typeof context.onField?.value !== "boolean" ||
+      typeof context.againstOpponent?.value !== "boolean" ||
+      typeof context.insideOwnPenaltyArea?.value !== "boolean" ||
+      !["ATTACKING_TEAM", "DEFENDING_TEAM"].includes(context.offenderRole?.value) ||
+      !["NONE", "DOGSO", "SPA"].includes(context.disciplinaryContext?.value)) {
+    return inconclusive("FACTS_UNDETERMINED", [...offence, ...disciplineCitations]);
+  }
+  if (!context.ballInPlay.value || !context.onField.value || !context.againstOpponent.value ||
+      context.disciplinaryContext.value !== "NONE" ||
+      (context.insideOwnPenaltyArea.value && !facts.insidePenaltyArea.value)) {
+    return inconclusive("CONTEXT_UNSUPPORTED", [...offence, ...disciplineCitations]);
+  }
+
+  // 확인된 접촉 없음만 밀기 반칙 없음으로 처리한다.
+  if (facts.contactDetected.value === false) {
     return {
       decision: "NO_FOUL",
       severity: null,
       restart: "PLAY_CONTINUED",
-      disciplinary: null,
+      disciplinary: "NONE",
       confidence: confidence(facts),
       inconclusiveReason: null,
       citations: offence,
@@ -91,24 +109,11 @@ export const pushGates = (facts: PushFacts, rules: RuleSet): PushVerdict => {
 
   const severity = facts.severity.value;
 
-  // 부주의 접촉 판정
-  if (facts.opponentDisplacement.value === "none" && severity === "CARELESS") {
-    return {
-      decision: "NORMAL_CONTACT",
-      severity: null,
-      restart: "PLAY_CONTINUED",
-      disciplinary: "NONE",
-      confidence: confidence(facts),
-      inconclusiveReason: null,
-      citations: [...offence, ...disciplineCitations],
-    };
-  }
-
   // 파울과 재개와 징계 판정
   return {
     decision: "FOUL",
     severity,
-    restart: facts.insidePenaltyArea.value ? "PENALTY_KICK" : "DIRECT_FREE_KICK",
+    restart: context.insideOwnPenaltyArea.value ? "PENALTY_KICK" : "DIRECT_FREE_KICK",
     disciplinary: discipline(severity),
     confidence: confidence(facts),
     inconclusiveReason: null,

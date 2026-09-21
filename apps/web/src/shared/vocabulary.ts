@@ -112,6 +112,8 @@ export const INCONCLUSIVE_REASONS = vocabulary([
   "SLOW_MOTION_ONLY",
   // 경기규칙 조문 없음
   "OUT_OF_SCOPE",
+  "FACTS_UNDETERMINED",
+  "CONTEXT_UNSUPPORTED",
 ]);
 export type InconclusiveReason = (typeof INCONCLUSIVE_REASONS)[number];
 
@@ -131,7 +133,9 @@ export const VAR_THRESHOLD_RESULTS = vocabulary(["MET", "NOT_MET", "UNDETERMINED
 export type VarThresholdResult = (typeof VAR_THRESHOLD_RESULTS)[number];
 
 // VAR 개입 결과 목록
-export const VAR_INTERVENTIONS = vocabulary(["NO_INTERVENTION", "OVERTURNED", "CONFIRMED"]);
+// OVERTURNED와 CONFIRMED는 과거 저장 결과의 호환을 위해 유지한다.
+// 계산 결과는 실제 심판 행동을 뜻하지 않는다.
+export const VAR_INTERVENTIONS = vocabulary(["NO_INTERVENTION", "OVERTURNED", "CONFIRMED", "INTERVENTION_RECOMMENDED", "UNDETERMINED"]);
 export type VarIntervention = (typeof VAR_INTERVENTIONS)[number];
 
 // 게이트 차단 사유
@@ -218,6 +222,7 @@ export type ErrorMagnitude = (typeof ERROR_MAGNITUDES)[number];
 // 판정 입력 부족 오류
 // 평가 오류 목록
 export const EVALUATION_ERROR_CODES = vocabulary([
+  "INSUFFICIENT_FACTS",
   "UNKNOWN_RULE_VERSION",
   "UNKNOWN_COMPETITION_OPTION",
 ]);

@@ -1,6 +1,7 @@
 # Replay Lab Video Worker
 
 운영 `ANALYZE_VIDEO`는 기존 영상 처리와 승인된 RT-DETR-R18·YOLO11m·ViTPose의 로컬 관측을 함께 실행한다
+기본 `video-local-observers-av-v1`은 전체 원본의 기존 DSP 음향 관측을 먼저 실행하고, 시각 결과와 별개로 같은 원본 시간축에 보존한다. 새 음성 모델이나 발화 전사는 없다
 아래 기준 CLI는 비모델 개발 진단으로 유지한다. 운영 모델 경로의 오류를 기준 CLI 성공으로 바꾸지 않는다
 
 ```text
@@ -92,14 +93,16 @@ npm run dev:worker
 `WORKER_PERCEPTION_DEVICE=cpu`가 기본이며 Apple Silicon 개발 환경은 `mps`를 사용할 수 있다
 이는 운영자 실행 환경이며 사용자 화면에 모델·임계값·사실 입력을 추가하지 않는다
 
-내부 JSON 요청에는 `x-worker-protocol: video-observations-v2`를 보낸다
+내부 JSON 요청에는 `x-worker-protocol: video-observations-v4`를 보낸다
 웹 서버는 인증 후 선점과 진행 및 결과와 증거 권한 요청의 버전을 검사한다
 버전이 없거나 다르면 본문 처리와 작업 선점 전에 HTTP 409로 거부한다
 웹과 Worker를 함께 갱신하고 이전 Worker는 활성 작업을 마친 뒤 종료한다
 이 검사는 실행 계약의 호환성 검사이며 관측 정확도의 인증이 아니다
 과거에 저장된 분석은 자동 재처리하거나 수정하지 않는다
 
-새 운영 경로는 `0017_analysis_perception_runs`까지 적용된 DB를 요구한다
+새 운영 경로는 `0019_judgment_contract`까지 적용된 DB를 요구한다
+리플레이 여부를 판별하지 않은 샷의 `is_replay` / `isReplay`는 false가 아니라 null이다
+이전 false 이력은 재작성하지 않으며 v4는 새 관측의 미확인을 보존한다
 스키마와 서버 프로토콜을 먼저 맞추고 활성 작업이 없는지 확인한 뒤 이전 Worker를 새 환경으로 교체한다
 기존 분석을 자동 재처리하지 않는다
 
@@ -178,8 +181,8 @@ PYTHONPATH=apps/video-worker/src python3 -m replay_video.inspect /path/to/match.
 
 ## 휘슬 유사 음향 진단
 
-고정 DSP로 복수 주파수 음향을 찾는 독립 개발 도구다
-자동 분석과 rules 및 공개 결과에는 연결하지 않는다
+고정 DSP로 복수 주파수 음향을 찾는다. 아래 독립 CLI 외에도 운영 Worker가 전체 원본에서 같은 관측기를 실행한다
+운영 경로에는 비공개 근거로만 연결하며 rules 사실과 공개 관측 목록으로 채택하지 않는다
 
 ```sh
 PYTHONPATH=apps/video-worker/src python3 -m replay_video.inspect_audio /path/to/match.mp4 /tmp/replay-audio.json
@@ -200,8 +203,28 @@ COMPLETE는 디코딩·측정의 완료이며 휘슬의 정답이나 심판 판�
 고정 임계값과 방법 및 제한사항은 출력 JSON에 기록하며 사용자 분석 설정은 추가하지 않는다
 
 관중 휘슬과 음악 등을 구분하지 못하므로 WHISTLE_LIKE_AUDIO를 주심 휘슬과 파울 및 재개 종류로 해석하지 않는다
-기존 증거 클립은 음성을 제거하므로 음향 검증은 원본으로 따로 수행해야 한다
+새 증거 클립은 첫 실제 영상과 첫 오디오를 공통 PTS 원점으로 잘라 원본 유래 AAC를 포함한다. 비트 단위 원본 복사는 아니다
+1~8채널은 다운믹스하지 않는다. 무트랙은 `ABSENT`, 미지원 메타데이터·채널은 `OMITTED_UNSUPPORTED`, 음향 처리 실패 뒤 온전한 영상 재생성이 성공하면 `OMITTED_DECODE_FAILED`로 남긴다
+clip별 상태·사유는 로컬 report에만 남고 서버에는 원본 음향 상태와 유효한 시간 대응을 보존한다. 원격 clip별 실패 세부 진단은 별도 지원하지 않는다
+음향·컨테이너 여유를 뺀 bitrate 예산과 실제 길이·50 MiB 상한을 검사하며 음향 누락을 `PRESERVED`로 보고하지 않는다
+AAC 채널 수와 샘플 슬롯은 보존하지만 일부 다채널 배치 이름은 컨테이너에서 달라질 수 있다
 실제 관측 범위와 채택 제한은 [판정관측조사](../../docs/analysis/판정관측조사.md)를 본다
+
+### 시청각 비공개 관측과 비교 검사
+
+`perception-run-v2`에는 `audio-observations-v1`이 필수다. 이전 `perception-run-v1`과 `video-local-observers-v1` 저장 자료는 그대로 읽는다
+원본 SHA·오프셋·스캔 범위·상태·`speechStatus: NOT_ANALYZED`를 저장하고 전체 cue는 같은 gzip의 `AUDIO_CUE` 행에 남긴다
+API 요약은 cue 256개·시간 대응 512개·각 clip 참조 16개로 제한한다. 기존 256 KiB wire와 1 MiB private DB 상한을 유지한다
+음향 COMPLETE는 이용 가능한 트랙의 처리 완료다. 무트랙과 녹음된 무음은 다르며 FAILED/UNSUPPORTED에서는 시각 관측을 유지하고 전체 관측은 PARTIAL로 남긴다
+`TEMPORAL_OVERLAP_ONLY`는 기존 후보와 소리 포함 clip에 cue 전체가 들어간다는 뜻일 뿐 발신자·접촉·원심·재개를 확정하지 않는다
+음향만으로 새 시각 후보를 생성하지 않는다. 기존 후보 밖의 음향 cue도 private 원시에 보존한다
+
+```sh
+PYTHONPATH=apps/video-worker/src python3 -m replay_video.evaluate_av --synthetic /tmp/replay-av-new-check
+```
+
+출력 폴더는 새 경로여야 한다. 알려진 합성 신호·고정 무음 baseline·독립 PCM 디코딩으로 보존과 50ms 이내 시간 정렬을 검사한다
+합성 다중톤 precision/recall은 실제 심판 휘슬·발화·판정 정확도가 아니다. 실제 비교 결과와 한계는 [영상·음향 연결 점검](../../docs/analysis/영상음향연결점검.md)을 따른다
 
 ## 공 후보 추적과 정지 후 움직임
 
@@ -249,7 +272,7 @@ ABSENT는 공이 없는 프레임이고 UNOBSERVABLE은 가림 등으로 확인�
 Worker는 후보마다 sampleCount와 selectedCount 및 cameraCount와 motionOnsetsMs를 tracking으로 전달한다
 coverage는 원본 프레임 처리 범위이며 공 추적 성공률이 아니다
 웹 서버는 수량 관계와 후보 안의 시각을 검증하고 incident_candidates의 tracking JSONB에 저장한다
-웹 DB에는 0014_candidate_tracking·0015_candidate_scene_event·0016_broadcast_cue와 새 운영용 0017_analysis_perception_runs 마이그레이션을 적용해야 한다
+웹 DB에는 0014_candidate_tracking·0015_candidate_scene_event·0016_broadcast_cue·0017_analysis_perception_runs와 시청각 연결용 0018_perception_audio 및 판정 계약 보정용 0019_judgment_contract 마이그레이션을 적용해야 한다
 
 rules는 추적 없음과 일부 처리 및 위치만 연결과 카메라 보정 측정 및 움직임 시작 신호를 구분한다
 이 상태들은 공 후보 측정 상태이며 파울 판정과 세트피스 종류를 생성하지 않는다

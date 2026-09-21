@@ -57,6 +57,121 @@ const run = (): PerceptionRun => ({
 });
 
 describe("perception run contract", () => {
+  const avRun = (): any => ({ ...run(), schemaVersion: "perception-run-v2",
+    audio: {
+      version: "audio-observations-v1", sourceSha256: SHA_A, status: "COMPLETE",
+      method: "spectral-multitone-v1", speechStatus: "NOT_ANALYZED",
+      sourceSampleRateHz: 48_000, sourceChannels: 2,
+      timeline: { videoOriginSeconds: 0, audioOffsetMs: 0, scannedStartMs: 0,
+        scannedEndMs: 2_000, decodedFrameCount: 20, frameDurationMs: 100,
+        gapPolicy: "PRESERVED_WITH_SYNTHETIC_SILENCE" },
+      cueCount: 1, cues: [{ id: "cue-1", startMs: 800, endMs: 1_000,
+        peakFrequenciesHz: [3_700, 4_100], frameCount: 2 }],
+      associations: [{ cueId: "cue-1", candidateIndex: 1, evidenceIndices: [1],
+        relation: "TEMPORAL_OVERLAP_ONLY" }],
+      truncated: false, reasons: [],
+    },
+  });
+
+  it("accepts v2 audio and preserves the exact v1 shape", () => {
+    expect(perceptionRunData(run())).toBe(true);
+    expect(perceptionRunData(avRun())).toBe(true);
+    const v1 = structuredClone(run()) as any;
+    v1.audio = avRun().audio;
+    expect(perceptionRunData(v1)).toBe(false);
+    const v2 = avRun();
+    delete v2.audio;
+    expect(perceptionRunData(v2)).toBe(false);
+  });
+
+  it.each([
+    ["source mismatch", (v: any) => { v.audio.sourceSha256 = SHA_B; }],
+    ["unverified speech", (v: any) => { v.audio.speechStatus = "ANALYZED"; }],
+    ["invalid sample rate", (v: any) => { v.audio.sourceSampleRateHz = -1; }],
+    ["bad signed offset", (v: any) => { v.audio.timeline.audioOffsetMs = Infinity; }],
+    ["bad origin", (v: any) => { v.audio.timeline.videoOriginSeconds = Infinity; }],
+    ["cue outside source", (v: any) => { v.audio.cues[0].endMs = 2_100; }],
+    ["short cue", (v: any) => { v.audio.cues[0].endMs = 900; }],
+    ["bad peak", (v: any) => { v.audio.cues[0].peakFrequenciesHz = [3_700, 4_500.1]; }],
+    ["bad retained count", (v: any) => { v.audio.cueCount = 0; }],
+    ["duplicate cue id", (v: any) => { v.audio.cues.push(v.audio.cues[0]); v.audio.cueCount = 2; }],
+    ["duplicate association", (v: any) => { v.audio.associations.push(v.audio.associations[0]); }],
+    ["empty association evidence", (v: any) => { v.audio.associations[0].evidenceIndices = []; }],
+    ["unknown cue reference", (v: any) => { v.audio.associations[0].cueId = "other"; }],
+    ["bad status", (v: any) => { v.audio.status = "SILENT"; }],
+  ])("rejects v2 %s", (_label, mutate) => {
+    const value = avRun();
+    mutate(value);
+    expect(perceptionRunData(value)).toBe(false);
+  });
+
+  it("requires audio failure to make an otherwise complete visual run PARTIAL", () => {
+    const failed = avRun();
+    failed.audio.status = "FAILED";
+    expect(perceptionRunData(failed)).toBe(false);
+    failed.processingStatus = "PARTIAL";
+    expect(perceptionRunData(failed)).toBe(true);
+  });
+
+  it("distinguishes absent track, unsupported track and zero-decoded available track", () => {
+    const absent = avRun();
+    absent.audio = { ...absent.audio, status: "ABSENT", sourceSampleRateHz: null,
+      sourceChannels: null, cueCount: 0, cues: [], associations: [],
+      timeline: { ...absent.audio.timeline, videoOriginSeconds: null, audioOffsetMs: null,
+        scannedStartMs: null, scannedEndMs: null, decodedFrameCount: 0 } };
+    expect(perceptionRunData(absent)).toBe(true);
+    absent.audio.timeline.decodedFrameCount = 1;
+    expect(perceptionRunData(absent)).toBe(false);
+
+    const unsupported = avRun();
+    unsupported.processingStatus = "PARTIAL";
+    unsupported.audio.status = "UNSUPPORTED";
+    unsupported.audio.cueCount = 0;
+    unsupported.audio.cues = [];
+    unsupported.audio.associations = [];
+    expect(perceptionRunData(unsupported)).toBe(true);
+    unsupported.processingStatus = "COMPLETE";
+    expect(perceptionRunData(unsupported)).toBe(false);
+
+    const delayed = avRun();
+    delayed.audio.cueCount = 0;
+    delayed.audio.cues = [];
+    delayed.audio.associations = [];
+    Object.assign(delayed.audio.timeline, { scannedStartMs: 2_000, scannedEndMs: 2_000,
+      decodedFrameCount: 0, audioOffsetMs: 3_000 });
+    expect(perceptionRunData(delayed)).toBe(true);
+  });
+
+  it.each([
+    ["too many cues", (v: any) => { v.audio.cues = Array.from({ length: 257 }, (_, i) => ({
+      ...v.audio.cues[0], id: `cue-${i}` })); v.audio.cueCount = 257; }],
+    ["too many associations", (v: any) => { v.audio.associations = Array.from({ length: 513 }, (_, i) => ({
+      ...v.audio.associations[0], candidateIndex: i })); }],
+    ["too many evidence links", (v: any) => { v.audio.associations[0].evidenceIndices = Array.from({ length: 17 }, (_, i) => i); }],
+    ["duplicate evidence links", (v: any) => { v.audio.associations[0].evidenceIndices = [1, 1]; }],
+    ["unmarked truncated count", (v: any) => { v.audio.cueCount = 2; }],
+    ["invalid channel count", (v: any) => { v.audio.sourceChannels = 33; }],
+    ["oversized id", (v: any) => { v.audio.cues[0].id = "x".repeat(97); }],
+    ["oversized reason", (v: any) => { v.audio.reasons = ["x".repeat(129)]; }],
+  ])("rejects bounded audio %s", (_label, mutate) => {
+    const value = avRun();
+    mutate(value);
+    expect(perceptionRunData(value)).toBe(false);
+  });
+
+  it("requires a same-candidate CLIP to contain the entire associated cue", () => {
+    const value = avRun();
+    const candidates = [{ index: 1, startMs: 500, endMs: 1_500 }];
+    const clip = { candidateIndex: 1, kind: "CLIP" as const, startMs: 700, endMs: 1_100 };
+    const frame = { candidateIndex: 1, kind: "FRAME" as const, startMs: 900, endMs: 900 };
+    expect(perceptionReferencesData(value, candidates, [frame, clip])).toBe(true);
+    expect(perceptionReferencesData(value, candidates, [frame, { ...clip, endMs: 900 }])).toBe(false);
+    expect(perceptionReferencesData(value, candidates, [frame, { ...clip, kind: "FRAME" }])).toBe(false);
+    expect(perceptionReferencesData(value, candidates, [frame, { ...clip, candidateIndex: 2 }])).toBe(false);
+    expect(perceptionReferencesData(value, [{ ...candidates[0]!, startMs: 900 }], [frame, clip])).toBe(false);
+    value.audio.associations[0].evidenceIndices = [];
+    expect(perceptionReferencesData(value, candidates, [frame, clip])).toBe(false);
+  });
   it("accepts the exact bounded v1 shape", () => {
     expect(perceptionRunData(run())).toBe(true);
     const largest = structuredClone(run()) as any;

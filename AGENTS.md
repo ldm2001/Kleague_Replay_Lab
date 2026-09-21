@@ -71,3 +71,4 @@ DB가 필요한 통합 테스트와 마이그레이션은 `DATABASE_URL`과 `npm
 2026년 9월 10일 승인된 RT-DETR 검출과 ByteTrack 추적 실증은 `experiments/perception/`에서만 진행한다
 9월 10일 격리 실증의 범위는 [인식모델](docs/design/인식모델.md)과 [심판관측](docs/design/심판관측.md)을 따른다
 9월 12일 승인된 RT-DETR·YOLO11m·ViTPose의 Worker·rules 연결은 [운영판정연결](docs/design/운영판정연결.md)을 따른다. 모델 가설을 확인된 접촉이나 판정으로 바꾸지 않는다
+9월 13일 영상 전체의 화면·소리 결합 요구는 [영상·음향 통합 분석](docs/design/음성판정관측.md)을 따른다. 첫 구현인 기존 DSP·음향 보존·시간 연결은 승인됐으며 새 음성 모델과 발화 해석은 승인 범위 밖이다

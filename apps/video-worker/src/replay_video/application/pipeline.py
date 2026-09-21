@@ -5,7 +5,8 @@ from dataclasses import asdict, replace
 from pathlib import Path
 from typing import Any, Callable
 
-from ..domain.models import Candidate, Evidence, LOCAL_OBSERVER_PIPELINE_VERSION, PipelineResult, Shot, VideoMetadata
+from ..domain.models import AV_OBSERVER_PIPELINE_VERSION, Candidate, Evidence, LOCAL_OBSERVER_PIPELINE_VERSION, PipelineResult, Shot, VideoMetadata
+from ..domain.audio import associate_audio
 from .ports import PipelinePorts
 
 
@@ -60,12 +61,14 @@ def pipeline(
     pipeline_version: str = "video-baseline-v1",
     progress: Callable[[str, int, str], None] | None = None,
 ) -> PipelineResult:
-    if pipeline_version == LOCAL_OBSERVER_PIPELINE_VERSION and ports.perception is None:
+    observer_versions = (LOCAL_OBSERVER_PIPELINE_VERSION, AV_OBSERVER_PIPELINE_VERSION)
+    if pipeline_version in observer_versions and ports.perception is None:
         raise ValueError("PERCEPTION_PORT_REQUIRED")
     if ports.perception is not None:
-        if pipeline_version not in ("video-baseline-v1", LOCAL_OBSERVER_PIPELINE_VERSION):
+        if pipeline_version not in ("video-baseline-v1", *observer_versions):
             raise ValueError("PERCEPTION_PIPELINE_VERSION_INVALID")
-        pipeline_version = LOCAL_OBSERVER_PIPELINE_VERSION
+        if pipeline_version == "video-baseline-v1":
+            pipeline_version = getattr(ports.perception, "pipeline_version", LOCAL_OBSERVER_PIPELINE_VERSION)
     # 영상 메타데이터 확인
     metadata = ports.probe(source)
     # 출력 경로 정규화
@@ -88,6 +91,11 @@ def pipeline(
     if ports.perception:
         observed = ports.perception(metadata.source, root, metadata, candidate_list, shot_list)
         candidate_list, perception = observed.candidates, observed.perception
+        if pipeline_version == AV_OBSERVER_PIPELINE_VERSION:
+            if perception.get("schemaVersion") != "perception-run-v2" or not isinstance(perception.get("audio"), dict):
+                raise ValueError("PERCEPTION_AUDIO_REQUIRED")
+        elif perception.get("schemaVersion") != "perception-run-v1" or "audio" in perception:
+            raise ValueError("PERCEPTION_PIPELINE_VERSION_INVALID")
     if ports.tracking or ports.perception:
         # 사건 구간 확장 뒤 실제로 겹치는 샷 식별자를 다시 연결한다
         candidate_list = tuple(replace(item, shot_indices=tuple(shot.index for shot in shot_list
@@ -103,6 +111,8 @@ def pipeline(
                                             and item.start_ms <= incident["startMs"] and item.end_ms >= incident["endMs"]][:16]
             if not incident["evidenceIndices"]:
                 incident["reasons"].append("EVIDENCE_CLIP_MISSING")
+        if "audio" in perception:
+            perception["audio"] = associate_audio(perception["audio"], candidate_list, evidence_list)
     # 규정 필터는 저장된 산출물을 읽는 서버에서 실행
     # 파이프라인 결과 조립
     result = PipelineResult(2 if perception is not None else 1, pipeline_version, metadata, shot_list, candidate_list, evidence_list, root / "report.json")
@@ -127,6 +137,11 @@ def pipeline(
                                   "referee_decision_interpretation_unverified", "restart_fact_linking_unverified"]
         if perception["processingStatus"] != "COMPLETE":
             payload["limitations"].append("perception_processing_partial")
+        if "audio" in perception:
+            payload["limitations"].extend(["speech_not_analyzed", "audio_cue_method_unverified",
+                                            "audiovisual_association_temporal_only"])
+            if any(item.audio_status and item.audio_status.startswith("OMITTED_") for item in evidence_list):
+                payload["limitations"].append("audio_evidence_incomplete")
     # 결과 보고서 기록
     result.report_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     # 파이프라인 결과 반환

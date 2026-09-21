@@ -3,6 +3,7 @@ import { observation } from "@replay/shared-types";
 import { ruleSet } from "@replay/rule-data";
 import { describe, expect, it } from "vitest";
 import { pushAccounts } from "@replay/rule-engine";
+import { context } from "../fixtures/push-context";
 
 const rules = ruleSet("ifab-2025-26")!;
 
@@ -12,6 +13,7 @@ const establishedFacts: PushFacts = {
   opponentDisplacement: observation("clear", "NORMAL", ["shot-1"]),
   insidePenaltyArea: observation(false, "NORMAL", ["shot-1"]),
   cameraSufficiency: "HIGH",
+  context: context(),
 };
 
 const requirement = (facts: PushFacts, name: string) =>
@@ -36,9 +38,19 @@ describe("pushAccounts", () => {
       "severity",
       "opponentDisplacement",
       "insidePenaltyArea",
+      "context.ballInPlay", "context.onField", "context.againstOpponent",
+      "context.offenderRole", "context.insideOwnPenaltyArea", "context.disciplinaryContext",
     ]);
-    expect(view.blockedFrom).toHaveLength(4);
+    expect(view.blockedFrom).toHaveLength(10);
     expect(view.blockedFrom.every((entry) => entry.blockedBy === "CAMERA")).toBe(true);
+  });
+
+  it("미확인 접촉과 누락된 맥락을 확정 사실로 나열하지 않는다", () => {
+    const { context: _context, ...legacy } = establishedFacts;
+    const result = pushAccounts({ ...legacy, contactDetected: observation(null, "NORMAL", []) }, rules);
+    expect(result.blockedFrom.map((item) => item.fact)).toEqual(expect.arrayContaining([
+      "contactDetected", "context.ballInPlay", "context.offenderRole", "context.disciplinaryContext",
+    ]));
   });
 
   it("슬로우모션에서만 본 강도는 SPEED로 막힌다", () => {

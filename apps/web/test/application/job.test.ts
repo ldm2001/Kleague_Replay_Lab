@@ -22,6 +22,7 @@ import {
   PERCEPTION_EVIDENCE_SHA256,
   PERCEPTION_JOB_ID,
   PERCEPTION_SOURCE_SHA256,
+  avPerceptionPayload,
   perceptionPayload,
 } from "../fixtures/perception";
 
@@ -207,6 +208,8 @@ class ResultStorage {
       { sizeBytes: 1_024, contentSha256: Uint8Array.from(Buffer.from(PERCEPTION_ARTIFACT_SHA256, "hex")) }],
     [`evidence/${PERCEPTION_ANALYSIS_ID}/${PERCEPTION_JOB_ID}/candidate-0001.jpg`,
       { sizeBytes: 2_048, contentSha256: Uint8Array.from(Buffer.from(PERCEPTION_EVIDENCE_SHA256, "hex")) }],
+    [`evidence/${PERCEPTION_ANALYSIS_ID}/${PERCEPTION_JOB_ID}/candidate-0001.mp4`,
+      { sizeBytes: 4_096, contentSha256: Uint8Array.from(Buffer.from("d".repeat(64), "hex")) }],
   ]);
 
   async head(objectKey: string, maxSizeBytes?: number) {
@@ -216,6 +219,48 @@ class ResultStorage {
 }
 
 describe("result", () => {
+  it("preflights and verifies both visual and audio-associated references for a v2 run", async () => {
+    const repository = new PerceptionResultStore();
+    const storage = new ResultStorage();
+    const payload = avPerceptionPayload();
+    await expect(result({ clock, hasher: { sha256: async () => Uint8Array.from([1]) }, repository, storage })({
+      jobId: PERCEPTION_JOB_ID, workerId: "video-worker-1", jobRevision: 2,
+      leaseToken: "lease-token", payload,
+    })).resolves.toEqual({ kind: "ACCEPTED" });
+    expect(storage.calls.map((item) => item.objectKey)).toContain(payload.evidence![1]!.objectKey);
+    expect(repository.commands[0]?.perceptionVerification?.admission.reasons).toEqual(expect.arrayContaining([
+      "AUDIO_CUE_METHOD_NOT_VERIFIED", "AUDIOVISUAL_ASSOCIATION_NOT_VERIFIED", "SPEECH_NOT_ANALYZED",
+    ]));
+  });
+
+  it.each([
+    ["v1 pipeline with v2 schema", () => ({ ...avPerceptionPayload(), pipelineVersion: "video-local-observers-v1" })],
+    ["v2 pipeline with v1 schema", () => ({ ...perceptionPayload(), pipelineVersion: "video-local-observers-av-v1" })],
+    ["v2 pipeline without audio", () => {
+      const payload = structuredClone(avPerceptionPayload()) as any;
+      delete payload.perception.audio;
+      return payload;
+    }],
+  ])("rejects %s before preflight", async (_name, build) => {
+    const repository = new PerceptionResultStore();
+    await expect(result({ clock, hasher: { sha256: async () => Uint8Array.from([1]) }, repository, storage: new ResultStorage() })({
+      jobId: PERCEPTION_JOB_ID, workerId: "video-worker-1", jobRevision: 2,
+      leaseToken: "lease-token", payload: build(),
+    })).resolves.toEqual({ kind: "INVALID_INPUT", reason: "PAYLOAD" });
+    expect(repository.preflightCommands).toHaveLength(0);
+  });
+
+  it("rejects a wrong-hash audio clip before repository write", async () => {
+    const repository = new PerceptionResultStore();
+    const storage = new ResultStorage();
+    storage.heads.set(avPerceptionPayload().evidence![1]!.objectKey,
+      { sizeBytes: 4_096, contentSha256: Uint8Array.from(Buffer.from("e".repeat(64), "hex")) });
+    await expect(result({ clock, hasher: { sha256: async () => Uint8Array.from([1]) }, repository, storage })({
+      jobId: PERCEPTION_JOB_ID, workerId: "video-worker-1", jobRevision: 2,
+      leaseToken: "lease-token", payload: avPerceptionPayload(),
+    })).resolves.toEqual({ kind: "INVALID_RESULT", reason: "REFERENCE" });
+    expect(repository.commands).toHaveLength(0);
+  });
   it("hashes the lease token and submits validated video metadata", async () => {
     // 검증 결과 저장 실행
     const repository = new ResultStoreFake();

@@ -22,6 +22,16 @@ const caseResult = (facts: Partial<VarFacts>, options = {}) => {
 };
 
 describe("varResult", () => {
+  it("문턱 충족은 실제 원심 변경이 아닌 개입 권고다", () => {
+    expect(caseResult({}).intervention).toBe("INTERVENTION_RECOMMENDED");
+  });
+
+  it.each(["restartOccurred", "mistakenIdentity", "seriousMissedIncident"] as const)(
+    "%s 미확인은 false로 처리하지 않는다", (field) => {
+      const outcome = varResult({ ...base, [field]: null }, rules2025, {});
+      expect(outcome).toMatchObject({ ok: false, error: "INSUFFICIENT_FACTS" });
+    },
+  );
   it("네 게이트가 전부 별도 필드로 나온다", () => {
     const assessment = caseResult({});
     expect(Object.keys(assessment)).toEqual(
@@ -84,7 +94,7 @@ describe("varResult", () => {
   it("문턱이 미확정이면 사유를 지어내지 않는다", () => {
     const assessment = caseResult({ errorMagnitude: "UNDETERMINED" });
     expect(assessment.thresholdMet).toBe("UNDETERMINED");
-    expect(assessment.intervention).toBe("NO_INTERVENTION");
+    expect(assessment.intervention).toBe("UNDETERMINED");
     expect(assessment.noInterventionReason).toBeNull();
   });
 

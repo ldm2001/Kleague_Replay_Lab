@@ -4,6 +4,7 @@ import { observation } from "@replay/shared-types";
 import { ruleSet } from "@replay/rule-data";
 import { describe, expect, it } from "vitest";
 import { pushGates, discipline } from "@replay/rule-engine";
+import { context } from "../fixtures/push-context";
 
 const rules = ruleSet("ifab-2025-26")!;
 
@@ -13,6 +14,7 @@ const base: PushFacts = {
   opponentDisplacement: observation("clear", "NORMAL", ["shot-1"]),
   insidePenaltyArea: observation(false, "NORMAL", ["shot-1"]),
   cameraSufficiency: "HIGH",
+  context: context(),
 };
 
 describe("pushGates", () => {
@@ -64,7 +66,7 @@ describe("pushGates", () => {
     expect(verdict.inconclusiveReason).toBe("SEVERITY_UNDETERMINED");
   });
 
-  it("밀림 없는 부주의 접촉은 정상적인 몸싸움이다", () => {
+  it("확정된 부주의한 밀기를 밀림 없음으로 면책하지 않는다", () => {
     const verdict = pushGates(
       {
         ...base,
@@ -73,17 +75,57 @@ describe("pushGates", () => {
       },
       rules,
     );
-    expect(verdict.decision).toBe("NORMAL_CONTACT");
-    expect(verdict.restart).toBe("PLAY_CONTINUED");
+    expect(verdict.decision).toBe("FOUL");
+    expect(verdict.restart).toBe("DIRECT_FREE_KICK");
     expect(verdict.disciplinary).toBe("NONE");
   });
 
   it("페널티지역 안팎이 재개 방식을 가른다", () => {
     expect(pushGates(base, rules).restart).toBe("DIRECT_FREE_KICK");
     expect(
-      pushGates({ ...base, insidePenaltyArea: observation(true, "NORMAL", ["shot-1"]) }, rules)
+      pushGates({ ...base, context: context(true), insidePenaltyArea: observation(true, "NORMAL", ["shot-1"]) }, rules)
         .restart,
     ).toBe("PENALTY_KICK");
+  });
+
+  it.each(["contactDetected", "insidePenaltyArea"] as const)("%s 미확인을 false로 바꾸지 않는다", (key) => {
+    const result = pushGates({ ...base, [key]: observation(null, "NORMAL", []) }, rules);
+    expect(result.decision).toBe("INCONCLUSIVE");
+    expect(result.restart).toBeNull();
+    expect(result.disciplinary).toBeNull();
+  });
+
+  it("과거 입력의 누락된 맥락을 기본값으로 만들지 않는다", () => {
+    const { context: _context, ...legacy } = base;
+    expect(pushGates(legacy, rules)).toMatchObject({
+      decision: "INCONCLUSIVE", restart: null, disciplinary: null,
+      inconclusiveReason: "FACTS_UNDETERMINED",
+    });
+  });
+
+  it.each(["ballInPlay", "onField", "againstOpponent", "insideOwnPenaltyArea"] as const)("맥락 %s 미확인은 판정을 보류한다", (key) => {
+    const result = pushGates({ ...base, context: { ...context(), [key]: observation(null, "NORMAL", []) } }, rules);
+    expect(result.decision).toBe("INCONCLUSIVE");
+    expect(result.restart).toBeNull();
+  });
+
+  it.each(["ballInPlay", "onField", "againstOpponent"] as const)("지원하지 않는 %s=false 맥락에서는 확정하지 않는다", (key) => {
+    const result = pushGates({ ...base, context: { ...context(), [key]: observation(false, "NORMAL", []) } }, rules);
+    expect(result).toMatchObject({ decision: "INCONCLUSIVE", restart: null, disciplinary: null });
+  });
+
+  it.each(["DOGSO", "SPA", "UNKNOWN"] as const)("별도 징계 맥락 %s를 단순 강도로 대체하지 않는다", (value) => {
+    const result = pushGates({ ...base, context: { ...context(), disciplinaryContext: observation(value, "NORMAL", []) } }, rules);
+    expect(result).toMatchObject({ decision: "INCONCLUSIVE", restart: null, disciplinary: null });
+  });
+
+  it("상대 구역의 반칙을 페널티킥으로 바꾸지 않는다", () => {
+    const result = pushGates({ ...base, insidePenaltyArea: observation(true, "NORMAL", []) }, rules);
+    expect(result.restart).toBe("DIRECT_FREE_KICK");
+  });
+
+  it("구역 관측이 충돌하면 확정하지 않는다", () => {
+    expect(pushGates({ ...base, context: context(true) }, rules).restart).toBeNull();
   });
 
   it("강도가 징계 등급을 정한다", () => {
