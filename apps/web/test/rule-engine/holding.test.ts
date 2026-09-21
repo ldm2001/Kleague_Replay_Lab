@@ -65,10 +65,76 @@ describe("holding question-specific conclusions", () => {
 
   it.each(["bodyOrEquipmentContact", "movementImpeded"] as const)("confirmed negative %s rules out this holding question only", (key) => {
     const record = fixture(); change(holding(record).observations[key], "REFUTED");
+    // A contact-caused impediment cannot be confirmed alongside no contact.
+    if (key === "bodyOrEquipmentContact") change(holding(record).observations.movementImpeded, "UNKNOWN");
     const result = evaluate(record);
     expect(result.conclusions.offence).toMatchObject({ status: "COMPLETED", value: "NO_HOLDING_OFFENCE" });
     expect(result.conclusions.restart.status).toBe("NOT_APPLICABLE");
     expect(result.conclusions.disciplinary.value).toBeNull();
+  });
+
+  it.each(["gripMaintained", "pulling", "movementImpeded"] as const)("holds conflicting admitted contact and %s observations", (key) => {
+    const record = fixture(), action = holding(record);
+    change(action.observations.bodyOrEquipmentContact, "REFUTED");
+    change(action.observations.movementImpeded, "UNKNOWN");
+    change(action.observations[key], "CONFIRMED");
+    const result = evaluate(record);
+    expect(result.conclusions.offence).toMatchObject({ status: "UNDETERMINED", reasonCodes: ["OBSERVATION_CONFLICT"] });
+    expect(result.conclusions.restart.status).toBe("UNDETERMINED");
+    expect(result.factDiagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ factId: action.observations[key].id, reasons: ["OBSERVATION_CONFLICT"] }),
+      expect.objectContaining({ factId: action.observations.bodyOrEquipmentContact.id, reasons: ["OBSERVATION_CONFLICT"] }),
+    ]));
+    expect(publicIncidentConclusions(result).conclusions).toEqual([]);
+  });
+
+  it.each(["UNKNOWN", "UNADMITTED", "BAD_HASH", "SHORT_CLIP"])("does not treat %s grip as an admitted conflict", (mode) => {
+    const record = fixture(), action = holding(record);
+    change(action.observations.bodyOrEquipmentContact, "REFUTED");
+    change(action.observations.movementImpeded, "UNKNOWN");
+    if (mode !== "UNKNOWN") change(action.observations.gripMaintained, "CONFIRMED");
+    record.evidence = [...record.evidence, { ...record.evidence[0]!, id: "grip-proof", endMs: mode === "SHORT_CLIP" ? 100 : 1000 }];
+    action.observations.gripMaintained.evidenceIds = ["grip-proof"];
+    const admission = admit(record);
+    if (mode === "UNADMITTED") admission.factIds.delete(action.observations.gripMaintained.id);
+    if (mode === "BAD_HASH") admission.evidenceHashes.delete("grip-proof");
+    const result = evaluateHolding(record, action.id, { rules: ruleSet("ifab-2025-26")!, admission });
+    expect(result.conclusions.offence).toMatchObject({ status: "COMPLETED", value: "NO_HOLDING_OFFENCE" });
+  });
+
+  it.each(["HASH", "ADMISSION", "TIME", "LINK"])("preserves private fact-level %s blocking reasons", (mode) => {
+    const record = fixture(), action = holding(record), fact = action.context.ballInPlay;
+    record.evidence = [...record.evidence, { ...record.evidence[0]!, id: "context-proof", endMs: mode === "TIME" ? 100 : 1000 }];
+    fact.evidenceIds = ["context-proof"];
+    if (mode === "LINK") {
+      record.segments = [...record.segments, { ...record.segments[0]!, id: "s2" }];
+      record.evidence[1]!.segmentId = "s2";
+    }
+    const admission = admit(record);
+    if (mode === "HASH") admission.evidenceHashes.delete("context-proof");
+    if (mode === "ADMISSION") admission.factIds.delete(fact.id);
+    const reason = { HASH: "EVIDENCE_HASH_UNVERIFIED", ADMISSION: "FACT_NOT_ADMITTED", TIME: "TEMPORAL_COVERAGE_INSUFFICIENT", LINK: "VIEW_LINK_UNVERIFIED" }[mode]!;
+    const result = evaluateHolding(record, action.id, { rules: ruleSet("ifab-2025-26")!, admission });
+    expect(result.conclusions.offence.status).toBe("UNDETERMINED");
+    expect(result).toHaveProperty("factDiagnostics", expect.arrayContaining([
+      expect.objectContaining({ factId: fact.id, state: "UNKNOWN", reasons: [reason] }),
+    ]));
+    expect(JSON.stringify(publicIncidentConclusions(result))).not.toContain(reason);
+    expect(publicIncidentConclusions(result)).not.toHaveProperty("factDiagnostics");
+  });
+
+  it.each(["movementImpeded", "insideOwnPenaltyArea"] as const)("retains %s diagnostics beyond context checks", (key) => {
+    const record = fixture(), action = holding(record);
+    const fact = key === "movementImpeded" ? action.observations[key] : action.context[key];
+    const admission = admit(record);
+    admission.factIds.delete(fact.id);
+    const result = evaluateHolding(record, action.id, { rules: ruleSet("ifab-2025-26")!, admission });
+    expect(result.factDiagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ factId: fact.id, state: "UNKNOWN", reasons: ["FACT_NOT_ADMITTED"] }),
+    ]));
+    expect(result.conclusions.offence.status).toBe(key === "movementImpeded" ? "UNDETERMINED" : "COMPLETED");
+    expect(result.conclusions.restart.status).toBe("UNDETERMINED");
+    expect(publicIncidentConclusions(result)).not.toHaveProperty("factDiagnostics");
   });
 
   it.each(["ballInPlay", "stoppedForThisAction", "advantageApplied", "otherActionInRestartSequence"] as const)("unknown %s prevents a restart conclusion", (key) => {
