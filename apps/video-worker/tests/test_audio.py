@@ -22,6 +22,93 @@ from replay_video.infrastructure.audio import (
 # 음향 표본률을 시험 조건에 맞춰 고정
 SAMPLE_RATE = 48_000
 
+# 정상 종료 코드와 파형 출력이 있어도 디코더 오류를 실패로 분류
+@pytest.mark.parametrize("size", [32, 200_000])
+def test_decoder_error_output_is_failed_even_with_pcm_and_zero_exit(tmp_path, monkeypatch, size):
+    from replay_video.infrastructure import audio
+    # 실제 파이프를 사용하는 자식 실행기 보관
+    original = audio.subprocess.Popen
+    # 프레임 경계 이후 오류와 파이프 용량 초과 오류를 생성하는 자식 코드 구성
+    code = (
+        "import os; os.write(1, bytes(19200)); os.close(1); "
+        f"os.write(2, b'E' * {size})"
+    )
+
+    # 디코더 대신 같은 출력 계약의 실제 자식 프로세스 생성
+    def decoder(command, **kwargs):
+        return original([sys.executable, "-c", code], **kwargs)
+
+    # 디코더 출력 처리만 격리하고 메타데이터 추정 제외
+    monkeypatch.setattr(audio.subprocess, "Popen", decoder)
+    metadata = audio._MediaAudioMetadata(1, 48000, 1, 0, 0, 100)
+    scan = audio.pcmScan(tmp_path / "source", metadata)
+    # 부분 파형을 완료 관측이나 정상 무음으로 공개하지 않음 확인
+    assert scan.status is AudioScanStatus.FAILED
+    assert scan.reason == "DECODE_FAILED"
+    assert scan.cues == ()
+    assert scan.scanned_start_ms is None
+    assert scan.scanned_end_ms is None
+
+# 빈 파형과 잘린 실수 표본의 완료 오인 방지 확인
+@pytest.mark.parametrize("size", [0, 3])
+def test_empty_or_incomplete_pcm_is_not_complete(tmp_path, monkeypatch, size):
+    from replay_video.infrastructure import audio
+    # 정상 종료하지만 파형이 없거나 표본 바이트가 잘린 자식 실행기 준비
+    original = audio.subprocess.Popen
+
+    # 실제 파이프에서 불완전한 실수 표본 출력 재현
+    def decoder(command, **kwargs):
+        return original([
+            sys.executable, "-c", f"import os; os.write(1, bytes({size}))"
+        ], **kwargs)
+
+    monkeypatch.setattr(audio.subprocess, "Popen", decoder)
+    metadata = audio._MediaAudioMetadata(1, 48000, 1, 0, 0, 100)
+    scan = audio.pcmScan(tmp_path / "source", metadata)
+    # 실제 표본이 없는 성공 응답을 정상 무음으로 오인하지 않음 확인
+    assert scan.status is AudioScanStatus.FAILED
+    assert scan.reason == "DECODE_FAILED"
+
+# 출력 없는 디코더의 시간 제한과 취소 이후 자식 프로세스 회수 확인
+@pytest.mark.parametrize("cancel", [False, True])
+def test_decoder_pipes_preserve_timeout_and_cancellation(tmp_path, monkeypatch, cancel):
+    from replay_video.infrastructure import audio
+    # 실제 자식 프로세스의 종료 상태를 확인할 목록 준비
+    original = audio.subprocess.Popen
+    children = []
+
+    # 양쪽 파이프를 열어둔 채 대기하는 디코더 생성
+    def decoder(command, **kwargs):
+        child = original([sys.executable, "-c", "import time; time.sleep(60)"], **kwargs)
+        children.append(child)
+        return child
+
+    # 짧은 대기 한도로 시험 시간을 제한
+    monkeypatch.setattr(audio.subprocess, "Popen", decoder)
+    monkeypatch.setattr(audio, "PROCESS_TIMEOUT_SECONDS", 0.05)
+    metadata = audio._MediaAudioMetadata(1, 48000, 1, 0, 0, 100)
+    cancellation = RuntimeError("test cancellation")
+
+    # 자식 생성 이후의 취소 요청 재현
+    def checkpoint():
+        if children:
+            raise cancellation
+
+    if cancel:
+        # 취소를 디코딩 실패로 바꾸지 않고 동일 예외로 전달 확인
+        with pytest.raises(RuntimeError) as caught:
+            audio.pcmScan(tmp_path / "source", metadata, checkpoint)
+        assert caught.value is cancellation
+    else:
+        # 출력 없는 디코더의 기한 초과 상태 확인
+        scan = audio.pcmScan(tmp_path / "source", metadata)
+        assert scan.status is AudioScanStatus.FAILED
+        assert scan.reason == "DECODE_TIMEOUT"
+    # 실패와 취소 모두 자식 프로세스와 파이프 해제 확인
+    assert children[0].poll() is not None
+    assert children[0].stdout.closed
+    assert children[0].stderr.closed
+
 # 시험용 음 프레임 반환
 def tone_frame(*frequencies_hz: float, sample_rate_hz: int = SAMPLE_RATE) -> np.ndarray:
     # 한 프레임에 해당하는 100밀리초 표본 시각 배열 계산

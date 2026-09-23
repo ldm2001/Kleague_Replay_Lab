@@ -501,7 +501,83 @@ def test_clip_does_not_mislabel_video_failure_as_audio_failure(tmp_path, monkeyp
         # 지정 시간 구간의 영상과 가용 음향을 증거 클립으로 추출
         clip(source, output, 0, 800)
 
-# 손상된 음향 패킷의 보존 성공 오인 방지 확인
+# 인코딩 오류 로그가 있는 정상 종료의 음향 보존 오인 방지 확인
+def test_encoder_error_output_with_zero_exit_omits_audio(tmp_path, monkeypatch):
+    from replay_video.infrastructure import evidence
+    # 실제 정상 미디어를 준비해 종료 코드 이외의 오류 처리만 격리
+    source, output = tmp_path / "source.mkv", tmp_path / "clip.mp4"
+    media(source, video_origin=0, audio_origin=0, pulse_local=0.2)
+    original = evidence.subprocess.run
+
+    # 파일 생성은 성공했지만 디코더 오류를 기록한 실행 결과 재현
+    def encoder(command, **kwargs):
+        result = original(command, **kwargs)
+        if "[a]" in command:
+            return subprocess.CompletedProcess(command, 0, result.stdout, "audio decode error")
+        return result
+
+    # 실제 생성 파일과 오류를 함께 반환하는 인코더 연결
+    monkeypatch.setattr(evidence.subprocess, "run", encoder)
+    result = clip(source, output, 0, 800)
+    # 음향 보존 실패를 기록하고 영상만 남겼는지 확인
+    assert result.status == "OMITTED_DECODE_FAILED"
+    assert [stream["codec_type"] for stream in streams(output)] == ["video"]
+
+# 영상 재시도 오류를 음향 생략 성공으로 오인하지 않는지 확인
+def test_video_retry_errors_are_not_audio_omission_success(tmp_path, monkeypatch):
+    from replay_video.infrastructure import evidence
+    # 정상 파일이 남아도 영상 디코딩 오류를 무시하지 않는지 확인할 원본 준비
+    source, output = tmp_path / "source.mkv", tmp_path / "clip.mp4"
+    media(source, video_origin=0, audio_origin=0, pulse_local=0.2)
+    original = evidence.subprocess.run
+
+    # 실제 파일을 만든 영상 재시도에도 오류 수준 로그 주입
+    def encoder(command, **kwargs):
+        result = original(command, **kwargs)
+        if command[0] == "ffmpeg":
+            return subprocess.CompletedProcess(command, 0, result.stdout, "video decode error")
+        return result
+
+    monkeypatch.setattr(evidence.subprocess, "run", encoder)
+    # 손상 영상 재시도는 음향만 생략한 성공으로 변환하지 않음 확인
+    with pytest.raises(RuntimeError, match="clip-write-failed"):
+        clip(source, output, 0, 800)
+
+# 출력 음향의 메타데이터만으로 손상된 패킷 보존 승인 방지
+def test_corrupt_encoded_audio_is_not_preserved(tmp_path, monkeypatch):
+    from replay_video.infrastructure import evidence
+    # 음향 패킷이 충분한 실제 원본과 출력 경로 준비
+    source, output = tmp_path / "source.mkv", tmp_path / "clip.mp4"
+    media(source, video_origin=0, audio_origin=0, pulse_local=0.2)
+    original = evidence.subprocess.run
+
+    # 정상 인코딩 직후 음향 패킷만 손상시켜 출력 검사 필요성 재현
+    def encoder(command, **kwargs):
+        result = original(command, **kwargs)
+        if "[a]" in command:
+            probe = original([
+                "ffprobe", "-v", "error", "-select_streams", "a:0",
+                "-show_packets", "-show_entries", "packet=pos,size", "-of", "json", str(output)
+            ], capture_output=True, text=True, check=True)
+            packets = json.loads(probe.stdout)["packets"]
+            assert len(packets) > 4
+            data = bytearray(output.read_bytes())
+            for packet in packets[2:-1]:
+                start = int(packet["pos"])
+                end = start + int(packet["size"])
+                data[start:end] = bytes(end - start)
+            output.write_bytes(data)
+        return result
+
+    # 실제 손상 산출물을 반환하는 인코더 연결
+    monkeypatch.setattr(evidence.subprocess, "run", encoder)
+    result = clip(source, output, 0, 800)
+    # 디코딩 불가 음향을 제거하고 영상의 요청 길이 유지 확인
+    assert result.status == "OMITTED_DECODE_FAILED"
+    assert [stream["codec_type"] for stream in streams(output)] == ["video"]
+    assert float(streams(output)[0]["duration"]) == pytest.approx(0.8, abs=0.06)
+
+# 손상된 원본 음향 패킷의 보존 성공 오인 방지 확인
 def test_clip_does_not_claim_preserved_audio_for_damaged_aac_packets(tmp_path):
     # 정상 원본과 손상 복사본 및 출력 클립의 경로 구성
     clean, damaged, output = (tmp_path / name for name in ("clean.mkv", "damaged.mkv", "clip.mp4"))
@@ -547,10 +623,14 @@ def test_clip_does_not_claim_preserved_audio_for_damaged_aac_packets(tmp_path):
         timeout=15,
         check=False,
     )
-    # 외부 명령 종료 코드가 0과 일치하는지 확인
-    assert source_decode.returncode == 0
-    # 표준 오류 출력이 참이거나 비어 있지 않은지 확인
-    assert source_decode.stderr, "fixture must expose FFmpeg decoder errors despite exit code 0"
+    # 도구 판본별 종료 코드와 무관하게 손상 음향의 실제 오류 존재 확인
+    assert source_decode.stderr, "fixture must expose audio decoder errors"
+
+    # 손상 원본의 전체 음향 관측도 완료가 아닌 실패로 남는지 확인
+    from replay_video.infrastructure.audio import audioCues, AudioScanStatus
+    scan = audioCues(damaged)
+    assert scan.status is AudioScanStatus.FAILED
+    assert scan.cues == ()
 
     # 지정 시간 구간의 영상과 가용 음향을 증거 클립으로 추출
     audio_result = clip(damaged, output, 0, 2800)

@@ -46,6 +46,11 @@ jobs:
           "$TEST_PYTHON" -m pip check
       # 합성 미디어 시험에 필요한 영상 도구 준비
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      # 시험 결과와 함께 비교할 실제 미디어 도구 판본 및 빌드 설정 기록
+      - name: Record media tool versions
+        run: |
+          ffmpeg -version
+          ffprobe -version
       - run: npm ci
       - run: npm run db:migrate
       # typecheck → 판본 리터럴 검사 → 픽스처 어휘 검사 → 테스트

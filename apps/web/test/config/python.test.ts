@@ -5,6 +5,17 @@ import { describe, expect, it } from "vitest";
 import { python } from "../../../../scripts/python.mjs";
 
 describe("cross-language Python environment", () => {
+    it("records media tool versions before Python assertions", () => {
+        // 로컬 실행기와 지속 통합 단계가 모두 도구 버전을 남기는지 확인
+        const launcher = readFileSync("scripts/tests.mjs", "utf8");
+        const workflow = readFileSync(".github/workflows/ci.yml", "utf8");
+        expect(launcher).toContain('["ffmpeg", "ffprobe"]');
+        expect(launcher).toContain('["-version"]');
+        expect(workflow).toContain("ffmpeg -version");
+        expect(workflow).toContain("ffprobe -version");
+        expect(workflow.indexOf("ffprobe -version")).toBeLessThan(workflow.indexOf("npm run check"));
+    });
+
     it("prepares pinned Python dependencies before CI assertions", () => {
         // 실제 지속 통합 설정을 읽어 실행 환경 준비 순서 확인
         const workflow = readFileSync(".github/workflows/ci.yml", "utf8");
