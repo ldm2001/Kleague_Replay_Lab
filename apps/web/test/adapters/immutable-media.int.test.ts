@@ -3,6 +3,7 @@ import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import { python } from "../../../../scripts/python.mjs";
 import { S3Client, CreateBucketCommand } from "@aws-sdk/client-s3";
 import { describe, expect, it } from "vitest";
 import { S3Storage } from "../../src/adapters/storage";
@@ -62,7 +63,7 @@ describe.skipIf(!enabled)("real Python HTTP + immutable local object storage", (
             const put = (value: typeof grant) => {
                 // 실행환경 시험용 시험자료 결과 준비
                 const process = spawnSync(
-                    "python3",
+                    python(),
                     [
                         "-c",
                         [

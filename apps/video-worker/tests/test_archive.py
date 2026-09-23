@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import pytest
 from replay_video.domain.models import Evidence, Shot
-from test_interactions import frame
+from fixtures.interaction import frame
 
 # 시험 환경 구성
 def setup(tmp_path):

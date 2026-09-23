@@ -1,4 +1,6 @@
 import { execFileSync } from "node:child_process";
+import { delimiter, resolve } from "node:path";
+import { python } from "../../../../scripts/python.mjs";
 import { describe, expect, it } from "vitest";
 import { interactionData, incidentLineage } from "../../src/shared/interaction";
 import { incidentFixture } from "../fixtures/incident";
@@ -7,12 +9,12 @@ import { incidentFixture } from "../fixtures/incident";
 const fixture = () =>
     JSON.parse(
         execFileSync(
-            "python3",
+            python(),
             [
                 "-c",
                 `
 import json
-from test_interactions import frame
+from fixtures.interaction import frame
 from replay_video.domain.interactions import InteractionObservations
 engine = InteractionObservations('a'*64)
 engine.update(frame(), 's1')
@@ -24,7 +26,8 @@ print(json.dumps(row))
             {
                 env: {
                     ...process.env,
-                    PYTHONPATH: "apps/video-worker/src:apps/video-worker/tests"
+                    PYTHONPATH: ["apps/video-worker/src", "apps/video-worker/tests"]
+                        .map((path) => resolve(path)).join(delimiter)
                 },
                 encoding: "utf8"
             }

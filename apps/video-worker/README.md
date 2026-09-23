@@ -63,6 +63,34 @@ apps/video-worker/
 
 ## 실행
 
+### CI와 같은 시험 환경
+
+CI는 Python 3.11.9와 `requirements-test.txt`의 고정 의존성을 사용한다
+FFmpeg와 ffprobe를 먼저 설치한 뒤 저장소 루트에서 아래 명령을 실행한다
+시험 환경은 운영 모델 환경과 분리하며 모델 가중치를 내려받지 않는다
+
+```sh
+python3.11 -m venv .venv
+.venv/bin/python -m pip install pip==25.1.1
+.venv/bin/python -m pip install -r apps/video-worker/requirements-test.txt
+.venv/bin/python -m pip check
+export TEST_PYTHON="$PWD/.venv/bin/python"
+npm run check
+npm run test:video
+```
+
+정확한 CI 재현에는 가상환경 생성에 사용한 Python의 버전도 3.11.9인지 확인한다
+`TEST_PYTHON`은 교차 언어 생산자 호출과 Worker 시험에서 같은 실행 파일을 선택한다
+미지정이면 기존 `python3`를 사용하며 빈 값이나 존재하지 않는 명시 경로는 실패 처리한다
+`WORKER_PYTHON`은 운영 Worker 실행용으로 별도 유지한다
+DB 통합 시험에는 전용 테스트 DB의 `DATABASE_URL`과 마이그레이션이 추가로 필요하다
+실매체·객체 저장소 조건부 시험은 기존 입력 조건을 유지한다
+
+공통 `tests/fixtures/interaction.py`는 시험 프레임만 생성하며 pytest와 테스트 모듈을 가져오지 않는다
+파이썬 시험과 타입스크립트 시험 모두 이 프레임을 실제 관측 생산자에 입력한다
+
+### 비모델 개발 CLI
+
 ```bash
 npm run test:video
 

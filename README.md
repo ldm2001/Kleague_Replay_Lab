@@ -102,6 +102,9 @@ NHN Cloud형 랜딩 구조를 참고해 짙은 코발트 영웅 영역과 밝은
 
 ### 로컬 실행
 
+웹 시험도 실제 Python 생산자를 호출하므로 [공통 시험 환경](apps/video-worker/README.md#ci와-같은-시험-환경)을 먼저 준비한다
+CI와 로컬 교차 언어 시험 및 Worker 시험의 실행기는 `TEST_PYTHON`으로 동일하게 지정한다
+
 PostgreSQL과 MinIO 실행
 
 ```bash

@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
+import { python } from "../../../../scripts/python.mjs";
 import { dirname, resolve } from "node:path";
 import { readFileSync, writeFileSync } from "node:fs";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
@@ -632,7 +633,7 @@ class LocalStorage:
 print(json.dumps(report(LocalStorage(),{},Path(sys.argv[1]))))`;
             // 전송자료 시험용 응답본문 해석 결과 준비
             const payload = JSON.parse(
-                execFileSync("python3", ["-c", code, reportPath, ids.analysisId, ids.jobId], {
+                execFileSync(python(), ["-c", code, reportPath, ids.analysisId, ids.jobId], {
                     env: { ...process.env, PYTHONPATH: resolve("apps/video-worker/src") },
                     encoding: "utf-8",
                     maxBuffer: 4 * 1024 * 1024
