@@ -222,11 +222,30 @@ def test_clip_does_not_invent_audio_for_video_only_source(tmp_path):
     assert audio_result.status == "ABSENT"
 
 # 해당 구간에 표본 없는 음향의 보존 성공 오인 방지 확인
-def test_clip_does_not_claim_preserved_audio_when_source_track_has_no_samples_in_interval(tmp_path):
+@pytest.mark.parametrize("empty_success", [False, True])
+def test_clip_does_not_claim_preserved_audio_when_source_track_has_no_samples_in_interval(
+    tmp_path, monkeypatch, empty_success
+):
     # 입력 영상 · 출력 경로를 비교에 사용할 고정 시험 자료로 구성
     source, output = tmp_path / "late-audio.mkv", tmp_path / "clip.mp4"
     # 요청 클립 바깥에서야 음향이 시작되는 영상 생성
     media(source, video_origin=0, audio_origin=2, pulse_local=0.1)
+
+    # 도구 판본에 따라 가능한 음향 없는 정상 인코딩 결과도 독립적으로 재현
+    if empty_success:
+        from replay_video.infrastructure import evidence
+        original = evidence.subprocess.run
+
+        # 첫 인코딩만 실제 영상 단독 파일로 만들고 이후 검증과 재시도는 유지
+        def encoder(command, **kwargs):
+            if "[a]" in command:
+                return original([
+                    "ffmpeg", "-v", "error", "-y", "-i", str(source),
+                    "-map", "0:v:0", "-an", "-t", "0.8", "-c:v", "libx264", str(output),
+                ], **kwargs)
+            return original(command, **kwargs)
+
+        monkeypatch.setattr(evidence.subprocess, "run", encoder)
 
     # 지정 시간 구간의 영상과 가용 음향을 증거 클립으로 추출
     audio_result = clip(source, output, 0, 800)
@@ -235,8 +254,15 @@ def test_clip_does_not_claim_preserved_audio_when_source_track_has_no_samples_in
     assert [s["codec_type"] for s in streams(output)] == ["video"]
     # 처리 상태가 예상 계약과 일치하는지 확인
     assert audio_result.status == "OMITTED_DECODE_FAILED"
-    # 빈 출력 음향 또는 영상 단독 재시도 성공 사유를 명시하는지 확인
-    assert audio_result.reason in ("AUDIO_OUTPUT_EMPTY", "AV_ENCODE_FAILED_VIDEO_RETRY_SUCCEEDED")
+    # 빈 출력 또는 출력 검증 실패 후 영상 재시도 사유를 허용하며 원본 손상으로 단정하지 않음
+    assert audio_result.reason in (
+        "AUDIO_OUTPUT_EMPTY",
+        "AV_ENCODE_FAILED_VIDEO_RETRY_SUCCEEDED",
+        "AUDIO_OUTPUT_DECODE_FAILED_VIDEO_RETRY_SUCCEEDED",
+    )
+    # 음향 없는 정상 출력의 독립 검증 실패와 영상 재시도 경로 확인
+    if empty_success:
+        assert audio_result.reason == "AUDIO_OUTPUT_DECODE_FAILED_VIDEO_RETRY_SUCCEEDED"
 
 # 기존 무음 트랙 보존 확인
 def test_clip_preserves_an_existing_silent_audio_track(tmp_path):
