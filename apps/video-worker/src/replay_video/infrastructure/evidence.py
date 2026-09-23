@@ -7,6 +7,7 @@ from ..domain.models import Candidate, Evidence, VideoMetadata
 from .streams import ClipAudioResult, clipStreams, outputStreams
 
 # 생성된 음향의 전체 디코딩과 실제 표본 출력 확인
+# 거짓은 출력 부재와 디코딩 오류 및 검증 시간 초과 등을 포함하며 원본 손상 확정 아님
 def audioOutput(path: Path, timeout: float) -> bool:
     # 크기 상한 밖의 출력은 디코딩하지 않고 거부
     if not path.is_file() or not 0 < path.stat().st_size <= 50 * 1024 * 1024:
