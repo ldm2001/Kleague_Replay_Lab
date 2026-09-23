@@ -638,27 +638,31 @@ def pcmScan(
     cues: list[AudioCue] = []
     # 분석한 고정 길이 음향 표본 수 초기화
     decoded_frames = 0
+    # 실제 출력 존재와 다채널 표본 경계를 확인할 바이트 수 초기화
+    decoded_bytes = 0
     # 디코딩 실패 사유 초기화
     failure_reason: str | None = None
     try:
         # 다음 음향 처리 전에 외부 취소 요청 확인
         checkpoint()
         # 원본 채널과 시간 간격을 보존하는 음향 디코더 실행
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         # 디코딩된 파형을 읽을 출력 파이프 존재 여부 확인
-        if process.stdout is None:
+        if process.stdout is None or process.stderr is None:
             # 파형 출력 통로가 없는 디코더 실행 중단
             raise RuntimeError("decode-output-unavailable")
         # 디코더 출력 대기를 제한할 운영체제 선택기 생성
         selector = selectors.DefaultSelector()
         # 파형 출력이 준비되는 사건을 대기 대상으로 등록
         selector.register(process.stdout, selectors.EVENT_READ)
+        # 오류 로그를 파형과 함께 읽어 파이프 정체와 오류 유실 방지
+        selector.register(process.stderr, selectors.EVENT_READ)
         # 전체 음향 디코딩의 종료 기한 계산
         deadline = time.monotonic() + MAX_DECODE_RUNTIME_SECONDS
-        # 디코더 출력 끝 또는 목표 길이 도달 상태 초기화
-        reached_eof = False
-        # 목표 원본 시간 범위까지 파형을 순차적으로 읽음
-        while not reached_eof:
+        # 목표 표본 이후에도 남은 디코더 오류를 확인할 상태 초기화
+        target_reached = False
+        # 파형과 오류 출력이 모두 닫힐 때까지 제한된 범위에서 읽음
+        while selector.get_map():
             # 다음 음향 처리 전에 외부 취소 요청 확인
             checkpoint()
             # 전체 디코딩 기한까지 남은 실행 시간 계산
@@ -679,13 +683,33 @@ def pcmScan(
                     failure_reason = "DECODE_TIMEOUT"
                 # 목표 길이 도달 또는 읽기 종료·실패로 현재 반복 중단
                 break
+            # 오류 수준 출력은 종료 코드와 무관하게 실패로 분류
+            for key, _ in events:
+                if key.fileobj is process.stderr:
+                    # 로그 내용은 누적하지 않고 오류 존재만 확인
+                    if os.read(process.stderr.fileno(), 64 * 1_024):
+                        failure_reason = "DECODE_FAILED"
+                        break
+                    # 오류 파이프 종료를 감시 대상에서 제거
+                    selector.unregister(process.stderr)
+            # 오류가 확인되면 부분 관측을 폐기하고 디코더 정리로 이동
+            if failure_reason is not None:
+                break
+            # 오류 파이프만 준비된 경우 파형을 차단 읽기하지 않음
+            if not any(key.fileobj is process.stdout for key, _ in events):
+                continue
             # 디코더에서 준비된 파형 바이트를 제한된 크기로 읽음
             chunk = os.read(process.stdout.fileno(), 64 * 1_024)
             # 디코더 표준 출력의 끝에 도달했는지 확인
             if not chunk:
-                # 추가 파형 읽기를 종료할 상태 기록
-                reached_eof = True
+                # 파형 종료 후에도 오류 파이프의 마지막 출력 확인
+                selector.unregister(process.stdout)
                 # 현재 읽기 반복을 끝내고 종료 조건 재확인
+                continue
+            # 측정 범위 이후 버린 파형도 디코더 출력의 표본 경계 검사에 포함
+            decoded_bytes += len(chunk)
+            # 목표 범위 밖의 추가 파형은 버리되 종료와 오류는 계속 확인
+            if target_reached:
                 continue
             # 읽은 파형 바이트를 표본 분리 버퍼에 누적
             pending.extend(chunk)
@@ -713,8 +737,8 @@ def pcmScan(
                 decoded_frames += 1
                 # 요청한 음향 디코딩 길이를 채웠는지 확인
                 if decoded_frames * FRAME_DURATION_MS >= decode_duration_ms:
-                    # 추가 파형 읽기를 종료할 상태 기록
-                    reached_eof = True
+                    # 목표 측정은 마치고 두 파이프의 종료 확인을 계속 진행
+                    target_reached = True
                     # 목표 길이 도달 또는 읽기 종료·실패로 현재 반복 중단
                     break
         # 앞선 처리 실패가 없을 때만 종료 상태 확인 또는 마지막 단서 마감
@@ -733,7 +757,12 @@ def pcmScan(
                 if return_code != 0:
                     # 실패한 디코딩을 정상 무음과 구별해 기록
                     failure_reason = "DECODE_FAILED"
-        # 앞선 처리 실패가 없을 때만 종료 상태 확인 또는 마지막 단서 마감
+        # 빈 출력과 잘린 실수 표본을 정상 무음으로 분류하지 않음
+        if failure_reason is None and (
+            decoded_bytes == 0 or decoded_bytes % (metadata.channels * 4) != 0
+        ):
+            failure_reason = "DECODE_FAILED"
+        # 검증한 실제 표본이 있을 때만 마지막 관측 구간 마감
         if failure_reason is None:
             # 디코딩 끝에 남아 있는 마지막 연속 소리 구간 마감
             final_cue = detector.finish()

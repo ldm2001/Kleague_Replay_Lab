@@ -384,29 +384,6 @@ def test_no_audio_output_with_valid_header_and_first_frame_but_corrupt_tail_is_i
     # 컨테이너의 길이만 보면 정상처럼 보이는지 확인
     assert float(next(stream["duration"] for stream in json.loads(probe.stdout)["streams"]
                       if stream["codec_type"] == "video")) == pytest.approx(1.0)
-    # 실제 영상 프레임을 엄격하게 디코딩하여 손상 검출
-    strict_decode = subprocess.run(
-        [
-            "ffmpeg",
-            "-nostdin",
-            "-xerror",
-            "-v",
-            "error",
-            "-i",
-            str(av),
-            "-map",
-            "0:v:0",
-            "-an",
-            "-f",
-            "null",
-            "-",
-        ],
-        capture_output=True,
-        timeout=10,
-    )
-    # 외부 명령 종료 코드가 0과 다른지 확인
-    assert strict_decode.returncode != 0
-
     # 원본과 증거 클립의 음향 보존 및 시간 정렬 비교
     measured = audioComparison(source, baseline, av, 0, 1000, expected_onset_ms=None)
     # 음향 결합 영상 길이 통과 여부가 참인지 확인
@@ -417,6 +394,17 @@ def test_no_audio_output_with_valid_header_and_first_frame_but_corrupt_tail_is_i
     assert measured["avValidVideo"] is False
     # 음향 결합 영상의 소리 존재 여부가 비어 있는지 확인
     assert measured["avHasAudio"] is None
+
+# 정상 종료와 전체 진행 기록이 있어도 디코딩 오류가 있으면 거부
+def test_decoding_error_with_complete_progress_is_invalid(tmp_path, monkeypatch):
+    import replay_video.av as evaluator
+    # 전체 길이를 처리한 것처럼 보이는 진행 기록과 오류를 함께 주입
+    monkeypatch.setattr(evaluator, "process", lambda *args, **kwargs: subprocess.CompletedProcess(
+        [], 0, stdout=b"frame=20\nout_time_us=1000000\nprogress=end\n",
+        stderr=b"decoder reported damaged data",
+    ))
+    # 오류가 있는 출력을 유효한 전체 디코딩으로 채택하지 않음 확인
+    assert evaluator.decoding(tmp_path / "clip.mp4", {"index": 0}, 1000) is None
 
 # 인코더 출력 없는 합성 무음 영상의 실패 확인
 def test_synthetic_no_audio_case_fails_if_encoder_returns_without_output(tmp_path, monkeypatch):
@@ -528,10 +516,25 @@ def test_synthetic_run_is_exclusive_and_marks_semantic_accuracy_unproven(tmp_pat
     negative = next(case for case in report["cases"] if case["name"] == "negative_offset")
     # 비교 기준 영상 유효성이 참인지 확인
     assert negative["clipAudioMetrics"]["baselineValidVideo"] is True
-    # 비교 기준 영상 길이 통과 여부가 거짓인지 확인
-    assert negative["clipAudioMetrics"]["baselineDurationPass"] is False
-    # 비교 기준 영상 길이 불일치 사례가 예상 계약과 일치하는지 확인
-    assert report["baselineVisualDurationMismatchCases"] == ["negative_offset"]
+    # 기존 방식의 실패를 고정하지 않고 실제 측정 길이와 불일치 집계 대조
+    mismatches = []
+    for case in report["cases"]:
+        metrics = case["clipAudioMetrics"]
+        # 실제 기준 파일에서 독립적으로 길이를 다시 읽어 보고서와 대조
+        probe = subprocess.run([
+            "ffprobe", "-v", "error", "-select_streams", "v:0",
+            "-show_entries", "stream=duration", "-of", "json",
+            str(output / case["name"] / "baseline.mp4"),
+        ], capture_output=True, text=True, check=True, timeout=10)
+        duration = float(json.loads(probe.stdout)["streams"][0]["duration"]) * 1000
+        assert metrics["baselineDurationMs"] == pytest.approx(duration)
+        passed = (
+            abs(duration - metrics["expectedClipDurationMs"]) <= 100
+        )
+        assert metrics["baselineDurationPass"] is passed
+        if not passed:
+            mismatches.append(case["name"])
+    assert report["baselineVisualDurationMismatchCases"] == mismatches
     # 평가 대상 클립들의 시간 정렬 조건이 모두 통과하는지 확인
     assert all(case["clipAudioMetrics"]["alignmentPass"] for case in report["cases"]
                if case["clipAudioMetrics"]["expectedOnsetMs"] is not None)

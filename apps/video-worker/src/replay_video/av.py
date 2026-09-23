@@ -168,7 +168,7 @@ def decoding(path: Path, video: dict[str, Any], duration_ms: float) -> tuple[int
     # 전체 영상 디코딩과 종료 범위 확인 시도
     try:
         # 모든 영상 프레임을 디코딩하고 진행 기록 읽음
-        progress = process(
+        result = process(
             [
                 "ffmpeg",
                 "-nostdin",
@@ -189,7 +189,12 @@ def decoding(path: Path, video: dict[str, Any], duration_ms: float) -> tuple[int
                 "pipe:1",
             ],
             timeout=90,
-        ).stdout.decode("ascii", errors="replace")
+        )
+        # 종료 코드가 영이어도 오류 수준 로그가 있는 디코딩 거부
+        if result.stderr.strip():
+            return None
+        # 오류 없는 진행 기록만 전체 프레임 범위 검사에 사용
+        progress = result.stdout.decode("ascii", errors="replace")
         # 정상 종료 진행 표식의 존재 확인
         if "progress=end" not in progress:
             # 전체 디코딩 종료 미확인 결과 반환

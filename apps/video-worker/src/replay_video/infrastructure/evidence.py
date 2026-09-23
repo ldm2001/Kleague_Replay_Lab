@@ -6,6 +6,34 @@ import cv2
 from ..domain.models import Candidate, Evidence, VideoMetadata
 from .streams import ClipAudioResult, clipStreams, outputStreams
 
+# 생성된 음향의 전체 디코딩과 실제 표본 출력 확인
+def audioOutput(path: Path, timeout: float) -> bool:
+    # 크기 상한 밖의 출력은 디코딩하지 않고 거부
+    if not path.is_file() or not 0 < path.stat().st_size <= 50 * 1024 * 1024:
+        return False
+    try:
+        # 실제 출력 음향을 끝까지 디코딩하고 오류와 진행 기록 수집
+        result = subprocess.run(
+            [
+                "ffmpeg", "-nostdin", "-v", "error", "-xerror",
+                "-i", str(path), "-map", "0:a:0", "-vn", "-sn", "-dn",
+                "-f", "null", "-", "-progress", "pipe:1",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=max(0.001, timeout),
+            check=False,
+        )
+        # 정상 종료와 오류 없음 및 실제 디코딩 종료를 함께 확인
+        if result.returncode != 0 or result.stderr.strip():
+            return False
+        # 마지막 진행 기록으로 빈 음향 출력을 구별
+        fields = dict(line.split("=", 1) for line in result.stdout.splitlines() if "=" in line)
+        return fields.get("progress") == "end" and int(fields["out_time_us"]) > 0
+    # 검증 불가 출력은 보존 성공으로 승격하지 않음
+    except (OSError, subprocess.TimeoutExpired, KeyError, ValueError):
+        return False
+
 # 증거 프레임 생성
 def frame(source: Path, destination: Path, timestamp_ms: int) -> None:
     # 영상 캡처 열기
@@ -144,17 +172,24 @@ def clip(source: Path, destination: Path, start_ms: int, end_ms: int) -> ClipAud
     include_audio = selected.audio_index is not None
     # 가능하면 원본 소리를 포함하여 전체 구간 인코딩
     result = encoding(include_audio)
+    # 오류 수준 로그를 출력한 인코딩은 종료 코드가 영이어도 실패로 분류
+    encode_failed = result.returncode != 0 or bool(result.stderr.strip())
+    # 인코딩 성공 후에도 출력 음향의 실제 디코딩 가능 여부 확인
+    output_failed = (
+        include_audio and not encode_failed
+        and not audioOutput(destination, deadline - time.monotonic())
+    )
     # 음향 제외 재시도 여부 초기화
     retried_video_only = False
     # 음향 포함 인코딩이 실패했을 때 영상 단독 재시도 허용
-    if result.returncode != 0 and include_audio:
+    if include_audio and (encode_failed or output_failed):
         # 영상 전체 재시도 성공 시에만 음향 누락 분류 허용
         # 독립적인 영상 실패는 클립 실패로 유지
         result = encoding(False)
         # 음향 포함 실패 후 영상만 재시도한 이력 보존
         retried_video_only = True
     # 최종 인코더 실행의 실패 여부 확인
-    if result.returncode != 0:
+    if result.returncode != 0 or result.stderr.strip():
         # 완성되지 않은 클립을 증거로 채택하지 않고 중단
         raise RuntimeError("clip-write-failed")
     # 인코더 종료 후 실제 비어 있지 않은 파일 생성 확인
@@ -182,7 +217,11 @@ def clip(source: Path, destination: Path, start_ms: int, end_ms: int) -> ClipAud
     # 음향 포함 실패 후 영상 단독 생성으로 성공했는지 확인
     if retried_video_only:
         # 영상 성공과 음향 보존 실패를 별도 상태로 반환
-        return ClipAudioResult("OMITTED_DECODE_FAILED", "AV_ENCODE_FAILED_VIDEO_RETRY_SUCCEEDED")
+        return ClipAudioResult(
+            "OMITTED_DECODE_FAILED",
+            "AUDIO_OUTPUT_DECODE_FAILED_VIDEO_RETRY_SUCCEEDED"
+            if output_failed else "AV_ENCODE_FAILED_VIDEO_RETRY_SUCCEEDED",
+        )
     # 인코딩 성공 응답과 달리 출력 음향이 없는지 확인
     if not output_has_audio:
         # 소리 출력 누락을 원본 무음과 구별해 반환
