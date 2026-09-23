@@ -1,18 +1,18 @@
 // 저장소 어댑터 공개 목록
 // 분석 저장소 공개
 export {
-  AnalysisStore,
-  analysisStore,
+    AnalysisStore,
+    analysisStore,
 } from "./analysis-store";
 // 업로드 저장소 공개
 export {
-  UploadStore,
-  uploadStore,
+    UploadStore,
+    uploadStore,
 } from "./upload-store";
 // 세션 저장소 공개
 export {
-  SessionStore,
-  sessionStore,
+    SessionStore,
+    sessionStore,
 } from "./session-store";
 // 객체 저장소 공개
 export { S3Storage, s3, type S3ObjectClient, type StorageOptions } from "./storage";

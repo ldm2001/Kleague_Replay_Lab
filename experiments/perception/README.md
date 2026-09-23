@@ -24,7 +24,7 @@ python3.11 -m venv .venv
 ## 모델 준비
 
 ```sh
-PYTHONPATH=src .venv/bin/python -m replay_perception.fetch_model
+PYTHONPATH=src .venv/bin/python -m replay_perception.cache
 ```
 
 고정된 공식 HTTPS 주소에서만 모델과 설정을 내려받는다
@@ -43,7 +43,7 @@ PYTHONPATH=src .venv/bin/python -m replay_perception.fetch_model
 출력도 저장소 밖의 **아직 존재하지 않는** 디렉터리여야 한다
 
 ```sh
-PYTHONPATH=src .venv/bin/python -m replay_perception.inspect \
+PYTHONPATH=src .venv/bin/python -m replay_perception.inspection \
   '/absolute/path/highlight.mp4' '/absolute/path/new-inspection-output' \
   --device cpu
 ```
@@ -84,8 +84,8 @@ CLI 종료 코드는 완료 시 0, 실패 시 1이다
 ```sh
 python3.11 -m venv .venv-referee
 .venv-referee/bin/python -m pip install -r requirements-referee.txt
-PYTHONPATH=src .venv-referee/bin/python -m replay_perception.fetch_observer_models
-PYTHONPATH=src .venv-referee/bin/python -m replay_perception.observe \
+PYTHONPATH=src .venv-referee/bin/python -m replay_perception.observercache
+PYTHONPATH=src .venv-referee/bin/python -m replay_perception.observer \
   '/absolute/path/highlight.mp4' '/absolute/path/previous-detection-output' \
   '/absolute/path/new-observation-output' --device cpu
 ```
@@ -123,7 +123,7 @@ Mac 개발 가속은 `--device mps`로 지정한다. 모델을 다른 곳에 준
 `requirements-referee-macos-py311.lock`은 검증한 Mac 환경의 전체 패키지 기록이며 다른 OS 호환성이나 배포 적합성을 보장하지 않는다
 원래 `.venv`는 기존 검출 전용 환경으로 유지한다
 
-독립 CLI 외에 `official_objects.py`와 `incident_links.py`는 손 주변 깃발/카드 형태·세부 심판 역할 가설·영상 접근 후보와 연결 후보를 기록한다
+독립 CLI 외에 `objects.py`와 `incidents.py`는 손 주변 깃발/카드 형태·세부 심판 역할 가설·영상 접근 후보와 연결 후보를 기록한다
 실제 접촉·카드 제시·원심·재개 종류와 파울의 검증된 사실은 생산하지 않는다
 `operational.py`는 세 모델을 같은 원본 프레임에서 실행하고 비공개 압축 파일과 제한된 요약을 Worker에 전달한다
 운영 Worker가 제공한 source-bound `audio_input`이 있으면 `perception-run-v2`로 기록하며 전체 음향 cue와 DSP 코드 해시도 같은 gzip에 보존한다. 입력이 없는 독립 호출은 기존 v1이다

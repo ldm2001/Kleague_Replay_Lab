@@ -7,17 +7,18 @@
 - `src/replay_video/infrastructure/` OpenCV 기반 probe와 shot과 candidate와 evidence 구현
 - `src/replay_video/runner.py` API 작업 선점과 결과 제출
 - `tests/` Worker 단위 테스트
-- `src/replay_video/inspect.py` 세트피스 원시 신호의 독립 개발 진단
-- `src/replay_video/inspect_audio.py` 고정 DSP 음향의 독립 진단. 같은 관측기를 운영 비공개 근거에 연결하지만 판정 사실로 사용하지 않음
-- `src/replay_video/infrastructure/audio_observations.py` 원본 결합 음향 관측과 출처, `domain/audio.py` 기존 후보·소리 포함 클립과의 시간 대응
-- `src/replay_video/evaluate_av.py` 알려진 합성 신호의 보존·시간 정렬 비교이며 실제 휘슬·파울 정확도 시험이 아님
+- `src/replay_video/inspection.py` 세트피스 원시 신호의 독립 개발 진단
+- `src/replay_video/sound.py` 고정 DSP 음향의 독립 진단. 같은 관측기를 운영 비공개 근거에 연결하지만 판정 사실로 사용하지 않음
+- `src/replay_video/infrastructure/sounds.py` 원본 결합 음향 관측과 출처, `domain/audio.py` 기존 후보·소리 포함 클립과의 시간 대응
+- `domain/interactions.py` 중립 후보·화면 좌표 측정, `infrastructure/interactions.py` 기존 비공개 artifact 확장. 유형·방향과 접촉 사실 승인은 별개다
+- `src/replay_video/av.py` 알려진 합성 신호의 보존·시간 정렬 비교이며 실제 휘슬·파울 정확도 시험이 아님
 - `src/replay_video/domain/setpieces.py` 근거 입력을 받는 재개 상태 전이
 - `src/replay_video/domain/ball.py` 공 후보의 카메라 보정 추적과 움직임 시작 신호
 - `src/replay_video/domain/paths.py` 복수 후보 경로 연결과 선택
 - `src/replay_video/infrastructure/tracking.py` 후보 구간별 요약과 Worker 연결
 - `src/replay_video/infrastructure/corners.py` 경기장 코너 기하와 출발 경로의 영상 패턴 인식
 - `src/replay_video/infrastructure/broadcast.py` 고정 글리프와 시간적 지속을 확인하는 득점 방송 표시 인식
-- `src/replay_video/evaluate_ball.py` 원본 해시가 일치하는 개발 라벨과 후보 좌표 평가
+- `src/replay_video/accuracy.py` 원본 해시가 일치하는 개발 라벨과 후보 좌표 평가
 - `README.md` 실행 계약과 산출물 형식
 
 ## 실행과 테스트

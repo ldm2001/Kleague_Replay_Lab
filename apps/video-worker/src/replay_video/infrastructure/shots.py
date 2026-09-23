@@ -1,10 +1,7 @@
 from __future__ import annotations
-
 from pathlib import Path
-
 from ..domain.models import Shot, VideoMetadata
 from .signals import signals
-
 
 # 샷 경계 생성
 def shots(
@@ -32,7 +29,11 @@ def shots(
         # 다음 경계 시각 선택
         next_start = boundaries[index + 1] if index + 1 < len(boundaries) else metadata.duration_ms
         # 종료 시각 계산
-        end_ms = metadata.duration_ms if index + 1 == len(boundaries) else max(start_ms + frame_ms, next_start - frame_ms)
+        end_ms = (
+            metadata.duration_ms
+            if index + 1 == len(boundaries)
+            else max(start_ms + frame_ms, next_start - frame_ms)
+        )
         # 샷 결과 추가
         result.append(Shot(index=index, start_ms=start_ms, end_ms=end_ms))
     # 샷 결과 반환

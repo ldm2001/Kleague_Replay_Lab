@@ -6,27 +6,34 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { HeroMotion } from "./index.js";
 
 describe("HeroMotion", () => {
-  afterEach(() => {
-    // 테스트 DOM과 모형 정리
-    cleanup();
-    vi.restoreAllMocks();
-  });
-
-  it("marks the hero as scrolled without subscribing React state", () => {
-    // 애니메이션 프레임 모형 구성
-    vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation((callback) => {
-      callback(0);
-      return 1;
+    afterEach(() => {
+        // 테스트 문서 구조과 모형 정리
+        cleanup();
+        // 시험도구 모의동작복원 결과 처리 수행
+        vi.restoreAllMocks();
     });
-    // 영웅 영역 렌더링
-    render(<HeroMotion><span>경기 판정</span></HeroMotion>);
-    const hero = document.querySelector(".hero");
-    expect(hero).toHaveAttribute("data-scrolled", "false");
 
-    Object.defineProperty(globalThis, "scrollY", { configurable: true, value: 120 });
-    // 스크롤 이벤트 전달
-    globalThis.dispatchEvent(new Event("scroll"));
+    it("marks the hero as scrolled without subscribing React state", () => {
+        // 애니메이션 프레임 모형 구성
+        vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation((callback) => {
+            // 애니메이션 프레임 콜백을 시작 시각으로 호출
+            callback(0);
+            // 1 반환
+            return 1;
+        });
+        // 영웅 영역 렌더링
+        render(<HeroMotion><span>경기 판정</span></HeroMotion>);
+        // 시험자료 시험용 시험자료 요소조회 결과 준비
+        const hero = document.querySelector(".hero");
+        // 질의 반환값의 지정 속성 적용 확인
+        expect(hero).toHaveAttribute("data-scrolled", "false");
 
-    expect(hero).toHaveAttribute("data-scrolled", "true");
-  });
+        // 객체 결과 처리 수행
+        Object.defineProperty(globalThis, "scrollY", { configurable: true, value: 120 });
+        // 스크롤 이벤트 전달
+        globalThis.dispatchEvent(new Event("scroll"));
+
+        // 질의 반환값의 지정 속성 적용 확인
+        expect(hero).toHaveAttribute("data-scrolled", "true");
+    });
 });

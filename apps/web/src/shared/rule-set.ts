@@ -1,48 +1,55 @@
+// 규정 인용 자료형 가져오기
 import type { LayerConflict, RuleCitation } from "./citation";
+// 공통 상태 값 목록 가져오기
 import type { SendOffCategory, VarCategory, ReviewScenario } from "./vocabulary";
 
 // 엔진과 규정 데이터 사이의 질문 목록
 // 규정 개념 키
 export const CONCEPT_KEYS = Object.freeze([
-  "LAW_12_HOLDING_DEFINITION",
-  "LAW_12_HOLDING_OFFENCE",
-  "LAW_12_IN_PLAY",
-  "LAW_12_CONTINUING_HOLDING",
-  "LAW_13_BENEFICIARY",
-  "LAW_14_PENALTY",
-  "LAW_5_ADVANTAGE",
-  "LAW_5_MULTIPLE_OFFENCES",
-  "LAW_17_CORNER_PROCEDURE",
-  "LAW_11_DIRECT_RESTART_OFFSIDE",
-  "LAW_12_DIRECT_FREE_KICK",
-  "LAW_12_DISCIPLINE",
-  "VAR_REVIEWABLE_CATEGORIES",
-  "VAR_TIME_WINDOW",
-  "VAR_THRESHOLD",
-  "VAR_REVIEW_PROCESS",
+    "LAW_12_HOLDING_DEFINITION",
+    "LAW_12_HOLDING_OFFENCE",
+    "LAW_12_IN_PLAY",
+    "LAW_12_CONTINUING_HOLDING",
+    "LAW_13_BENEFICIARY",
+    "LAW_14_PENALTY",
+    "LAW_5_ADVANTAGE",
+    "LAW_5_MULTIPLE_OFFENCES",
+    "LAW_17_CORNER_PROCEDURE",
+    "LAW_11_DIRECT_RESTART_OFFSIDE",
+    "LAW_12_DIRECT_FREE_KICK",
+    "LAW_12_DISCIPLINE",
+    "VAR_REVIEWABLE_CATEGORIES",
+    "VAR_TIME_WINDOW",
+    "VAR_THRESHOLD",
+    "VAR_REVIEW_PROCESS",
 ] as const);
+// 규정 조항의 의미별 조회 키의 자료 구조 정의
 export type ConceptKey = (typeof CONCEPT_KEYS)[number];
 
-// VAR 범주 규칙
+// 비디오 판독 범주 규칙
 export type VarCategoryRule = {
-  id: VarCategory;
-  appliesTo: readonly ReviewScenario[];
-  // 대회 채택 옵션 키
-  requiresCompetitionOption: string | null;
-  // 선수 확인 오류 전용 범주 여부
-  requiresMistakenIdentity: boolean;
+    // 고유 식별자
+    id: VarCategory;
+    // 규정이 적용되는 대상 범주
+    appliesTo: readonly ReviewScenario[];
+    // 대회 채택 옵션 키
+    requiresCompetitionOption: string | null;
+    // 선수 확인 오류 전용 범주 여부
+    requiresMistakenIdentity: boolean;
 };
 
 // 시간 창 예외 규칙
 export type TimeWindowExceptions = {
-  mistakenIdentity: boolean;
-  sendOffCategories: readonly SendOffCategory[];
+    // 선수 신원 오인 여부
+    mistakenIdentity: boolean;
+    // 퇴장 관련 검토 범주 목록
+    sendOffCategories: readonly SendOffCategory[];
 };
 
 // 규정 판본 실행 포트
 export type RuleSet = {
-  cite(conceptKey: ConceptKey): RuleCitation[];
-  varCategories(): readonly VarCategoryRule[];
-  timeWindowExceptions(): TimeWindowExceptions;
-  layerConflicts(): readonly LayerConflict[];
+    cite(conceptKey: ConceptKey): RuleCitation[];
+    varCategories(): readonly VarCategoryRule[];
+    timeWindowExceptions(): TimeWindowExceptions;
+    layerConflicts(): readonly LayerConflict[];
 };
