@@ -6,7 +6,7 @@ on:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       postgres:
         image: postgres:16-alpine
@@ -29,7 +29,30 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      # 로컬 재현과 교차 언어 시험에 사용할 파이썬 판본 고정
+      - uses: actions/setup-python@v5
+        id: python
+        with:
+          python-version: '3.11.9'
+          cache: pip
+          cache-dependency-path: apps/video-worker/requirements-test.txt
+      # 같은 실행기에 고정된 시험 의존성을 설치하고 누락 확인
+      - name: Prepare Python tests
+        env:
+          TEST_PYTHON: ${{ steps.python.outputs.python-path }}
+        run: |
+          "$TEST_PYTHON" -m pip install pip==25.1.1
+          "$TEST_PYTHON" -m pip install -r apps/video-worker/requirements-test.txt
+          "$TEST_PYTHON" -m pip check
+      # 합성 미디어 시험에 필요한 영상 도구 준비
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: npm ci
       - run: npm run db:migrate
       # typecheck → 판본 리터럴 검사 → 픽스처 어휘 검사 → 테스트
       - run: npm run check
+        env:
+          TEST_PYTHON: ${{ steps.python.outputs.python-path }}
+      # 교차 언어 시험과 동일한 실행기로 파이썬 assertion 실행
+      - run: npm run test:video
+        env:
+          TEST_PYTHON: ${{ steps.python.outputs.python-path }}

@@ -1,0 +1,9 @@
+# 파이썬 3점11 시험 환경의 직접 및 전이 의존성 고정
+pytest==9.0.3
+iniconfig==2.3.0
+packaging==25.0
+pluggy==1.6.0
+Pygments==2.19.1
+# 화면 표시 기능 없이 영상 시험에 필요한 배열과 미디어 처리 준비
+numpy==1.26.3
+opencv-python-headless==4.11.0.86

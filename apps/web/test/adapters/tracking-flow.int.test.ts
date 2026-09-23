@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
+import { python } from "../../../../scripts/python.mjs";
 import { resolve } from "node:path";
 import { writeFileSync } from "node:fs";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
@@ -473,7 +474,7 @@ print(json.dumps(report(LocalStorage(),{},Path(sys.argv[1]))))`;
             // 전송자료 시험용 응답본문 해석 결과 준비
             const payload = JSON.parse(
                 execFileSync(
-                    "python3",
+                    python(),
                     ["-c", code, process.env.REPLAY_PIPELINE_REPORT!, ids.analysisId, ids.jobId],
                     {
                         env: { ...process.env, PYTHONPATH: resolve("apps/video-worker/src") },
