@@ -13,8 +13,23 @@ ffprobe 메타데이터 확인
 → GOAL 방송 표시의 글자 형태와 시간적 지속 확인
 → 후보 전후 프레임 추출
 → FFmpeg 짧은 증거 클립 생성
+→ 기존 추적·포즈에서 일반 상호작용 관측 생성 및 비공개 artifact 확장
 → report.json 기록
 ```
+
+## 일반 상호작용 관측
+
+운영 포트의 `private_observations`는 증거 추출 이후 원본 `perception.jsonl.gz`를 검증·재처리한다. 원본 파일은 보존하고, `interaction-observations.jsonl.gz`에 원시 기록과 `INTERACTION_OBSERVATION` 및 요약을 저장한다. report의 기존 비공개 artifact 참조만 새 파일의 경로·해시·크기로 교체하며 runner의 기존 비공개 업로드 경로를 사용한다. 새 DB 마이그레이션이나 공개 응답 필드는 없다.
+
+`interaction-observation-v1`의 A/B는 추적 ID 정렬 순서일 뿐 행위 방향이나 팀 관계가 아니다. 원본 해시·추적 연속성·샷·쌍·구간 시작으로 후보를 구분하고, 각 샘플은 별도 observationId를 갖는다. 같은 쌍이라도 근접 관측 중단, 250ms 초과 샘플 간격, 샷/연속성/영상 크기 변경이면 새 후보다. 이 값은 기존 100ms 샘플 입력에 대한 관측 연결 기준이지 반칙 기준이 아니다.
+
+박스 중심 거리·박스 간격·전후 이동량·영상 좌표 속도·손목과 상대 몸통 중심 거리·팔꿈치 각도를 계산한다. 좌표는 원본 px, 속도는 원본 PTS에 대한 px_per_s이고 카메라 이동/줌이나 슬로모션을 보정한 실세계 운동이 아니다. 포즈 점수 0.3은 좌표 측정의 사용 조건일 뿐 접촉 승인 임계값이 아니다. 포즈/키포인트가 없거나 점수가 낮으면 해당 측정만 UNKNOWN이며 가림으로 추정하지 않는다.
+
+유형·방향은 독립 UNKNOWN/HYPOTHESIS 계약이다. 현재 생성기는 판별 방법이 없으므로 유형·방향·접촉·인과적 이동 방해·팀 관계를 UNKNOWN으로 둔다. 측정값은 MEASURED로 보존하되 규정 사실로 승인하지 않는다. 유형별 IncidentRecordV1을 억지로 생성하지 않는다. 웹의 별도 lineage 연결 함수는 구조가 유효하고 유형·방향·원본·추적·구간이 일치하는 레코드만 연결하며 승인이나 평가를 수행하지 않는다.
+
+각 관측은 원시 artifact 해시·JSONL 행 번호·행 해시와 PTS를 갖는다. 실제 프레임/클립은 존재와 해시를 확인한 뒤 해당 시각을 포함할 때 연결하며, 전후 측정 구간 전체를 덮는 클립 여부를 별도 기록한다. 미디어가 없는 관측도 원시 기록과 측정값을 보존한다. 파일 확인은 그 영상에서 접촉이 발생했다는 검증이 아니다.
+
+생성 레코드는 저장 전 구조/수치/시간 검사를 거치며 웹에도 독립 검증기가 있다. 확장 artifact는 0600 권한으로 새 파일에 원자적으로 게시하고 기존 파일을 덮어쓰지 않는다. 압축 128MiB·원시 512MiB·행 8MiB·프레임 30,000 제한을 적용하며 취소·실패 시 부분 파일을 완료 산출물로 게시하지 않는다. 운영 결과 목록이나 facts 승인 목록은 바뀌지 않는다.
 
 ## 디렉터리
 
@@ -73,8 +88,8 @@ PYTHONPATH=src python3 -m replay_video.cli \
 python3.11 -m venv experiments/perception/.venv-referee
 experiments/perception/.venv-referee/bin/python -m pip install -r experiments/perception/requirements-referee.txt
 experiments/perception/.venv-referee/bin/python -m pip install -e experiments/perception -e apps/video-worker
-PYTHONPATH=experiments/perception/src experiments/perception/.venv-referee/bin/python -m replay_perception.fetch_model
-PYTHONPATH=experiments/perception/src experiments/perception/.venv-referee/bin/python -m replay_perception.fetch_observer_models
+PYTHONPATH=experiments/perception/src experiments/perception/.venv-referee/bin/python -m replay_perception.cache
+PYTHONPATH=experiments/perception/src experiments/perception/.venv-referee/bin/python -m replay_perception.observercache
 ```
 
 준비 명령만 고정된 모델 자산을 다운로드하며 운영 추론은 검증된 로컬 캐시만 읽는다
@@ -87,6 +102,35 @@ npm run dev:worker
 ```
 
 개발 스크립트가 `apps/web/.env.local`을 자동으로 읽는다
+
+### 검증과 분석 실행 격리
+
+긴 분석이 다른 영상의 검증 선점을 막지 않게 하려면 서로 다른 터미널에서 두 프로세스를 실행한다
+
+```bash
+npm run dev:worker:validate
+```
+
+```bash
+npm run dev:worker:analyze
+```
+
+검증 명령은 `VALIDATE_VIDEO`만 선점하고 메타데이터 probe만 실행하며 운영 관측 모델을 적재하지 않는다
+분석 명령은 `ANALYZE_VIDEO`만 선점한다. 단일 영상 분석 자체의 속도를 높이는 변경은 아니다
+선점 API의 단일 `jobType`과 기존 Lease·heartbeat·결과 제출 계약은 그대로 사용한다
+
+두 명령은 공통 `WORKER_ID`·`WORKER_TEMP_DIR`·`WORKER_JOB_TYPE`을 상속하지 않는다
+기본 ID는 각각 `video-worker-validate-1`과 `video-worker-analyze-1`이다
+기본 임시 경로는 운영체제 임시 폴더 아래 `replay-lab-worker-validate`와 `replay-lab-worker-analyze`다
+운영자는 `WORKER_VALIDATE_ID`·`WORKER_VALIDATE_TEMP_DIR`와 `WORKER_ANALYZE_ID`·`WORKER_ANALYZE_TEMP_DIR`로 각 역할을 재정의할 수 있다
+여러 인스턴스를 실행할 때도 서로 다른 ID와 경로를 지정해야 한다
+
+기존 `dev:worker`는 호환 경로로 유지한다. `WORKER_JOB_TYPE`이 없으면 검증과 분석을 순서대로 선점한다
+직접 지정할 경우 주변 공백을 제외한 `VALIDATE_VIDEO` 또는 `ANALYZE_VIDEO` 한 값만 허용한다
+빈 값·삭제 작업·알 수 없는 값·쉼표 목록은 통신과 반복 시작 전에 거부한다
+혼합 Worker를 교체할 때는 활성 작업을 먼저 완료시킨 뒤 종료하고 두 역할을 모두 실행한다
+어느 역할이 빠지면 해당 종류의 대기 작업과 만료 임대 정리도 그 역할의 선점이 재개될 때까지 처리되지 않는다
+두 반복의 분리는 이벤트 기반 모형 시험으로 확인하며 실제 다중 프로세스·DB 동시 실행 검증을 뜻하지 않는다
 
 기본 Python은 `experiments/perception/.venv-referee/bin/python`이며 없으면 명확하게 실패한다
 별도로 준비한 실행 환경은 `WORKER_PYTHON`으로 명시할 수 있다. 이전 Python으로 몰래 전환하지 않는다
@@ -160,7 +204,7 @@ npm run test:perception
 루트 디렉터리에서 원본 영상과 새 출력 폴더를 지정한다
 
 ```sh
-PYTHONPATH=apps/video-worker/src python3 -m replay_video.inspect /path/to/match.mp4 /tmp/replay-context-result
+PYTHONPATH=apps/video-worker/src python3 -m replay_video.inspection /path/to/match.mp4 /tmp/replay-context-result
 ```
 
 - `context.jsonl` 샘플별 잔디색 비율과 선분 및 카메라 이동 근사치와 정합 잔차
@@ -188,7 +232,7 @@ PYTHONPATH=apps/video-worker/src python3 -m replay_video.inspect /path/to/match.
 운영 경로에는 비공개 근거로만 연결하며 rules 사실과 공개 관측 목록으로 채택하지 않는다
 
 ```sh
-PYTHONPATH=apps/video-worker/src python3 -m replay_video.inspect_audio /path/to/match.mp4 /tmp/replay-audio.json
+PYTHONPATH=apps/video-worker/src python3 -m replay_video.sound /path/to/match.mp4 /tmp/replay-audio.json
 ```
 
 출력 파일의 상위 폴더가 있어야 하며 기존 파일은 덮어쓰지 않는다
@@ -223,7 +267,7 @@ API 요약은 cue 256개·시간 대응 512개·각 clip 참조 16개로 제한�
 음향만으로 새 시각 후보를 생성하지 않는다. 기존 후보 밖의 음향 cue도 private 원시에 보존한다
 
 ```sh
-PYTHONPATH=apps/video-worker/src python3 -m replay_video.evaluate_av --synthetic /tmp/replay-av-new-check
+PYTHONPATH=apps/video-worker/src python3 -m replay_video.av --synthetic /tmp/replay-av-new-check
 ```
 
 출력 폴더는 새 경로여야 한다. 알려진 합성 신호·고정 무음 baseline·독립 PCM 디코딩으로 보존과 50ms 이내 시간 정렬을 검사한다
@@ -258,7 +302,7 @@ candidate_motion_onsets는 해당 후보의 정지 후 움직임 시각과 확�
 원본 해시는 context-summary.json의 source_sha256을 사용한다
 
 ```sh
-PYTHONPATH=apps/video-worker/src python3 -m replay_video.evaluate_ball /tmp/replay-context-result/context-summary.json /path/to/ball-labels.json
+PYTHONPATH=apps/video-worker/src python3 -m replay_video.accuracy /tmp/replay-context-result/context-summary.json /path/to/ball-labels.json
 ```
 
 라벨은 source_sha256과 frames 배열을 가진 JSON이다

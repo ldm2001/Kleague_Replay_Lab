@@ -3,6 +3,8 @@
 > 현재 구현 계약은 `영상 → 파이프라인 → rules 필터 → 프론트 결과`다
 > 승인된 세 모델의 로컬 관측만 사용하며 사용자 분석 설정과 사실 확인은 요구하지 않는다
 
+모듈 책임과 결과 처리의 실패·트랜잭션 경계 및 현재 운영 연결 상태는 [실행 모듈 계약](CONTRACTS.md)을 따른다
+
 승인된 RT-DETR 검출과 ByteTrack 추적의 독립 실증은 [experiments/perception](experiments/perception/README.md)에서 실행한다
 독립 실증 CLI는 유지하며 2026년 9월 12일 승인된 RT-DETR-R18·YOLO11m·ViTPose의 관측은 운영 Worker의 별도 경로로 연결한다
 역할·관절·깃발/카드 형태와 사건 연결은 가설이며 서버의 비공개 근거 검증과 rules 승인 경계를 거친다
@@ -127,6 +129,11 @@ npm run dev:web
 ```bash
 npm run dev:worker
 ```
+
+검증과 분석을 분리하려면 기존 혼합 Worker의 활성 작업이 끝난 뒤 종료하고 별도 터미널에서 `npm run dev:worker:validate`와 `npm run dev:worker:analyze`를 모두 실행한다
+두 역할은 공통 설정과 분리된 ID와 임시 경로를 사용한다. 한 역할이 없으면 해당 작업과 만료 임대 정리도 대기한다
+이 분리는 긴 분석 중 다른 영상의 검증을 진행하기 위한 것이며 단일 영상 처리 가속을 보장하지 않는다
+역할별 환경변수와 기존 혼합 실행 호환 계약은 [Worker 실행 격리](apps/video-worker/README.md#검증과-분석-실행-격리)를 따른다
 
 브라우저 주소
 

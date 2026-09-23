@@ -21,13 +21,21 @@ export const path = (asset: Asset) => typeof asset === "string" ? asset : asset.
 // 이미지 묶음
 // 화면 이미지 묶음
 export const images = {
-  brand,
-  brandLight,
-  hero,
-  review: {
-    foul,
-    handball,
-    charging,
-    goal,
-  },
+    // 기본 리그 로고 연결
+    brand,
+    // 밝은 리그 로고 연결
+    brandLight,
+    // 첫 화면 배경 이미지 연결
+    hero,
+    // 검토 범위 이미지 묶음 연결
+    review: {
+        // 파울 예시 이미지 연결
+        foul,
+        // 핸드볼 예시 이미지 연결
+        handball,
+        // 차징 예시 이미지 연결
+        charging,
+        // 득점 예시 이미지 연결
+        goal,
+    },
 } as const;
