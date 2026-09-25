@@ -220,6 +220,8 @@ export type JobResultPayload = ValidationPayload | AnalysisPayload | JobFailureP
 
 // 작업 결과 저장 입력
 export type JobResultCommand = Readonly<{
+    // Worker 승인 정보와 분리된 서버 검증 비공개 색인 묶음
+    privateIncidents?: import("../../../shared/private-incidents").PrivateIncidentBatch;
     // 후보별 자동 규정 평가의 내부 결과 묶음
     automaticReview?: import("@replay/shared-types").AutomaticReviewBatch;
     // 처리 작업의 식별자
@@ -293,6 +295,8 @@ export type JobResultPreflight =
                 competition?: string;
                 // 규정 적용 대상 시즌
                 season?: string;
+                // 등록된 경기에서 읽은 실제 경기 날짜
+                matchDate?: string;
             }> | null;
         }>
     | Readonly<{ kind: "NOT_FOUND" | "STALE_LEASE" | "ALREADY_FINISHED" }>;

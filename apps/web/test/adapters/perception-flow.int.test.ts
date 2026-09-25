@@ -1,4 +1,8 @@
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { gzipSync } from "node:zlib";
+import { interactionFixture } from "../fixtures/interaction";
+import { incidentQuery } from "../../src/adapters/incidents";
+import { incidentDigest } from "../../src/rules/engine/incidents/evidence";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { JobStore, Sha256, StatusStore } from "@replay/adapters";
 import { client } from "@replay/database";
@@ -192,6 +196,115 @@ describe.skipIf(!databaseUrl)("private perception result flow", () => {
         // 상태의 분석 상태 대기중 및 작업 상태 지정 문자열 자료 기준 구조 일치 확인
         expect(state).toEqual({ analysis_status: "QUEUED", job_status: "PROCESSING" });
     };
+
+    // 실제 파이썬 관측과 제출 증거를 현재 작업의 고정 경로에 연결
+    const privateFixture = async (typed = false) => {
+        const setup = await createV2Job();
+        await database.sql`update video_assets set duration_ms = 2000 where id = ${setup.videoId}`;
+        const payload = setup.payload as any;
+        const observation = interactionFixture(setup.source.toString("hex"), 1000);
+        const media = payload.evidence[1];
+        const prior = setup.heads.get(media.objectKey)!;
+        media.objectKey = `evidence/${setup.analysisId}/${setup.jobId}/2/${media.contentSha256}/candidate-0001.mp4`;
+        setup.heads.set(media.objectKey, prior);
+        observation.evidence = [{ evidenceIndex: 1, kind: "CLIP", path: "clips/candidate-0001.mp4",
+            timestampMs: 1000, startMs: media.startMs, endMs: media.endMs, contentSha256: media.contentSha256,
+            coversMeasurementWindow: true }];
+        if (typed) {
+            const provenance = { state: "HYPOTHESIS" as const, reasons: ["METHOD_UNVALIDATED"],
+                method: { id: "fixture", version: "1" }, observationIds: [observation.observationId] };
+            observation.actionType = { ...provenance, value: "HOLDING_MOTION" };
+            observation.direction = { ...provenance, value: "A_TO_B" };
+        }
+        const raw = [{ kind: "HEADER", sourceSha256: observation.sourceSha256 },
+            { kind: "INTERACTION_OBSERVATION_HEADER", sourceSha256: observation.sourceSha256, schemaVersion: "interaction-observation-v1" },
+            observation, { kind: "INTERACTION_OBSERVATION_SUMMARY", sourceSha256: observation.sourceSha256, observationCount: 1 }];
+        const body = gzipSync(raw.map((row) => JSON.stringify(row)).join("\n") + "\n");
+        const hash = createHash("sha256").update(body).digest("hex");
+        payload.perception.artifact = { ...payload.perception.artifact, contentSha256: hash, sizeBytes: body.length,
+            objectKey: `perception/${setup.analysisId}/${setup.jobId}/2/${hash}.jsonl.gz` };
+        setup.heads.set(payload.perception.artifact.objectKey, { sizeBytes: body.length, contentSha256: Buffer.from(hash, "hex") });
+        return { ...setup, privateStorage: { body: async () => ({ body: (async function* () { yield body; })() }) } };
+    };
+
+    it.each([false, true])("stores private interaction lineage without public facts for typed=%s", async (typed) => {
+        const setup = await privateFixture(typed);
+        expect(await submitResult(setup)(setup.input)).toEqual({ kind: "ACCEPTED" });
+        const saved = await incidentQuery(database, { analysisId: setup.analysisId,
+            anonymousSessionId: setup.sessionId, after: null, limit: 100 }, NOW);
+        expect(saved?.rows).toHaveLength(1);
+        expect(saved?.rows[0]?.record === null).toBe(!typed);
+        if (typed) expect(saved?.rows[0]?.admitted_fact_ids).toEqual([]);
+        expect(await incidentQuery(database, { analysisId: setup.analysisId,
+            anonymousSessionId: randomUUID(), after: null, limit: 100 }, NOW)).toBeNull();
+        expect(await incidentQuery(database, { analysisId: setup.analysisId,
+            anonymousSessionId: setup.sessionId, after: null, limit: 100 }, EXPIRES)).toBeNull();
+        const publicReport = await report({ clock: setup.clock, repository: new StatusStore(database) })({
+            anonymousSessionId: setup.sessionId, analysisId: setup.analysisId
+        });
+        expect(JSON.stringify(publicReport)).not.toContain("INTERACTION_OBSERVATION");
+        expect(JSON.stringify(publicReport)).not.toContain("incident-record-v1");
+        expect(await submitResult(setup)(setup.input)).toEqual({ kind: "ALREADY_FINISHED" });
+        const counts = await database.sql`select count(*)::int as count from analysis_incident_observations where analysis_id = ${setup.analysisId}`;
+        expect(counts[0]?.count).toBe(1);
+        // 이전 작업 판본에 저장된 관측은 현재 조회에서 제외
+        await database.sql`update processing_jobs set job_revision = job_revision + 1 where id = ${setup.jobId}`;
+        expect((await incidentQuery(database, { analysisId: setup.analysisId,
+            anonymousSessionId: setup.sessionId, after: null, limit: 100 }, NOW))?.rows).toEqual([]);
+    });
+
+    it("rejects a record evidence hash changed independently of its verified observation", async () => {
+        const setup = await privateFixture(true);
+        const repository = {
+            preflight: setup.repository.preflight.bind(setup.repository),
+            result: (command: import("../../src/application/ports/repositories/job-store").JobResultCommand) => {
+                const batch = structuredClone(command.privateIncidents!);
+                const row = batch.rows[0]!;
+                const record = { ...row.record!, evidence: row.record!.evidence.map((item) => ({ ...item, contentSha256: "e".repeat(64) })) };
+                return setup.repository.result({ ...command, privateIncidents: { ...batch,
+                    rows: [{ ...row, record, recordSha256: incidentDigest(record) }] } });
+            }
+        };
+        await expect(submitResult({ ...setup, repository })(setup.input)).rejects.toThrow("INCIDENT_RECORD_EVIDENCE_MISMATCH");
+        await expectNoV2Writes(setup.analysisId, setup.jobId);
+    });
+
+    it.each(["deleted", "expired", "during-write"])("rejects private writes for a source %s", async (kind) => {
+        const setup = await privateFixture();
+        if (kind === "deleted") await database.sql`update video_assets set status = 'DELETED' where id = ${setup.videoId}`;
+        if (kind === "expired") await database.sql`update video_assets set created_at = '2029-12-30', expires_at = '2029-12-31' where id = ${setup.videoId}`;
+        let repository = setup.repository;
+        if (kind === "during-write") {
+            await database.sql`update video_assets set expires_at = '2030-01-01T12:00:01Z' where id = ${setup.videoId}`;
+            let reads = 0;
+            repository = new JobStore(database, () => new Date(++reads < 3 ? NOW : "2030-01-01T12:00:01Z"));
+        }
+        expect(await submitResult({ ...setup, repository })(setup.input)).toEqual({ kind: "INVALID_RESULT", reason: "SOURCE" });
+        await expectNoV2Writes(setup.analysisId, setup.jobId);
+        const rows = await database.sql`select id from analysis_incident_observations where analysis_id = ${setup.analysisId}`;
+        expect(rows).toHaveLength(0);
+    });
+
+    it("rolls back all result writes if a private row fails inside the transaction", async () => {
+        const setup = await privateFixture();
+        const repository = {
+            preflight: setup.repository.preflight.bind(setup.repository),
+            result: (command: import("../../src/application/ports/repositories/job-store").JobResultCommand) => {
+                const batch = command.privateIncidents!;
+                return setup.repository.result({ ...command, privateIncidents: { ...batch,
+                    rows: [...batch.rows, { ...batch.rows[0]!, observationSha256: "0".repeat(64) }] } });
+            }
+        };
+        await expect(submitResult({ ...setup, repository })(setup.input)).rejects.toThrow("INCIDENT_ROW_INVALID");
+        await expectNoV2Writes(setup.analysisId, setup.jobId);
+        const rows = await database.sql`select id from analysis_incident_observations where analysis_id = ${setup.analysisId}`;
+        expect(rows).toHaveLength(0);
+        // 같은 트랜잭션의 자동 평가와 성공 이벤트까지 되돌림 확인
+        const automatic = await database.sql`select id from analysis_automatic_reviews where analysis_id = ${setup.analysisId}`;
+        const events = await database.sql`select id from processing_job_events where job_id = ${setup.jobId} and event_type = 'SUCCEEDED'`;
+        expect(automatic).toHaveLength(0);
+        expect(events).toHaveLength(0);
+    });
 
     it("completes v2 through result use case and JobStore with audio private and not public", async () => {
         // 시험자료 결과를 시험환경에 저장

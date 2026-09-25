@@ -15,6 +15,7 @@
     "dev:worker:analyze": "node --env-file-if-exists=apps/web/.env.local scripts/worker.mjs analyze",
     "dev:infra": "docker compose -f infra/local/docker-compose.yml up -d",
     "test": "vitest run",
+    "audit:incidents": "vite-node --config vitest.config.ts scripts/incidents.ts",
     "test:video": "node scripts/tests.mjs -c apps/video-worker/pyproject.toml apps/video-worker/tests -q",
     "test:perception": "experiments/perception/.venv-referee/bin/python -m pytest -c experiments/perception/pyproject.toml experiments/perception/tests -q",
     "typecheck": "tsc -p tsconfig.base.json --noEmit",

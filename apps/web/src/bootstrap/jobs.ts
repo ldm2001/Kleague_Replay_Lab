@@ -66,6 +66,7 @@ export const jobs = (): JobApiDependencies => {
         hasher,
         repository,
         storage: source,
+        privateStorage: source,
         // 원본 예외와 비밀값을 제외한 내부 실패 단계 기록
         diagnostic: ({ stage, jobId, jobRevision }) => {
             // 명시적으로 허용한 작업 메타데이터만 서버 로그 기록

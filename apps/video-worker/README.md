@@ -19,6 +19,22 @@ ffprobe 메타데이터 확인
 
 ## 일반 상호작용 관측
 
+서버의 후속 `private-incidents-v1` 경로는 기존 압축 산출물을 검증해 관측과 미확인 사유를 비공개 DB에 색인한다
+서버 적용 전 `0021_private_incidents` 마이그레이션이 필요하며 Worker 전송 판본은 변경하지 않는다
+유형·방향 가설이 있는 입력만 유형별 레코드로 변환하며 현재 운영 생산자가 그 가설을 생성한다는 뜻은 아니다
+새 잡기 결과의 공개 API와 화면 연결 및 운영 사실 승인은 아직 활성화하지 않았다
+
+기존 실영상 산출물의 재처리는 저장소 루트에서 아래 명령을 사용한다
+
+```sh
+npm run audit:incidents -- /absolute/source.mp4 /absolute/output/perception/interaction-observations.jsonl.gz
+PYTHONPATH=apps/video-worker/src "$TEST_PYTHON" -m replay_video.validation /absolute/development-labels.json
+```
+
+첫 명령은 실제 원본·산출물·미디어 해시를 확인하고 측정과 미생성 사유를 집계하며 모델 재추론이나 사실 승인을 하지 않는다
+둘째 명령은 개발자가 제공한 사실별 라벨과 예측을 평가하며 입력 계약은 `datasets/labeled-cases/holding.schema.json`을 따른다
+원본 upstream 압축 해시와 행 출처는 별도 미검증 주장으로 보존하며 새 압축 파일의 해시 검증과 혼동하지 않는다
+
 운영 포트의 `private_observations`는 증거 추출 이후 원본 `perception.jsonl.gz`를 검증·재처리한다. 원본 파일은 보존하고, `interaction-observations.jsonl.gz`에 원시 기록과 `INTERACTION_OBSERVATION` 및 요약을 저장한다. report의 기존 비공개 artifact 참조만 새 파일의 경로·해시·크기로 교체하며 runner의 기존 비공개 업로드 경로를 사용한다. 새 DB 마이그레이션이나 공개 응답 필드는 없다.
 
 `interaction-observation-v1`의 A/B는 추적 ID 정렬 순서일 뿐 행위 방향이나 팀 관계가 아니다. 원본 해시·추적 연속성·샷·쌍·구간 시작으로 후보를 구분하고, 각 샘플은 별도 observationId를 갖는다. 같은 쌍이라도 근접 관측 중단, 250ms 초과 샘플 간격, 샷/연속성/영상 크기 변경이면 새 후보다. 이 값은 기존 100ms 샘플 입력에 대한 관측 연결 기준이지 반칙 기준이 아니다.

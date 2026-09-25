@@ -44,6 +44,7 @@ datasets/labeled-cases/**/*
 !datasets/labeled-cases/**/
 !datasets/labeled-cases/**/README.md
 !datasets/labeled-cases/코너개발.json
+!datasets/labeled-cases/holding.schema.json
 
 # 로컬 도구
 .DS_Store
