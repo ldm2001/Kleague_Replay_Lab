@@ -1,7 +1,7 @@
 // 내부 실패 단계와 안전한 작업 식별자 계약 정의
 export type ResultDiagnostic = Readonly<{
     // 실패한 내부 처리 단계
-    stage: "PREFLIGHT" | "OBJECTS" | "ADMISSION" | "EVALUATION" | "PERSISTENCE";
+    stage: "PREFLIGHT" | "OBJECTS" | "OBSERVATIONS" | "ADMISSION" | "EVALUATION" | "PERSISTENCE";
     // 형식 검사를 통과한 작업 식별자
     jobId: string;
     // 양의 정수로 확인된 작업 판본

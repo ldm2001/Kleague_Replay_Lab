@@ -5,6 +5,9 @@
 
 모듈 책임과 결과 처리의 실패·트랜잭션 경계 및 현재 운영 연결 상태는 [실행 모듈 계약](CONTRACTS.md)을 따른다
 
+일반 관측의 서버 비공개 색인과 유형별 사건 변환 및 사실별 개발 검증 도구를 추가했다
+서버 적용에는 `0021_private_incidents`가 필요하며 실제 잡기 인식·사실 승인·새 공개 화면이 완료된 것은 아니다
+
 승인된 RT-DETR 검출과 ByteTrack 추적의 독립 실증은 [experiments/perception](experiments/perception/README.md)에서 실행한다
 독립 실증 CLI는 유지하며 2026년 9월 12일 승인된 RT-DETR-R18·YOLO11m·ViTPose의 관측은 운영 Worker의 별도 경로로 연결한다
 역할·관절·깃발/카드 형태와 사건 연결은 가설이며 서버의 비공개 근거 검증과 rules 승인 경계를 거친다

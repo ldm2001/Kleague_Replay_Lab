@@ -29,7 +29,8 @@ describe("migration discovery", () => {
             "0017_analysis_perception_runs",
             "0018_perception_audio",
             "0019_judgment_contract",
-            "0020_automatic_reviews"
+            "0020_automatic_reviews",
+            "0021_private_incidents"
         ]);
         // 목록 중 선택 항목 체크섬의 지정 패턴 일치 확인
         expect(list[0]?.checksum).toMatch(/^[a-f0-9]{64}$/);

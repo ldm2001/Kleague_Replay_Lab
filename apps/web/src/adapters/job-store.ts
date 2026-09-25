@@ -33,6 +33,7 @@ import { perceptionModelPins } from "@replay/rule-engine";
 import { automaticContext } from "./automatic-context";
 // 원본 해시에 대응하는 검증된 경기 문맥 가져옴
 import { knownVideoSource } from "./sources";
+import { incidentRows } from "./incidents";
 
 // 저장소 구현에 필요한 데이터베이스 연결 부분 정의
 type DatabaseHandle = Pick<DatabaseClient, "db">;
@@ -308,11 +309,13 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
         const rows = await this.client.db.execute(sql`
       select job.analysis_id, video.content_sha256, analysis.source_fingerprint,
              analysis.expires_at, analysis.match_id, rule.id as rule_version_id,
-             rule.verification_status, rule.ifab_edition, rule.competition, rule.season, video.duration_ms
+             rule.verification_status, rule.ifab_edition, rule.competition, rule.season, video.duration_ms,
+             fixture.match_date::text as match_date
       from processing_jobs as job
       join analyses as analysis on analysis.id = job.analysis_id
       join video_assets as video on video.id = analysis.video_asset_id
       left join competition_rule_versions as rule on rule.id = analysis.applied_rule_version_id
+      left join matches as fixture on fixture.id = analysis.match_id
       where job.id = ${command.jobId}
         and job.job_type = 'ANALYZE_VIDEO'
         and job.status = 'PROCESSING'
@@ -346,6 +349,7 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
             season: string | null;
             // 영상 전체 길이의 밀리초 값
             duration_ms: number | null;
+            match_date?: string | null;
         }>;
         // 유효한 작업 임대와 원본 문맥 조회 성공 여부 확인
         if (row) {
@@ -432,7 +436,8 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
                               // 국제 축구 규정의 판본
                               ifabEdition: row.ifab_edition,
                               ...(row.competition ? { competition: row.competition } : {}),
-                              ...(row.season ? { season: row.season } : {})
+                              ...(row.season ? { season: row.season } : {}),
+                              ...(row.match_date ? { matchDate: row.match_date } : {})
                           }
                         : null
             };
@@ -619,6 +624,7 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
           select job.id, job.status, job.job_type, job.job_revision, job.attempt, job.lease_owner,
                  job.lease_token_hash, job.lease_until, job.analysis_id,
                  analysis.source_fingerprint, analysis.expires_at, video.content_sha256,
+                 video.status as video_status, video.expires_at as video_expires_at,
                  analysis.match_id, analysis.applied_rule_version_id
           from processing_jobs as job
           join analyses as analysis on analysis.id = job.analysis_id
@@ -656,6 +662,8 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
                         match_id: string | null;
                         // 분석에 연결한 대회 규정 판본 식별자
                         applied_rule_version_id: string | null;
+                        video_status?: string;
+                        video_expires_at?: string | null;
                     }>;
                     // 작업 대상이 없으면 결과 저장 중단
                     if (!target) return [{ kind: "NOT_FOUND" }];
@@ -678,6 +686,13 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
                         new Date(target.lease_until).getTime() > new Date(lockedNow).getTime();
                     // 현재 시각에 임대 권한이 유효하지 않으면 결과 저장 차단
                     if (!validLease) return [{ kind: "STALE_LEASE" }];
+
+                    // 새 비공개 관측은 원본 자체의 상태와 보존 기한도 확인한 뒤 저장
+                    const privateSourceValid = () => !command.privateIncidents || (
+                        target.video_status === "VALID" && target.video_expires_at != null
+                        && new Date(target.video_expires_at).getTime() > new Date(lockedNow).getTime()
+                    );
+                    if (!privateSourceValid()) return [{ kind: "INVALID_RESULT", reason: "SOURCE" }];
 
                     // 서버 검증이 있는 관측 결과의 원본 동일성 재검사
                     if (perception && command.perceptionVerification) {
@@ -839,6 +854,8 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
                             return { kind: "INVALID_RESULT", reason: "SOURCE" };
                         // 이후 저장 시각을 실제 검사 시각으로 갱신
                         lockedNow = new Date(now).toISOString();
+                        // 부분 쓰기 이후 원본 기한을 넘겼으면 비공개 관측까지 전체 롤백
+                        if (!privateSourceValid()) return { kind: "INVALID_RESULT", reason: "SOURCE" };
                         // 임대와 원본 기한 검사에서 실패 없음 반환
                         return null;
                     };
@@ -972,6 +989,20 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
               ${privateSummaryJson!}::jsonb, ${lockedNow}, ${target.expires_at}
             )
           `);
+                    }
+
+                    // 기존 결과와 같은 트랜잭션에서 일반 관측과 유형별 사건을 비공개 저장
+                    if (command.privateIncidents) {
+                        if (!perception || !command.perceptionVerification || !target.expires_at) {
+                            throw new Error("INCIDENT_VERIFICATION_REQUIRED");
+                        }
+                        await incidentRows(transaction, command.privateIncidents, {
+                            analysisId: target.analysis_id!, jobId: target.id, jobRevision: target.job_revision,
+                            sourceSha256: Buffer.from(target.source_fingerprint!).toString("hex"),
+                            artifactSha256: perception.artifact.contentSha256,
+                            now: lockedNow, expiresAt: new Date(target.expires_at).toISOString(),
+                            evidence: payload.evidence ?? []
+                        });
                     }
 
         // 영상 처리 완료와 규정 판단 가능 여부의 독립 처리
