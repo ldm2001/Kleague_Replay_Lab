@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from urllib.error import HTTPError
 import pytest
-from replay_video.http import Api, HttpError
+from replay_video.http import Api, HttpError, Rejection
 
 
 # 웹 통신 응답 모형
@@ -154,6 +154,47 @@ def test_result_preserves_terminal_409_when_no_verifiable_body_exists() -> None:
     with pytest.raises(HttpError, match="http-409"):
         # 만료된 임대의 결과 제출에서 오류 전달 확인
         api.result(job, {"kind": "VALIDATED"})
+
+# 재실행으로 바뀌지 않는 400 거부의 결정적 거부 예외 확인
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"kind": "INVALID_RESULT", "reason": "SOURCE"},
+        {"kind": "INVALID_RESULT", "reason": "ARTIFACT"},
+        {"kind": "INVALID_RESULT", "reason": "REFERENCE"},
+        {"kind": "INVALID_RESULT", "reason": "CONTEXT"},
+        {"kind": "INVALID_INPUT", "reason": "PAYLOAD"},
+        {"kind": "INVALID_REQUEST"},
+    ],
+)
+def test_result_names_deterministic_rejections(body: dict[str, str]) -> None:
+    # 거부 본문을 가진 요청 오류 객체 생성
+    error = HTTPError("http://web.test", 400, "rejected", {}, io.BytesIO(json.dumps(body).encode()))
+    # 거부 응답을 돌려줄 통신 대역 연결
+    api = Api("http://web.test", "secret", "worker-1", opener=Open([error]))
+
+    # 거부 종류와 사유 부호가 결정적 거부 예외에 실리는지 확인
+    with pytest.raises(Rejection, match=f"kind={body['kind']}"):
+        # 결과 제출 경로 실행
+        api.result({"jobId": "job-1", "jobRevision": 2, "leaseToken": "lease"}, {"kind": "VALIDATED"})
+
+# 저장소와 검증 기능의 일시 400 거부 재실행 경로 보존 확인
+@pytest.mark.parametrize("reason", ["STORAGE", "VERIFICATION_UNAVAILABLE"])
+def test_result_keeps_transient_rejections_retryable(reason: str) -> None:
+    # 일시 거부 본문을 가진 요청 오류 객체 생성
+    body = json.dumps({"kind": "INVALID_RESULT", "reason": reason}).encode()
+    # 일시 거부 응답을 돌려줄 통신 대역 연결
+    api = Api(
+        "http://web.test", "secret", "worker-1",
+        opener=Open([HTTPError("http://web.test", 400, "rejected", {}, io.BytesIO(body))]),
+    )
+
+    # 결정적 거부가 아닌 기존 상태 오류로 전달되는지 확인
+    with pytest.raises(HttpError, match="http-400") as caught:
+        # 결과 제출 경로 실행
+        api.result({"jobId": "job-1", "jobRevision": 2, "leaseToken": "lease"}, {"kind": "VALIDATED"})
+    # 일시 거부가 결정적 거부로 분류되지 않았는지 확인
+    assert not isinstance(caught.value, Rejection)
 
 # 예상 밖 성공 응답 거부 확인
 def test_result_rejects_unexpected_success_payload() -> None:

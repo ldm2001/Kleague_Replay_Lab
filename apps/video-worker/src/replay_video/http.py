@@ -20,6 +20,16 @@ class HttpError(RuntimeError):
     pass
 
 
+# 같은 제출을 다시 보내도 바뀌지 않는 서버 결과 거부 예외 타입 선언
+class Rejection(HttpError):
+    # 결정적 결과 거부
+    pass
+
+
+# 재실행으로 바뀌지 않는 원본과 산출물 및 참조와 저장 문맥의 결과 거부 사유
+TERMINAL = frozenset({"SOURCE", "ARTIFACT", "REFERENCE", "CONTEXT"})
+
+
 # 교체 가능한 요청 실행 함수의 타입 선언
 Open = Callable[..., object]
 
@@ -160,7 +170,7 @@ class Api:
     def result(
         self, job: Mapping[str, object], payload: Mapping[str, object]
     ) -> dict[str, object] | None:
-        # 결과 제출의 충돌 응답까지 해석할 요청 실행
+        # 결과 제출의 거부와 충돌 응답까지 해석할 요청 실행
         response = self.request(
             f"/api/internal/jobs/{job['jobId']}/result",
             {
@@ -173,7 +183,7 @@ class Api:
                 # 분석 산출물 본문의 복사본 전달
                 "payload": dict(payload),
             },
-            (409,),
+            (400, 409),
         )
         # 결과 접수 또는 이미 완료된 응답인지 확인
         if response and response.get("kind") in {"ACCEPTED", "ALREADY_FINISHED"}:
@@ -183,6 +193,18 @@ class Api:
         if response and response.get("kind") == "STALE_LEASE":
             # 오래된 선점 권한의 제출 충돌 오류 전달
             raise HttpError("http-409")
+        # 거부 응답의 종류와 사유 읽음
+        kind, reason = (response or {}).get("kind"), (response or {}).get("reason")
+        # 요청과 입력 형식 거부 또는 재실행으로 바뀌지 않는 결과 거부 확인
+        if kind in {"INVALID_REQUEST", "INVALID_INPUT"} or (
+            kind == "INVALID_RESULT" and reason in TERMINAL
+        ):
+            # 거부 종류와 사유 부호만 담은 결정적 거부 전달
+            raise Rejection(f"result-rejected kind={kind} reason={reason}")
+        # 저장소와 검증 기능의 일시 실패를 기존 상태 오류로 전달
+        if kind == "INVALID_RESULT":
+            # 임대 만료 뒤 재실행되는 기존 400 오류 유지
+            raise HttpError("http-400")
         # 예상하지 못한 결과 응답 오류 전달
         raise HttpError("result-response-invalid")
 

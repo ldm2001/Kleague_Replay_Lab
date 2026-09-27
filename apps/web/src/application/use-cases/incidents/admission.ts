@@ -46,6 +46,14 @@ export function incidentAdmission(
         recordSha256: incidentDigest(record), factIds, evidenceHashes: verified };
 }
 
+// 규정 판본 부재를 기본 판본으로 채우지 않는 사건 규정 읽음
+const incidentRules = (record: IncidentRecordV1) =>
+    record.match.ifabVersionId ? ruleSet(record.match.ifabVersionId) : null;
+
+// 규정 문맥이 없어 평가하지 못하는 사건의 보류 사유 반환
+export const incidentReasons = (record: IncidentRecordV1): string[] =>
+    incidentRules(record) ? [] : ["RULE_CONTEXT_UNAVAILABLE"];
+
 // 사실 승인을 거친 질문별 잡기 평가와 완료 전용 투영 생성
 export function incidentEvaluation(
     record: IncidentRecordV1,
@@ -53,13 +61,12 @@ export function incidentEvaluation(
     methods: readonly IncidentMethod[] = operating
 ) {
     const admission = incidentAdmission(record, evidenceHashes, methods);
-    // 규정 판본 부재를 기본 판본으로 채우지 않음
-    const rules = record.match.ifabVersionId ? ruleSet(record.match.ifabVersionId) : null;
+    const rules = incidentRules(record);
     const evaluations = rules ? record.actions.map((action) => holdingVerdict(record, action.id, { rules, admission })) : [];
     return {
         admission,
         evaluations,
-        reasons: rules ? [] : ["RULE_CONTEXT_UNAVAILABLE"],
+        reasons: incidentReasons(record),
         // 원시 관측과 사실 승인 진단을 공개 투영에서 제외
         publicResults: evaluations.map(incidentPublic).filter((value) => value.conclusions.length > 0)
     };

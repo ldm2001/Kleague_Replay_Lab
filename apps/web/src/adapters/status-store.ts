@@ -181,7 +181,13 @@ export class StatusStore implements StatusPort, ResultPort, EvidencePort, Latest
              video.status::text as video_status,
              video.validation_error_code,
              analysis.id as analysis_id,
-             analysis.status as analysis_status,
+             -- 대기 기록은 유지하고 임대 중인 작업의 현재 단계를 조회 시점 상태로 파생
+             case
+               when analysis.status = 'QUEUED'
+                 and job.job_type = 'ANALYZE_VIDEO'
+                 and job.status = 'PROCESSING' then job.stage::text
+               else analysis.status
+             end as analysis_status,
              analysis.pipeline_version,
              coalesce(job.stage::text, 'QUEUED') as stage,
              coalesce(job.progress_percent, 0) as progress_percent,
@@ -198,7 +204,7 @@ export class StatusStore implements StatusPort, ResultPort, EvidencePort, Latest
       left join analyses as analysis on analysis.video_asset_id = video.id
       left join competition_rule_versions as rule on rule.id = analysis.applied_rule_version_id
       left join lateral (
-        select stage, progress_percent
+        select job_type, status, stage, progress_percent
         from processing_jobs
         where analysis_id = analysis.id
         order by created_at desc, id desc

@@ -15,6 +15,12 @@ MAX_COMPRESSED_BYTES = 128 * 1024 * 1024
 MAX_ROW_BYTES = 8 * 1024 * 1024
 # 측정 확장에 사용할 최대 프레임 수 정의
 MAX_FRAMES = 30_000
+# 서버 비공개 색인 행 수 상한 10000보다 낮게 둔 관측 기록 행 예산 정의
+BUDGET_ROWS = 8_000
+# 서버 비공개 색인 바이트 상한 32MiB보다 낮게 둔 관측 기록 바이트 예산 정의
+BUDGET_BYTES = 24 * 1024 * 1024
+# 서버 비공개 색인의 관측 한 행 상한과 같은 관측 행 바이트 상한 정의
+MAX_OBSERVATION_BYTES = 65_536
 
 # 입력의 해시 식별값을 계산
 def digest(path):
@@ -33,6 +39,11 @@ def inside(root, path):
         raise ValueError("OBSERVATION_FILE_INVALID")
     # 검증한 근거 파일의 실제 경로 반환
     return resolved
+
+# 비유한 수치를 거부하며 기록 한 건을 줄 단위 바이트로 직렬화
+def serial(value):
+    # 구분 공백 없는 JSON 한 줄의 바이트 반환
+    return (json.dumps(value, allow_nan=False, separators=(",", ":")) + "\n").encode()
 
 # 원시 산출물 검증과 상호작용 측정 확장 파일 게시
 def enrichment(root, artifact, source_sha256, shots, evidence, check_cancelled=None):
@@ -91,6 +102,8 @@ def enrichment(root, artifact, source_sha256, shots, evidence, check_cancelled=N
     candidate_ids, count, measured, missing, frames = set(), 0, 0, {}, 0
     # 입력과 확장 출력의 비압축 바이트 누계 초기화
     raw_bytes = output_bytes = 0
+    # 기록한 관측 행 바이트와 생략 관측 수 및 예산 소진 상태 초기화
+    kept, omitted, full = 0, 0, False
     # 실패 여부와 무관하게 임시 파일을 정리할 보호 구간 시작
     try:
         # 임시 파일에 재현 가능한 시간 헤더의 압축 쓰기 스트림 열기
@@ -98,12 +111,10 @@ def enrichment(root, artifact, source_sha256, shots, evidence, check_cancelled=N
             fileobj=output, mode="wb", mtime=0
         ) as packed:
 
-            # 행 크기·총 용량 확인 후 확장 산출물에 줄 단위 직렬화 자료 기록
-            def entry(value):
+            # 행 크기·총 용량 확인 후 확장 산출물에 직렬화된 한 줄 기록
+            def entry(data):
                 # 중첩 기록 함수에서 바깥쪽 출력 바이트 누계 사용
                 nonlocal output_bytes
-                # 비유한 수치를 거부하며 관측 한 건을 줄 단위 바이트로 직렬화
-                data = (json.dumps(value, allow_nan=False, separators=(",", ":")) + "\n").encode()
                 # 확장된 전체 비압축 출력 크기 누적
                 output_bytes += len(data)
                 # 한 행과 전체 비압축·압축 출력의 크기 상한 확인
@@ -148,11 +159,11 @@ def enrichment(root, artifact, source_sha256, shots, evidence, check_cancelled=N
                         # 중복 측정 확장 거부
                         raise ValueError("OBSERVATION_ALREADY_ENRICHED")
                     # 원시 관측의 자료 내용을 유지한 채 확장 파일에 복사
-                    entry(row)
+                    entry(serial(row))
                     # 파일 첫 행의 원본 출처와 확장 헤더 처리
                     if line_number == 1:
                         # 확장 방법 출처 또는 최종 처리 집계를 별도 기록으로 추가
-                        entry(
+                        entry(serial(
                             {
                                 "kind": "INTERACTION_OBSERVATION_HEADER",
                                 "schemaVersion": "interaction-observation-v1",
@@ -169,7 +180,7 @@ def enrichment(root, artifact, source_sha256, shots, evidence, check_cancelled=N
                                 # 규정 판단 사실로 승인되지 않은 측정임을 명시
                                 "admission": "NOT_ADMITTED",
                             }
-                        )
+                        ))
                     # 실패 기록으로 표본 연속성이 끊긴 경우 확인
                     if row.get("kind") in ("FRAME_FAILURE", "RUN_FAILURE"):
                         # 실패 구간을 가로질러 변위를 계산하지 않도록 이력 초기화
@@ -196,10 +207,12 @@ def enrichment(root, artifact, source_sha256, shots, evidence, check_cancelled=N
                     )
                     # 현재 표본의 참여자 쌍별 중립 측정 생성
                     for observation in engine.update(row, segment):
-                        # 중복 없이 관측된 중립 후보 식별자 수집
-                        candidate_ids.add(observation["candidateId"])
-                        # 생성한 측정 관측 수 누적
-                        count += 1
+                        # 관측 기록 예산이 이미 소진됐는지 확인
+                        if full:
+                            # 직렬화 없이 생략 관측 수만 누적
+                            omitted += 1
+                            # 다음 관측으로 이동
+                            continue
                         # 원시 파일 해시와 행 번호 및 행 해시로 출처 연결
                         observation["upstream"] = {
                             "artifactSha256": artifact["contentSha256"],
@@ -229,6 +242,28 @@ def enrichment(root, artifact, source_sha256, shots, evidence, check_cancelled=N
                         if len(matching) != 1:
                             # 샷 연결 불가를 관측 부재와 구분해 기록
                             observation["evidenceReasons"].append("SHOT_MAPPING_UNAVAILABLE")
+                        # 출처와 근거를 연결한 관측 한 건 직렬화
+                        data = serial(observation)
+                        # 서버 색인의 관측 한 행 상한을 넘는지 확인
+                        if len(data) > MAX_OBSERVATION_BYTES:
+                            # 거대 관측 행은 기록하지 않고 생략 수만 누적
+                            omitted += 1
+                            # 다음 관측으로 이동
+                            continue
+                        # 관측 행 수 또는 바이트 예산 초과 여부 확인
+                        if count >= BUDGET_ROWS or kept + len(data) > BUDGET_BYTES:
+                            # 이후 관측을 모두 생략하도록 예산 소진 표시
+                            full = True
+                            # 예산을 넘은 관측의 생략 수 누적
+                            omitted += 1
+                            # 다음 관측으로 이동
+                            continue
+                        # 중복 없이 관측된 중립 후보 식별자 수집
+                        candidate_ids.add(observation["candidateId"])
+                        # 기록한 측정 관측 수 누적
+                        count += 1
+                        # 기록한 관측 행의 바이트 누계 증가
+                        kept += len(data)
                         # 각 화면 측정의 성공과 누락 사유 집계
                         for value in observation["measurements"].values():
                             # 실제 수치가 생성된 측정만 성공 수에 합산
@@ -238,7 +273,7 @@ def enrichment(root, artifact, source_sha256, shots, evidence, check_cancelled=N
                                 # 같은 측정 불가 사유의 발생 수 증가
                                 missing[reason] = missing.get(reason, 0) + 1
                         # 원시 행 출처와 미디어 근거를 연결한 중립 관측 기록
-                        entry(observation)
+                        entry(data)
                 # 헤더조차 없는 빈 입력 파일인지 확인
                 if not line_number:
                     # 비어 있는 원시 관측 파일 거부
@@ -254,20 +289,23 @@ def enrichment(root, artifact, source_sha256, shots, evidence, check_cancelled=N
                     # 변경된 미디어를 참조하는 측정 결과 게시 중단
                     raise ValueError("OBSERVATION_MEDIA_CHANGED")
             # 확장 방법 출처 또는 최종 처리 집계를 별도 기록으로 추가
-            entry(
+            entry(serial(
                 {
                     "kind": "INTERACTION_OBSERVATION_SUMMARY",
                     "sourceSha256": source_sha256,
                     "frameCount": frames,
                     "candidateCount": len(candidate_ids),
                     "observationCount": count,
+                    # 예산 초과나 거대 행으로 기록하지 않은 관측의 존재와 수 표시
+                    "truncated": omitted > 0,
+                    "omittedObservationCount": omitted,
                     "measuredValueCount": measured,
                     "missingMeasurementReasons": missing,
                     # 행동 유형을 분류한 사건이 없음을 측정 수와 별도로 기록
                     "typedIncidentCount": 0,
                     "reason": "ACTION_TYPE_AND_DIRECTION_METHODS_UNAVAILABLE",
                 }
-            )
+            ))
         # 압축 마무리 후 실제 최종 파일 크기 재확인
         if temporary.stat().st_size > MAX_COMPRESSED_BYTES:
             # 행 또는 전체 산출물 크기 상한 초과로 기록 중단

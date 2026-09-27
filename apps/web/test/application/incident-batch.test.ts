@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { interactionFixture } from "../fixtures/interaction";
 import { incidentBatch } from "../../src/application/use-cases/incidents/batch";
+import { incidentEvaluation } from "../../src/application/use-cases/incidents/admission";
 import type { AnalysisPayload } from "../../src/application/ports/repositories/job-store";
 
 // 실제 관측과 해당 작업의 증거 객체 참조를 함께 구성
@@ -14,7 +15,7 @@ const fixture = () => {
             objectKey: `evidence/analysis/job/1/${"d".repeat(64)}/clip.mp4`, contentSha256: "d".repeat(64),
             startMs: 0, endMs: 100, width: null, height: null }] };
     const archive = { schemaVersion: "private-incidents-v1" as const, sourceSha256: "a".repeat(64),
-        artifactSha256: "b".repeat(64), observations: [observation] };
+        artifactSha256: "b".repeat(64), observations: [observation], truncated: false };
     const storage = { head: vi.fn(async () => ({ sizeBytes: 4, contentSha256: Buffer.from("d".repeat(64), "hex") })) };
     return { observation, context, payload, archive, storage };
 };
@@ -30,10 +31,26 @@ describe("private incident batch", () => {
             matchId: "fixture-match", competition: "fixture", season: "fixture", matchDate: "2026-01-01",
             ifabVersionId: "ifab-2025-26", verification: "VERIFIED"
         } }, f.storage);
-        expect(batch.rows[0]!.record!.match.verification).toBe("VERIFIED");
-        expect(batch.rows[0]!.admittedFactIds).toEqual([]);
-        expect(batch.rows[0]!.evaluations[0]!.conclusions.offence.status).toBe("UNDETERMINED");
-        expect(batch.rows[0]!.evaluations[0]!.conclusions.disciplinary.status).toBe("UNSUPPORTED");
+        const row = batch.rows[0]!;
+        expect(row.record!.match.verification).toBe("VERIFIED");
+        expect(row.reasons).toEqual(["UPSTREAM_PROVENANCE_UNVERIFIED"]);
+        // 승인과 평가는 배치에 싣지 않고 저장 경계의 단일 계산으로만 생성
+        expect(row).not.toHaveProperty("admittedFactIds");
+        expect(row).not.toHaveProperty("evaluations");
+        const evaluated = incidentEvaluation(row.record!, new Map(row.record!.evidence.map((item) => [item.id, item.contentSha256])));
+        expect([...evaluated.admission.factIds]).toEqual([]);
+        expect(evaluated.evaluations[0]!.conclusions.offence.status).toBe("UNDETERMINED");
+        expect(evaluated.evaluations[0]!.conclusions.disciplinary.status).toBe("UNSUPPORTED");
+    });
+
+    it("records a missing rule context without choosing a default edition", async () => {
+        const f = fixture();
+        const provenance = { state: "HYPOTHESIS" as const, reasons: ["METHOD_UNVALIDATED"],
+            method: { id: "fixture", version: "1" }, observationIds: [f.observation.observationId] };
+        f.observation.actionType = { ...provenance, value: "HOLDING_MOTION" };
+        f.observation.direction = { ...provenance, value: "A_TO_B" };
+        const batch = await incidentBatch(f.archive, f.payload, f.context, f.storage);
+        expect(batch.rows[0]!.reasons).toEqual(["RULE_CONTEXT_UNAVAILABLE", "UPSTREAM_PROVENANCE_UNVERIFIED"]);
     });
 
     it("preserves unknown type and known measurements after actual media verification", async () => {
@@ -41,7 +58,7 @@ describe("private incident batch", () => {
         const batch = await incidentBatch(f.archive, f.payload, f.context, f.storage);
         expect(batch.rows[0]!.record).toBeNull();
         expect(batch.rows[0]!.observation.measurements.centerDistance!.state).toBe("MEASURED");
-        expect(batch.rows[0]!.admittedFactIds).toEqual([]);
+        expect(batch.rows[0]).not.toHaveProperty("admittedFactIds");
         expect(f.storage.head).toHaveBeenCalledOnce();
     });
 

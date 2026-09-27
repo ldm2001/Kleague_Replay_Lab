@@ -21,8 +21,7 @@ import type {
 // 영상 업로드의 허가와 완료 계약 가져옴
 import type { CompletionStorage } from "../../ports/storage/upload-storage";
 import type { EvidenceBodyStorage } from "../../ports/storage/evidence-storage";
-import { incidentArchive } from "../incidents/archive";
-import { incidentBatch } from "../incidents/batch";
+import { observations } from "./observations";
 
 // 외부 식별자의 고유 식별자 형식 검사 패턴 생성
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -213,23 +212,19 @@ export const result =
                 ruleEdition: preflight.ruleEdition
             }));
             // 기존 비공개 산출물을 별도 판본의 관측 색인으로 검증하며 사실 승인은 수행하지 않음
-            const privateIncidents = privateStorage ? await step("OBSERVATIONS", async () => {
-                const content = await privateStorage.body(perception.artifact.objectKey);
-                const archive = await incidentArchive(content.body, {
-                    sourceSha256: bytesHex(preflight.sourceSha256),
-                    artifactSha256: perception.artifact.contentSha256,
-                    artifactSizeBytes: perception.artifact.sizeBytes,
-                    durationMs: preflight.durationMs ?? 0
-                });
-                return incidentBatch(archive, analysis, {
-                    analysisId: preflight.analysisId, jobId: input.jobId.toLowerCase(), jobRevision: input.jobRevision,
-                    ...(preflight.ruleEdition?.verificationStatus === "VERIFIED"
-                        && preflight.ruleEdition.competition && preflight.ruleEdition.season && preflight.ruleEdition.matchDate
-                        ? { match: { matchId: preflight.ruleEdition.matchId, competition: preflight.ruleEdition.competition,
-                            season: preflight.ruleEdition.season, matchDate: preflight.ruleEdition.matchDate,
-                            ifabVersionId: `ifab-${preflight.ruleEdition.ifabEdition}`, verification: "VERIFIED" as const } } : {})
-                }, storage);
-            }) : undefined;
+            const privateIndex = privateStorage ? await step("OBSERVATIONS", () => observations(
+                analysis, preflight, input.jobId.toLowerCase(), input.jobRevision, privateStorage, storage
+            )) : undefined;
+            // 실제 저장소 읽기 실패만 비공개 기록
+            if (privateIndex && "kind" in privateIndex && privateIndex.reason === "STORAGE") {
+                notice({
+                    stage: "OBSERVATIONS",
+                    jobId: input.jobId.toLowerCase(),
+                    jobRevision: input.jobRevision
+                }, diagnostic);
+            }
+            // 산출물과 참조 및 저장소 거부는 기존 공개 거부 결과로 반환
+            if (privateIndex && "kind" in privateIndex) return privateIndex;
             // 파일 검증 완료 후 유효 기한 재검사 시각 읽음
             const completedAt = clock.now();
             // 시간 소요가 큰 파일 검사 후 원본 보존 기한 재확인
@@ -260,7 +255,8 @@ export const result =
                 payload: input.payload,
                 // 후보별 자동 규정 평가의 내부 결과 묶음
                 automaticReview: automatic,
-                ...(privateIncidents ? { privateIncidents } : {}),
+                // 비공개 관측 색인 또는 용량과 시한 초과에 따른 색인 생략 표시
+                ...(privateIndex ? { privateIndex } : {}),
                 // 원본과 증거 검증 및 사실 채택 검사 결과
                 perceptionVerification: {
                     // 분석 기록의 식별자

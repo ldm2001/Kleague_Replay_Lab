@@ -4,7 +4,7 @@ import type { CompletionStorage } from "../../ports/storage/upload-storage";
 import type { IncidentArchive } from "./archive";
 import type { PrivateIncidentBatch, PrivateIncidentRow } from "../../../shared/private-incidents";
 import { incidentRecord } from "./record";
-import { incidentEvaluation } from "./admission";
+import { incidentReasons } from "./admission";
 import { incidentDigest } from "../../../rules/engine/incidents/evidence";
 import type { IncidentMatch } from "../../../shared/incident";
 
@@ -45,18 +45,15 @@ export async function incidentBatch(
         const conversion = incidentRecord(observation);
         if (conversion.kind === "UNRESOLVED") {
             rows.push({ observation: conversion.observation, observationSha256: observationDigest(conversion.observation),
-                record: null, recordSha256: null, link: null, reasons: [...conversion.reasons, "UPSTREAM_PROVENANCE_UNVERIFIED"],
-                admittedFactIds: [], evaluations: [] });
+                record: null, recordSha256: null, link: null, reasons: [...conversion.reasons, "UPSTREAM_PROVENANCE_UNVERIFIED"] });
             continue;
         }
         const record = { ...conversion.record, ...(context.match ? { match: context.match } : {}) };
-        // 구조나 파일 검증만으로 사실 승인 목록을 채우지 않음
-        const evaluation = incidentEvaluation(record, new Map(record.evidence.map((item) => [item.id, item.contentSha256])));
+        // 사실 승인과 평가는 저장 경계가 검증된 증거로 한 번만 계산
         rows.push({ observation: conversion.observation, observationSha256: observationDigest(conversion.observation),
             record, recordSha256: incidentDigest(record), link: conversion.link,
-            reasons: [...evaluation.reasons, "UPSTREAM_PROVENANCE_UNVERIFIED"],
-            admittedFactIds: [...evaluation.admission.factIds], evaluations: evaluation.evaluations });
+            reasons: [...incidentReasons(record), "UPSTREAM_PROVENANCE_UNVERIFIED"] });
     }
     return { schemaVersion: "private-incidents-v1", sourceSha256: archive.sourceSha256,
-        artifactSha256: archive.artifactSha256, rows };
+        artifactSha256: archive.artifactSha256, truncated: archive.truncated, rows };
 }

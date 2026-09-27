@@ -93,4 +93,52 @@ describe("private incident archive", () => {
         if (kind === "hash") data.context.artifactSha256 = "e".repeat(64);
         await expect(incidentArchive(chunks(data.body), data.context)).rejects.toThrow();
     });
+
+    it.each([
+        ["truncated", "INCIDENT_ARCHIVE_COMPRESSION_INVALID"],
+        ["utf8", "INCIDENT_ARCHIVE_ROW_INVALID"],
+        ["json", "INCIDENT_ARCHIVE_ROW_INVALID"],
+        ["line", "INCIDENT_ARCHIVE_LINE_LIMIT"]
+    ])("names %s content with a stable archive code", async (kind, code) => {
+        const data = fixture([{ kind: "HEADER", sourceSha256: "a".repeat(64) }]);
+        if (kind === "truncated") data.body = data.body.subarray(0, data.body.length - 4);
+        if (kind === "utf8") data.body = gzipSync(Buffer.from([0xff, 0x0a]));
+        if (kind === "json") data.body = gzipSync("{\n");
+        if (kind === "line") data.body = gzipSync(JSON.stringify({ kind: "HEADER", padding: "x".repeat(8 * 1024 * 1024) }));
+        data.context.artifactSizeBytes = data.body.length;
+        data.context.artifactSha256 = createHash("sha256").update(data.body).digest("hex");
+        await expect(incidentArchive(chunks(data.body), data.context)).rejects.toThrow(code);
+    });
+
+    it("passes storage read errors through unchanged", async () => {
+        const failure = new Error("socket reset");
+        const data = fixture([{ kind: "HEADER", sourceSha256: "a".repeat(64) }]);
+        const body: AsyncIterable<Uint8Array> = { [Symbol.asyncIterator]: () => ({ next: async () => { throw failure; } }) };
+        await expect(incidentArchive(body, data.context)).rejects.toBe(failure);
+    });
+
+    it.each([
+        [{ truncated: true, omittedObservationCount: 4 }, true],
+        [{}, false]
+    ])("reads the producer truncation marker from %j", async (marker, expected) => {
+        const row = observation();
+        const data = fixture([
+            { kind: "HEADER", sourceSha256: row.sourceSha256 },
+            { kind: "INTERACTION_OBSERVATION_HEADER", schemaVersion: "interaction-observation-v1", sourceSha256: row.sourceSha256 },
+            row,
+            { kind: "INTERACTION_OBSERVATION_SUMMARY", sourceSha256: row.sourceSha256, observationCount: 1, ...marker }
+        ]);
+        expect((await incidentArchive(chunks(data.body), data.context)).truncated).toBe(expected);
+    });
+
+    it("rejects a truncation marker that is not boolean", async () => {
+        const row = observation();
+        const data = fixture([
+            { kind: "HEADER", sourceSha256: row.sourceSha256 },
+            { kind: "INTERACTION_OBSERVATION_HEADER", schemaVersion: "interaction-observation-v1", sourceSha256: row.sourceSha256 },
+            row,
+            { kind: "INTERACTION_OBSERVATION_SUMMARY", sourceSha256: row.sourceSha256, observationCount: 1, truncated: "yes" }
+        ]);
+        await expect(incidentArchive(chunks(data.body), data.context)).rejects.toThrow("INCIDENT_ARCHIVE_SUMMARY_INVALID");
+    });
 });

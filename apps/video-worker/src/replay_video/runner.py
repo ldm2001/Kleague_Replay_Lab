@@ -11,7 +11,7 @@ import logging
 import re
 from pathlib import Path
 from typing import Callable, Mapping, Protocol
-from .http import Api, HttpError
+from .http import Api, HttpError, Rejection
 from .worker import job
 from .domain.models import AV_OBSERVER_PIPELINE_VERSION, LOCAL_OBSERVER_PIPELINE_VERSION
 
@@ -377,6 +377,9 @@ class Pulse:
         try:
             # 선점한 작업의 최종 결과를 서버에 제출
             response = self.api.result(self.item, payload)
+        except Rejection:
+            # 같은 임대의 실패 결과 제출을 위해 소유권을 유지한 채 결정적 거부 재전달
+            raise
         except Exception as error:
             # 결과 제출 예외를 기록하고 임대 갱신 중단
             self.failed(error, "WORKER_RESULT_FAILED")
@@ -850,17 +853,23 @@ def cycle(api: WorkerApi, kind: str, root: Path) -> bool:
                 except PulseStopped:
                     # 임대 중단 신호는 일반 처리 실패로 바꾸지 않고 재전달
                     raise
-                except Exception:
+                except Exception as error:
                     # 확인된 작업 임대에서만 실패 결과 제출과 상태 갱신 유지
                     if not pulse.ownership():
                         # 비용이 큰 다음 처리 또는 제출 전에 임대 유지 확인
                         pulse.check()
                         # 소유권을 확인하지 못한 작업의 일반 실패 제출 금지
                         raise
-                    # 소유권이 확인된 작업에만 최종 실패 결과 제출
-                    pulse.submission(
-                        {"kind": "FAILED", "failureCode": "WORKER_ERROR", "retryable": False}
-                    )
+                    # 서버의 결정적 결과 거부 여부 확인
+                    rejected = isinstance(error, Rejection)
+                    # 결과 거부 분기
+                    if rejected:
+                        # 거부 종류와 사유 부호만 기록
+                        logger.warning("worker-result-rejected %s", error)
+                    # 결과 거부와 일반 처리 오류를 구분한 실패 부호 선택
+                    code = "WORKER_RESULT_REJECTED" if rejected else "WORKER_ERROR"
+                    # 소유권이 확인된 작업에만 재시도 없는 최종 실패 결과 제출
+                    pulse.submission({"kind": "FAILED", "failureCode": code, "retryable": False})
             # 작업 완료 반환
             return True
     except PulseStopped as error:

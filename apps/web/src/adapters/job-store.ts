@@ -604,7 +604,15 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
                             ? { audio: perception.audio }
                             : {}),
                         // 관측을 규정 사실로 채택할 수 있는지의 검사 결과
-                        admission: command.perceptionVerification.admission
+                        admission: command.perceptionVerification.admission,
+                        // 비공개 관측 색인의 저장 범위 또는 생략 사유
+                        ...(command.privateIndex ? {
+                            privateIndex: command.privateIndex.status === "INDEXED" ? {
+                                status: "INDEXED",
+                                observationCount: command.privateIndex.batch.rows.length,
+                                truncated: command.privateIndex.batch.truncated
+                            } : command.privateIndex
+                        } : {})
                     });
                 } catch {
                     // 직렬화할 수 없는 관측 요약의 저장 거부 반환
@@ -688,7 +696,7 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
                     if (!validLease) return [{ kind: "STALE_LEASE" }];
 
                     // 새 비공개 관측은 원본 자체의 상태와 보존 기한도 확인한 뒤 저장
-                    const privateSourceValid = () => !command.privateIncidents || (
+                    const privateSourceValid = () => command.privateIndex?.status !== "INDEXED" || (
                         target.video_status === "VALID" && target.video_expires_at != null
                         && new Date(target.video_expires_at).getTime() > new Date(lockedNow).getTime()
                     );
@@ -992,17 +1000,20 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
                     }
 
                     // 기존 결과와 같은 트랜잭션에서 일반 관측과 유형별 사건을 비공개 저장
-                    if (command.privateIncidents) {
+                    if (command.privateIndex) {
                         if (!perception || !command.perceptionVerification || !target.expires_at) {
                             throw new Error("INCIDENT_VERIFICATION_REQUIRED");
                         }
-                        await incidentRows(transaction, command.privateIncidents, {
-                            analysisId: target.analysis_id!, jobId: target.id, jobRevision: target.job_revision,
-                            sourceSha256: Buffer.from(target.source_fingerprint!).toString("hex"),
-                            artifactSha256: perception.artifact.contentSha256,
-                            now: lockedNow, expiresAt: new Date(target.expires_at).toISOString(),
-                            evidence: payload.evidence ?? []
-                        });
+                        // 용량과 시한 초과로 생략한 색인은 요약 표시만 남기고 행을 쓰지 않음
+                        if (command.privateIndex.status === "INDEXED") {
+                            await incidentRows(transaction, command.privateIndex.batch, {
+                                analysisId: target.analysis_id!, jobId: target.id, jobRevision: target.job_revision,
+                                sourceSha256: Buffer.from(target.source_fingerprint!).toString("hex"),
+                                artifactSha256: perception.artifact.contentSha256,
+                                now: lockedNow, expiresAt: new Date(target.expires_at).toISOString(),
+                                evidence: payload.evidence ?? []
+                            });
+                        }
                     }
 
         // 영상 처리 완료와 규정 판단 가능 여부의 독립 처리

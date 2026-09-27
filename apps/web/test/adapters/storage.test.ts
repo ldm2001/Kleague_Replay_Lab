@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createHash as digest } from "node:crypto";
 import { s3, type S3ObjectClient } from "@replay/adapters";
+import { RangeNotSatisfiableError } from "@replay/application";
 import { S3Client } from "@aws-sdk/client-s3";
 
 class TrackedBody implements AsyncIterable<Uint8Array> {
@@ -456,5 +457,44 @@ describe("s3 upload storage", () => {
         expect(chunks).toEqual([4, 5, 6]);
         // 클라이언트 명령목록 중 선택 항목 () { [ ] } 이름의 기대값 조회 객체 명령 일치 확인
         expect(client.commands[0]?.constructor?.name).toBe("GetObjectCommand");
+    });
+
+    it("reads only a requested evidence range and returns the applied range", async () => {
+        // 저장소에 전달된 명령 보관 목록 준비
+        const commands: any[] = [];
+        // 요청 구간의 본문과 적용 구간을 돌려주는 저장소 대역 구성
+        const storage = s3({
+            client: {
+                send: async (command: unknown) => {
+                    // 전달된 명령 보관
+                    commands.push(command);
+                    // 부분 본문과 전송 길이 및 적용 구간 반환
+                    return { Body: new TrackedBody([Uint8Array.from([5])]), ContentLength: 1, ContentRange: "bytes 1-1/3" };
+                }
+            },
+            bucket: "replay-local",
+            sign: async () => "unused"
+        });
+        // 한 바이트 구간의 증거 본문 조회
+        const object = await storage.body("evidence/analysis/job/clip.mp4", "bytes=1-1");
+        // 저장소 요청에 같은 구간이 전달됐는지 확인
+        expect(commands[0].input).toMatchObject({ Key: "evidence/analysis/job/clip.mp4", Range: "bytes=1-1" });
+        // 전송 길이와 적용 구간 반환 확인
+        expect(object).toMatchObject({ sizeBytes: 1, contentRange: "bytes 1-1/3" });
+    });
+
+    it("separates an unsatisfiable evidence range from storage failures", async () => {
+        // 객체 크기 밖 구간에 대한 저장소 오류 구성
+        const failure = Object.assign(new Error("range"), { name: "InvalidRange", $metadata: { httpStatusCode: 416 } });
+        // 항상 같은 오류를 내는 저장소 대역 구성
+        const storage = s3({
+            client: { send: async () => { throw failure; } },
+            bucket: "replay-local",
+            sign: async () => "unused"
+        });
+        // 구간 요청의 불충족을 전용 오류로 구분하는지 확인
+        await expect(storage.body("evidence/a.mp4", "bytes=9-")).rejects.toBeInstanceOf(RangeNotSatisfiableError);
+        // 구간 없는 내부 읽기의 같은 오류는 저장소 장애로 유지되는지 확인
+        await expect(storage.body("evidence/a.mp4")).rejects.toBe(failure);
     });
 });

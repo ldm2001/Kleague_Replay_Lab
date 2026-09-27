@@ -43,8 +43,8 @@ export const mediaEvidence = (): EvidenceApiDependencies => {
         resolve: record({ clock, hasher: hash(), repository: sessions }),
         // 소유권에 맞는 증거 자산 조회 기능
         asset: asset({ clock, repository }),
-        // 응답하거나 저장소에서 읽는 자료 본문
-        body: (objectKey) => source.body(objectKey),
+        // 요청 바이트 구간이 있으면 해당 구간만 읽는 자료 본문
+        body: (objectKey, range) => source.body(objectKey, range),
     };
     // 증거 의존성 반환
     return cached;
