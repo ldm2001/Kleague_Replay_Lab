@@ -73,7 +73,7 @@ K리그 영상에서 관측한 정보와 적용 규정을 연결하는 판정 �
 
 | 위치 | 책임 |
 |---|---|
-| [apps/web](apps/web/AGENTS.md) | Next.js·React·TypeScript 화면과 API·유스케이스·PostgreSQL 어댑터·규정 엔진 |
+| [apps/web](apps/web) | Next.js·React·TypeScript 화면과 API·유스케이스·PostgreSQL 어댑터·규정 엔진 |
 | [apps/video-worker](apps/video-worker/README.md) | Python·FFmpeg·ffprobe·OpenCV 기반 영상 및 음향 처리 |
 | [experiments/perception](experiments/perception/README.md) | 모델 실증 도구와 승인 모델 자산·운영에서 재사용하는 인식 모듈 |
 | [규정 데이터](apps/web/src/rules/data/index.ts) | 실행용 판본별 규정과 대회요강 데이터 |
@@ -127,6 +127,6 @@ DB 통합 시험에는 전용 테스트 DB와 마이그레이션이 필요하고
 - [평가 자료 계약](datasets/labeled-cases/README.md): 개발용 라벨과 지표
 - [로컬 문서 지도](docs/README.md): 계획 → 구현한 것 → 구현할 것 → 상세 명세와 실행 근거
 
-`docs/`의 상세 문서는 기존 정책대로 로컬 전용이다 — Git에는 `docs/AGENTS.md`만 포함한다
+`docs/`의 상세 문서는 기존 정책대로 로컬 전용이며 `AGENTS.md` 작업 지침도 Git에 포함하지 않는다
 새로 복제한 저장소에서는 이 README와 CONTRACTS 및 각 모듈 README를 사용한다
 현재 요약과 과거 계획이 충돌하면 현재 코드·실행 계약·승인된 명세를 기준으로 확인한다
