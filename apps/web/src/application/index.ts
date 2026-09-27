@@ -68,6 +68,10 @@ export type {
     UploadGrant,
     UploadedObjectHead
 } from "./ports/storage/upload-storage";
+// 검증 상한 초과를 저장소 장애와 구별하는 오류 공개
+export { ObjectLimitError } from "./ports/storage/upload-storage";
+// 객체 크기 밖 요청 구간을 저장소 장애와 구별하는 오류 공개
+export { RangeNotSatisfiableError } from "./ports/storage/evidence-storage";
 // 업로드 완료 유스케이스 공개
 export { completion } from "./use-cases/upload/completion";
 // 영상 업로드의 허가와 완료 계약 외부 공개

@@ -218,6 +218,65 @@ def test_raw_size_limit_is_checked_without_publishing(tmp_path, monkeypatch):
     # 압축 관측 파일의 존재 여부가 거짓이거나 비어 있는지 확인
     assert not (tmp_path / "interaction-observations.jsonl.gz").exists()
 
+# 확장 산출물의 압축을 풀어 기록 행 목록 읽음
+def published(tmp_path, result):
+    # 게시된 확장 산출물의 각 줄을 기록 행으로 해석한 목록 반환
+    return [
+        json.loads(line)
+        for line in gzip.decompress((tmp_path / result["path"]).read_bytes()).splitlines()
+    ]
+
+# 관측 예산 초과 시 오류 대신 앞쪽 관측만 기록하고 생략 표시 확인
+def test_budget_keeps_prefix_and_marks_omitted_observations(tmp_path, monkeypatch):
+    # 관측 예산 시험에 사용할 정상 자료 준비
+    artifact, evidence, _ = setup(tmp_path)
+    # 시험에서 예산을 교체할 관측 확장 모듈 읽음
+    module = importlib.import_module('replay_video.infrastructure.interactions')
+    # 두 관측 중 첫 관측만 기록되도록 행 예산 축소
+    monkeypatch.setattr(module, "BUDGET_ROWS", 1)
+    # 예산을 넘은 확장도 실패 없이 게시된 기록 행 읽음
+    rows = published(tmp_path, enrich(tmp_path, artifact, evidence))
+    # 기록된 상호작용 관측 선택
+    observations = [r for r in rows if r["kind"] == "INTERACTION_OBSERVATION"]
+    # 첫 프레임 행에서 생성한 관측 한 건만 남았는지 확인
+    assert [r["upstream"]["lineNumber"] for r in observations] == [2]
+    # 요약 행의 기록 관측 수와 생략 표시 및 생략 수 확인
+    assert (
+        rows[-1]["observationCount"], rows[-1]["truncated"], rows[-1]["omittedObservationCount"]
+    ) == (1, True, 1)
+
+# 서버 색인의 관측 한 행 상한을 넘는 관측은 실패 대신 생략 표시 확인
+def test_oversized_observation_is_omitted_with_marker(tmp_path, monkeypatch):
+    # 거대 관측 행 시험에 사용할 정상 자료 준비
+    artifact, evidence, _ = setup(tmp_path)
+    # 시험에서 행 상한을 교체할 관측 확장 모듈 읽음
+    module = importlib.import_module('replay_video.infrastructure.interactions')
+    # 모든 관측 행이 상한을 넘도록 관측 행 바이트 상한 축소
+    monkeypatch.setattr(module, "MAX_OBSERVATION_BYTES", 16)
+    # 거대 관측 행이 있어도 실패 없이 게시된 기록 행 읽음
+    rows = published(tmp_path, enrich(tmp_path, artifact, evidence))
+    # 상호작용 관측이 하나도 기록되지 않았는지 확인
+    assert not [r for r in rows if r["kind"] == "INTERACTION_OBSERVATION"]
+    # 요약 행이 생략된 두 관측을 표시하는지 확인
+    assert (
+        rows[-1]["observationCount"], rows[-1]["truncated"], rows[-1]["omittedObservationCount"]
+    ) == (0, True, 2)
+
+# 기본 관측 예산의 서버 색인 상한 미만 유지와 작은 입력의 무손실 기록 확인
+def test_default_budget_stays_below_server_index_limits(tmp_path):
+    # 기본 예산을 읽을 관측 확장 모듈 읽음
+    module = importlib.import_module('replay_video.infrastructure.interactions')
+    # 서버 공유 비공개 색인 행 수 상한 10000보다 행 예산이 낮은지 확인
+    assert module.BUDGET_ROWS < 10_000
+    # 서버 공유 비공개 색인 바이트 상한 32MiB보다 바이트 예산이 낮은지 확인
+    assert module.BUDGET_BYTES < 32 * 1024 * 1024
+    # 서버 수신기의 관측 한 행 상한 65536 이하인지 확인
+    assert module.MAX_OBSERVATION_BYTES <= 65_536
+    # 기본 예산으로 작은 입력을 확장한 기록 행 읽음
+    rows = published(tmp_path, enrich(tmp_path, *setup(tmp_path)[:2]))
+    # 생략 없이 모든 관측을 기록했다는 요약 표시 확인
+    assert (rows[-1]["truncated"], rows[-1]["omittedObservationCount"]) == (False, 0)
+
 # 조립기의 비공개 관측 포트 활성화 확인
 def test_factory_enables_private_observation_port():
     from replay_video.infrastructure.ports import operating

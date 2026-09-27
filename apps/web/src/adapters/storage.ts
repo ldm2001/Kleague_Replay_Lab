@@ -24,6 +24,8 @@ import type {
     UploadGrant,
     UploadedObjectHead
 } from "@replay/application";
+// 검증 상한 초과와 요청 구간 불충족을 저장소 장애와 구별하는 오류 가져옴
+import { ObjectLimitError, RangeNotSatisfiableError } from "@replay/application";
 
 // 객체 저장소 명령 실행 인터페이스 정의
 export type S3ObjectClient = Readonly<{
@@ -237,7 +239,7 @@ export class S3Storage
             // 메타데이터 크기가 서버의 검증 상한을 넘는지 확인
             if (maxSizeBytes !== undefined && result.ContentLength > maxSizeBytes) {
                 // 허용 상한을 넘는 저장 파일의 검증 중단
-                throw new Error("Object exceeds the verification limit");
+                throw new ObjectLimitError();
             }
             // 저장소 체크섬 확인
             if (result.ChecksumSHA256 !== undefined) {
@@ -388,16 +390,41 @@ export class S3Storage
         };
     }
 
-    // 저장소 응답 본문 반환
-    public async body(objectKey: string): Promise<EvidenceBody> {
-        // 증거 객체 스트림 조회
-        const result = (await this.options.client.send(
-            new GetObjectCommand({ Bucket: this.options.bucket, Key: objectKey })
-        )) as Readonly<{ Body?: Body }>;
+    // 저장소 응답 본문과 적용 구간 반환
+    public async body(objectKey: string, range?: string): Promise<EvidenceBody> {
+        // 증거 객체 스트림 조회 결과
+        let result: Readonly<{ Body?: Body; ContentLength?: number; ContentRange?: string }>;
+        try {
+            // 요청 구간이 있으면 같은 구간만 읽는 증거 객체 스트림 조회
+            result = (await this.options.client.send(
+                new GetObjectCommand({
+                    Bucket: this.options.bucket,
+                    Key: objectKey,
+                    ...(range ? { Range: range } : {})
+                })
+            )) as typeof result;
+        } catch (error) {
+            // 객체 크기 밖 구간 요청을 저장소 장애와 구분
+            if (
+                range &&
+                error instanceof Error &&
+                (error.name === "InvalidRange" ||
+                    (error as Error & { $metadata?: { httpStatusCode?: number } }).$metadata
+                        ?.httpStatusCode === 416)
+            ) {
+                throw new RangeNotSatisfiableError();
+            }
+            // 저장소 오류 전달
+            throw error;
+        }
         // 저장소 응답에 파일 본문이 없으면 읽기 실패 처리
         if (!result.Body) throw new Error("Evidence body is unavailable");
-        // 확인한 저장 파일 본문 반환
-        return { body: result.Body };
+        // 확인한 저장 파일 본문과 전송 길이 및 적용 구간 반환
+        return {
+            body: result.Body,
+            ...(typeof result.ContentLength === "number" ? { sizeBytes: result.ContentLength } : {}),
+            ...(range && result.ContentRange ? { contentRange: result.ContentRange } : {})
+        };
     }
 
     // 저장소 응답 자원 정리

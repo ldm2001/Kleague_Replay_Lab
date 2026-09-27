@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import type { DatabaseClient } from "../database";
-import type { PrivateIncidentBatch } from "../shared/private-incidents";
+import { PRIVATE_INDEX_BYTES, PRIVATE_INDEX_ROWS, type PrivateIncidentBatch } from "../shared/private-incidents";
 import { interactionData, incidentLineage } from "../shared/interaction";
 import { incidentDigest } from "../rules/engine/incidents/evidence";
 import { observationDigest } from "../application/use-cases/incidents/batch";
@@ -15,8 +15,9 @@ export async function incidentRows(
         artifactSha256: string; now: string; expiresAt: string; evidence: readonly AnalysisEvidence[] }
 ) {
     if (batch.schemaVersion !== "private-incidents-v1" || batch.sourceSha256 !== context.sourceSha256
-        || batch.artifactSha256 !== context.artifactSha256 || batch.rows.length > 10000
-        || Buffer.byteLength(JSON.stringify(batch)) > 32 * 1024 * 1024) throw new Error("INCIDENT_BATCH_INVALID");
+        || batch.artifactSha256 !== context.artifactSha256 || batch.rows.length > PRIVATE_INDEX_ROWS
+        || typeof batch.truncated !== "boolean"
+        || Buffer.byteLength(JSON.stringify(batch)) > PRIVATE_INDEX_BYTES) throw new Error("INCIDENT_BATCH_INVALID");
     const ids = new Set<string>();
     // 등록된 경기와 적용 기간에 맞는 규정 문맥을 잠금 상태에서 다시 읽음
     const matches = batch.rows.some((row) => row.record?.match.verification === "VERIFIED")
@@ -35,7 +36,7 @@ export async function incidentRows(
         const observation = row.observation;
         if (!interactionData(observation) || observation.sourceSha256 !== context.sourceSha256
             || row.observationSha256 !== observationDigest(observation) || ids.has(observation.observationId)
-            || row.admittedFactIds.length) throw new Error("INCIDENT_ROW_INVALID");
+            || "admittedFactIds" in row || "evaluations" in row) throw new Error("INCIDENT_ROW_INVALID");
         ids.add(observation.observationId);
         if (row.record?.match.verification === "VERIFIED") {
             const declared = row.record.match;

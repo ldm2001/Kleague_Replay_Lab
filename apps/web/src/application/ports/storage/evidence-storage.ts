@@ -53,10 +53,23 @@ export type EvidenceStorage = Readonly<{
 export type EvidenceBody = Readonly<{
     // 응답하거나 저장소에서 읽는 자료 본문
     body: AsyncIterable<Uint8Array>;
+    // 저장소가 알려준 전송 본문 바이트 길이
+    sizeBytes?: number;
+    // 저장소가 부분 전송에 적용한 바이트 구간 표기
+    contentRange?: string;
 }>;
 
 // 증거 본문 저장소 포트
 export type EvidenceBodyStorage = Readonly<{
-    // 응답하거나 저장소에서 읽는 자료 본문
-    body: (objectKey: string) => Promise<EvidenceBody>;
+    // 요청 바이트 구간이 있으면 해당 구간만 읽는 자료 본문
+    body: (objectKey: string, range?: string) => Promise<EvidenceBody>;
 }>;
+
+// 저장 객체 크기 밖의 요청 구간을 저장소 장애와 구별하는 오류
+export class RangeNotSatisfiableError extends Error {
+    // 요청 구간 불충족 오류 생성
+    public constructor() {
+        super("Requested range is not satisfiable");
+        this.name = "RangeNotSatisfiableError";
+    }
+}

@@ -1,7 +1,7 @@
 // 객체 검증 입력과 사전 검사 계약 가져옴
 import type { AnalysisPayload, JobResultPreflight } from "../../ports/repositories/job-store";
 // 실제 객체 저장소 읽기 계약 가져옴
-import type { CompletionStorage } from "../../ports/storage/upload-storage";
+import { ObjectLimitError, type CompletionStorage } from "../../ports/storage/upload-storage";
 
 // 바이트 배열을 16진 문자열로 변환
 export const bytesHex = (value: Uint8Array): string =>
@@ -25,7 +25,9 @@ const head = async (storage: CompletionStorage, key: string, limit: number) => {
     try {
         // 파일 읽기 결과와 검증 상태 반환
         return { kind: "READ", object: await storage.head(key, limit) } as const;
-    } catch {
+    } catch (error) {
+        // 검증 상한을 넘는 제출 객체는 저장소 장애가 아닌 확인 불가 객체로 반환
+        if (error instanceof ObjectLimitError) return { kind: "READ", object: null } as const;
         // 실제 저장소 읽기 실패 반환
         return { kind: "INVALID_RESULT", reason: "STORAGE" } as const;
     }

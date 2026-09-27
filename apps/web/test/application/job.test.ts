@@ -11,6 +11,7 @@ import {
     claim,
     progress,
     result,
+    ObjectLimitError,
     type Clock,
     type JobClaim,
     type JobClaimCommand,
@@ -1048,6 +1049,41 @@ describe("result", () => {
                 payload: perceptionPayload()
             })
         ).resolves.toEqual({ kind: "INVALID_RESULT", reason: "STORAGE" });
+    });
+
+    it.each([
+        ["perception/", "ARTIFACT"],
+        ["evidence/", "REFERENCE"]
+    ])("classifies an over-limit %s object as unverifiable instead of a storage fault", async (prefix, reason) => {
+        // 저장소 시험용 인식 결과 저장소 준비
+        const repository = new PerceptionResultStore();
+        // 저장공간 시험용 결과 저장공간 준비
+        const storage = new ResultStorage();
+        // 지정 경로의 객체만 검증 상한 초과로 응답하는 메타정보 설정
+        const head = storage.head.bind(storage);
+        storage.head = async (objectKey: string, maxSizeBytes?: number) => {
+            // 지정 경로 객체의 상한 초과 오류 전달
+            if (objectKey.startsWith(prefix)) throw new ObjectLimitError();
+            // 나머지 객체의 기존 메타정보 반환
+            return head(objectKey, maxSizeBytes);
+        };
+        // 상한 초과가 저장소 장애가 아닌 객체 검증 실패로 분류됨 확인
+        await expect(
+            result({
+                clock,
+                hasher: { sha256: async () => Uint8Array.from([1]) },
+                repository,
+                storage
+            })({
+                jobId: PERCEPTION_JOB_ID,
+                workerId: "video-worker-1",
+                jobRevision: 2,
+                leaseToken: "lease-token",
+                payload: perceptionPayload()
+            })
+        ).resolves.toEqual({ kind: "INVALID_RESULT", reason });
+        // 저장소 명령목록의 항목 수 0 확인
+        expect(repository.commands).toHaveLength(0);
     });
 
     it("returns lease preflight failures before private object verification", async () => {

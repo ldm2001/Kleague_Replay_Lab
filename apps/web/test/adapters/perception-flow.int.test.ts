@@ -227,6 +227,19 @@ describe.skipIf(!databaseUrl)("private perception result flow", () => {
         return { ...setup, privateStorage: { body: async () => ({ body: (async function* () { yield body; })() }) } };
     };
 
+    // 저장 명령에서 서버가 만든 색인 묶음 읽음
+    const indexed = (command: import("../../src/application/ports/repositories/job-store").JobResultCommand) => {
+        if (command.privateIndex?.status !== "INDEXED") throw new Error("PRIVATE_INDEX_EXPECTED");
+        return command.privateIndex.batch;
+    };
+
+    // 저장된 관측 실행 요약의 비공개 색인 표시 읽음
+    const privateMarker = async (analysisId: string) => {
+        const [run] = await database.sql<{ marker: unknown }[]>`
+            select summary -> 'privateIndex' as marker from analysis_perception_runs where analysis_id = ${analysisId}`;
+        return run?.marker;
+    };
+
     it.each([false, true])("stores private interaction lineage without public facts for typed=%s", async (typed) => {
         const setup = await privateFixture(typed);
         expect(await submitResult(setup)(setup.input)).toEqual({ kind: "ACCEPTED" });
@@ -235,6 +248,7 @@ describe.skipIf(!databaseUrl)("private perception result flow", () => {
         expect(saved?.rows).toHaveLength(1);
         expect(saved?.rows[0]?.record === null).toBe(!typed);
         if (typed) expect(saved?.rows[0]?.admitted_fact_ids).toEqual([]);
+        expect(await privateMarker(setup.analysisId)).toEqual({ status: "INDEXED", observationCount: 1, truncated: false });
         expect(await incidentQuery(database, { analysisId: setup.analysisId,
             anonymousSessionId: randomUUID(), after: null, limit: 100 }, NOW)).toBeNull();
         expect(await incidentQuery(database, { analysisId: setup.analysisId,
@@ -258,11 +272,11 @@ describe.skipIf(!databaseUrl)("private perception result flow", () => {
         const repository = {
             preflight: setup.repository.preflight.bind(setup.repository),
             result: (command: import("../../src/application/ports/repositories/job-store").JobResultCommand) => {
-                const batch = structuredClone(command.privateIncidents!);
+                const batch = structuredClone(indexed(command));
                 const row = batch.rows[0]!;
                 const record = { ...row.record!, evidence: row.record!.evidence.map((item) => ({ ...item, contentSha256: "e".repeat(64) })) };
-                return setup.repository.result({ ...command, privateIncidents: { ...batch,
-                    rows: [{ ...row, record, recordSha256: incidentDigest(record) }] } });
+                return setup.repository.result({ ...command, privateIndex: { status: "INDEXED", batch: { ...batch,
+                    rows: [{ ...row, record, recordSha256: incidentDigest(record) }] } } });
             }
         };
         await expect(submitResult({ ...setup, repository })(setup.input)).rejects.toThrow("INCIDENT_RECORD_EVIDENCE_MISMATCH");
@@ -290,9 +304,9 @@ describe.skipIf(!databaseUrl)("private perception result flow", () => {
         const repository = {
             preflight: setup.repository.preflight.bind(setup.repository),
             result: (command: import("../../src/application/ports/repositories/job-store").JobResultCommand) => {
-                const batch = command.privateIncidents!;
-                return setup.repository.result({ ...command, privateIncidents: { ...batch,
-                    rows: [...batch.rows, { ...batch.rows[0]!, observationSha256: "0".repeat(64) }] } });
+                const batch = indexed(command);
+                return setup.repository.result({ ...command, privateIndex: { status: "INDEXED", batch: { ...batch,
+                    rows: [...batch.rows, { ...batch.rows[0]!, observationSha256: "0".repeat(64) }] } } });
             }
         };
         await expect(submitResult({ ...setup, repository })(setup.input)).rejects.toThrow("INCIDENT_ROW_INVALID");
@@ -304,6 +318,35 @@ describe.skipIf(!databaseUrl)("private perception result flow", () => {
         const events = await database.sql`select id from processing_job_events where job_id = ${setup.jobId} and event_type = 'SUCCEEDED'`;
         expect(automatic).toHaveLength(0);
         expect(events).toHaveLength(0);
+    });
+
+    it("rejects private rows carrying admission computed outside the store", async () => {
+        const setup = await privateFixture(true);
+        const repository = {
+            preflight: setup.repository.preflight.bind(setup.repository),
+            result: (command: import("../../src/application/ports/repositories/job-store").JobResultCommand) => {
+                const batch = indexed(command);
+                const forged = { ...batch.rows[0]!, admittedFactIds: ["forged"] };
+                return setup.repository.result({ ...command, privateIndex: { status: "INDEXED", batch: { ...batch, rows: [forged] } } });
+            }
+        };
+        await expect(submitResult({ ...setup, repository })(setup.input)).rejects.toThrow("INCIDENT_ROW_INVALID");
+        await expectNoV2Writes(setup.analysisId, setup.jobId);
+    });
+
+    it("completes the public result with a skip marker when the private index is over capacity", async () => {
+        const setup = await privateFixture(true);
+        const repository = {
+            preflight: setup.repository.preflight.bind(setup.repository),
+            result: (command: import("../../src/application/ports/repositories/job-store").JobResultCommand) =>
+                setup.repository.result({ ...command, privateIndex: { status: "SKIPPED", reason: "PRIVATE_INDEX_CAPACITY" } })
+        };
+        expect(await submitResult({ ...setup, repository })(setup.input)).toEqual({ kind: "ACCEPTED" });
+        expect(await privateMarker(setup.analysisId)).toEqual({ status: "SKIPPED", reason: "PRIVATE_INDEX_CAPACITY" });
+        const rows = await database.sql`select id from analysis_incident_observations where analysis_id = ${setup.analysisId}`;
+        expect(rows).toHaveLength(0);
+        const [state] = await database.sql<{ status: string }[]>`select status from analyses where id = ${setup.analysisId}`;
+        expect(state?.status).toBe("COMPLETED");
     });
 
     it("completes v2 through result use case and JobStore with audio private and not public", async () => {

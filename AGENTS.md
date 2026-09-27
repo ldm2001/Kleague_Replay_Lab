@@ -52,9 +52,10 @@ DB가 필요한 통합 테스트와 마이그레이션은 `DATABASE_URL`과 `npm
 
 - 제품과 현재 범위: [README.md](README.md)
 - 문서 지도와 현재 작업 기준: [docs/README.md](docs/README.md)
+- 계획·구현·미완료: [계획](docs/계획.md) · [구현 현황](docs/구현현황.md) · [남은 작업](docs/남은작업.md)
 - 자동 처리 계약: [docs/design/자동처리.md](docs/design/자동처리.md)
 - 영상 조사와 설계: [docs/analysis/영상조사.md](docs/analysis/영상조사.md), [docs/design/영상설계.md](docs/design/영상설계.md)
-- 규정 엔진: [docs/plans/규정엔진계획.md](docs/plans/규정엔진계획.md), [docs/design/아키텍처설계.md](docs/design/아키텍처설계.md)
+- 규정 엔진: [사건별 출력 명세](docs/design/사건별출력명세.md)와 [실행 모듈 계약](CONTRACTS.md) · 초기 절차는 과거 plans 기록으로 구분
 
 ## 작업 규칙
 

@@ -1,5 +1,11 @@
-// 분석 처리 유스케이스와 저장소 계약 가져옴
-import type { AssetInput, AssetResult, EvidenceBody, SessionRecord } from "@replay/application";
+// 분석 처리 유스케이스와 저장소 계약 및 구간 불충족 오류 가져옴
+import {
+    RangeNotSatisfiableError,
+    type AssetInput,
+    type AssetResult,
+    type EvidenceBody,
+    type SessionRecord
+} from "@replay/application";
 
 // 증거 요청 처리 의존 기능 계약 정의
 export type EvidenceApiDependencies = Readonly<{
@@ -7,9 +13,12 @@ export type EvidenceApiDependencies = Readonly<{
     resolve: (token: string) => Promise<SessionRecord | null>;
     // 소유권에 맞는 증거 자산 조회 기능
     asset: (input: AssetInput) => Promise<AssetResult>;
-    // 응답하거나 저장소에서 읽는 자료 본문
-    body: (objectKey: string) => Promise<EvidenceBody>;
+    // 요청 바이트 구간이 있으면 해당 구간만 읽는 자료 본문
+    body: (objectKey: string, range?: string) => Promise<EvidenceBody>;
 }>;
+
+// 시작과 끝 또는 끝에서부터 길이로 표현한 단일 바이트 구간 형식
+const RANGE = /^bytes=(?:(\d{1,15})-(\d{0,15})|-(\d{1,15}))$/;
 
 // 세션 쿠키 추출
 const token = (request: Request): string | null => {
@@ -26,6 +35,24 @@ const token = (request: Request): string | null => {
     }
     // 세션 토큰 없음 반환
     return null;
+};
+
+// 저장소에 전달할 단일 바이트 구간 추출
+const range = (request: Request): string | undefined => {
+    // 검증 값을 비교할 수 없는 조건부 구간 요청은 전체 본문으로 응답
+    if (request.headers.has("if-range")) return undefined;
+    // 단일 구간 형식 해석
+    const match = RANGE.exec(request.headers.get("range")?.trim() ?? "");
+    // 다중 구간과 다른 단위 및 형식 오류는 무시
+    if (!match) return undefined;
+    // 시작과 끝 및 끝에서부터 길이 분리
+    const [, start, end, suffix] = match;
+    // 길이 0 접미 구간 무시
+    if (suffix !== undefined) return Number(suffix) > 0 ? `bytes=-${suffix}` : undefined;
+    // 끝이 시작보다 앞선 구간 무시
+    if (end && Number(end) < Number(start)) return undefined;
+    // 정규화한 시작과 끝 구간 반환
+    return `bytes=${start}-${end}`;
 };
 
 // 오류 응답 생성
@@ -89,18 +116,37 @@ export const evidence = async (
     if (asset && "kind" in asset) return error(asset.kind, 400);
     // 증거 없음 응답
     if (!asset) return error("NOT_FOUND", 404);
-    // 저장소 증거 본문 조회
-    const object = await dependencies.body(asset.objectKey);
+    // 요청한 단일 바이트 구간
+    const requested = range(request);
+    // 요청 구간을 반영한 저장소 증거 본문
+    let object: EvidenceBody;
+    try {
+        // 저장소 증거 본문 조회
+        object = await dependencies.body(asset.objectKey, requested);
+    } catch (failure) {
+        // 객체 크기 밖 구간 요청 응답
+        if (failure instanceof RangeNotSatisfiableError) return error("RANGE_NOT_SATISFIABLE", 416);
+        // 저장소 오류 전달
+        throw failure;
+    }
+    // 저장소가 실제로 적용한 부분 전송 구간
+    const partial = requested ? object.contentRange : undefined;
     // 증거 스트림 응답
     return new Response(stream(object.body), {
-        // 처리 상태 또는 요청 응답 상태
-        status: 200,
+        // 부분 전송 또는 전체 전송 응답 상태
+        status: partial ? 206 : 200,
         // 자료 형식과 캐시 및 보안을 전달하는 응답 헤더
         headers: {
+            // 영상 탐색에 필요한 바이트 구간 요청 지원 표시
+            "accept-ranges": "bytes",
             // 다른 요청에 비공개 결과가 재사용되지 않도록 하는 캐시 정책
             "cache-control": "private, no-store",
             // 증거 파일을 브라우저에 표시하는 방식
             "content-disposition": "inline",
+            // 저장소가 알려준 전송 본문 길이
+            ...(object.sizeBytes === undefined ? {} : { "content-length": String(object.sizeBytes) }),
+            // 부분 전송의 바이트 구간과 전체 길이
+            ...(partial ? { "content-range": partial } : {}),
             // 응답 본문의 자료 형식
             "content-type": asset.contentType,
             // 브라우저의 임의 콘텐츠 형식 추측 방지

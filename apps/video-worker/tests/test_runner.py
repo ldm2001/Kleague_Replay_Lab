@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import pytest
 from test_pipeline import fixture
 from replay_video.runner import Pulse, cycle, loop
-from replay_video.http import HttpError
+from replay_video.http import HttpError, Rejection
 from replay_video.infrastructure.ports import media
 from replay_video.worker import job as real_job
 
@@ -758,6 +758,58 @@ def test_stale_failure_result_attempt_stops_without_second_submission(
     assert stale.is_set()
     # 제출 결과 이력이 예상 계약과 일치하는지 확인
     assert api.results == [{"kind": "FAILED", "failureCode": "WORKER_ERROR", "retryable": False}]
+
+# 결정적 결과 거부 뒤 같은 임대의 최종 실패 제출과 일시 거부의 재실행 보존 확인
+@pytest.mark.parametrize(
+    ("rejection", "expected"),
+    [
+        (Rejection("result-rejected kind=INVALID_RESULT reason=ARTIFACT"), "WORKER_RESULT_REJECTED"),
+        (HttpError("http-400"), None),
+    ],
+)
+def test_result_rejection_ends_only_deterministic_failures(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    rejection: HttpError,
+    expected: str | None,
+) -> None:
+
+    # 완료 결과만 거부하고 실패 결과는 수락하는 서버 대역
+    class RejectingResult(ApiFake):
+
+        # 결과 반환 모형
+        def result(self, _job, payload):
+            # 제출 결과 이력에 이번 항목 추가
+            self.results.append(payload)
+            # 완료 결과 제출에 지정 거부 주입
+            if payload["kind"] != "FAILED":
+                raise rejection
+            # 같은 임대의 실패 결과 수락 상태 반환
+            return {"kind": "ACCEPTED"}
+
+    # 검증 결과 반환
+    def validated(*_args, **_kwargs):
+        # 필요한 속성만 제공하는 대역 객체 결과 반환
+        return SimpleNamespace(
+            payload={"kind": "VALIDATED", "duration_ms": 1000, "width": 10, "height": 10}
+        )
+
+    # 입력 영상을 시험용 기준 경로에서 구성
+    source = tmp_path / "sample.mp4"
+    # 입력 영상에 시험 내용을 기록
+    source.write_bytes(b"video")
+    # 완료 결과를 거부하는 서버 대역 생성
+    api = RejectingResult(source)
+    # 실제 분석 없이 검증 성공을 반환하는 작업 대역 연결
+    monkeypatch.setattr("replay_video.runner.job", validated)
+
+    # 거부 뒤에도 선점 작업을 처리한 시도로 반환하는지 확인
+    assert cycle(api, "VALIDATE_VIDEO", tmp_path / "work") is True
+    # 완료 결과 한 번과 결정적 거부일 때만 재시도 없는 실패 결과 제출 확인
+    assert api.results == [
+        {"kind": "VALIDATED", "durationMs": 1000, "width": 10, "height": 10},
+        *([{"kind": "FAILED", "failureCode": expected, "retryable": False}] if expected else []),
+    ]
 
 # 로컬 분석 작업 모형
 def local_analysis_job(*, perception: bool = False):

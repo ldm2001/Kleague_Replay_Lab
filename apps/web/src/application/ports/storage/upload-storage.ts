@@ -34,6 +34,15 @@ export type UploadedObjectHead = Readonly<{
     contentSha256: Uint8Array;
 }>;
 
+// 검증 상한을 넘는 저장 객체를 저장소 장애와 구별하는 오류
+export class ObjectLimitError extends Error {
+    // 기존 저장소 오류 문구를 유지한 상한 초과 오류 생성
+    public constructor() {
+        super("Object exceeds the verification limit");
+        this.name = "ObjectLimitError";
+    }
+}
+
 // 업로드 완료 저장소 포트
 export type CompletionStorage = Readonly<{
     // 저장 파일의 존재와 크기 및 해시 조회 기능
