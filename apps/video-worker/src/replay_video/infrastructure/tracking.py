@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 from typing import Iterable
 from ..domain.models import Candidate, VideoMetadata
+from ..inspection import inspection
 
 # 후보별 표본 범위와 추적 성공 및 움직임 시작 근거를 집계
 def summaries(
@@ -64,9 +65,6 @@ def tracking(
     metadata: VideoMetadata,
     candidates: tuple[Candidate, ...],
 ) -> tuple[Candidate, ...]:
-    # 진단·영상 작업의 추출기 공유와 작업 폴더 내 임시 결과 보관
-    from ..inspection import inspection
-
     # 원본 전체의 비모델 추적 진단과 화면 단서 추출 실행
     summary_path = inspection(source, Path(output) / "tracking")
     # 추적 진단 요약과 관측된 화면 패턴 읽음

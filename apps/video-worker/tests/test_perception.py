@@ -1,19 +1,18 @@
 from dataclasses import replace
 import gzip
 import hashlib
-import importlib
 import json
 from pathlib import Path
 import pytest
 from replay_video.application.pipeline import pipeline
 from replay_video.application.ports import PipelinePorts
 from replay_video.domain.models import Candidate, Evidence, Shot, VideoMetadata
+from replay_video.infrastructure import sounds
+from replay_video.infrastructure.audio import AudioScan, AudioScanStatus
 from replay_video.infrastructure.evidence import evidence
-
-# 시험용 호출 규약 반환
-def api():
-    # 시험 중 구현을 교체할 인식 연결 모듈을 지연 로드하여 반환
-    return importlib.import_module("replay_video.infrastructure.perception")
+from replay_video.infrastructure.interactions import enrichment
+from replay_video.infrastructure.perception import PerceptionAdapter, adaptation
+from replay_video.worker import job
 
 # 시험용 관측 반환
 def observation(identifier="official-one", start=3000, end=3500):
@@ -109,7 +108,7 @@ def test_observer_episode_creates_bounded_other_candidate_without_facts(tmp_path
     # 로컬 비공개 산출물과 연결된 인식 보고서 생성
     raw = local_report(source, root)
     # 모델 관측을 미검증 상태의 규정 입력 계약으로 변환
-    result = api().adaptation(raw, root, metadata, (), shots)
+    result = adaptation(raw, root, metadata, (), shots)
     # 변화 후보 목록의 선택 항목을 후속 비교에 사용할 값으로 보관
     candidate = result.candidates[0]
     # 후보 범주가 예상 계약과 일치하는지 확인
@@ -150,7 +149,7 @@ def test_overlapping_existing_candidate_and_legacy_metadata_are_preserved(tmp_pa
         4, "OTHER", 2000, 4000, 2500, 0.8, "MEDIUM", ("motion",), (0,), tracking={"sampleCount": 5}
     )
     # 모델 관측을 미검증 상태의 규정 입력 계약으로 변환
-    result = api().adaptation(local_report(source, root), root, metadata, (existing,), shots)
+    result = adaptation(local_report(source, root), root, metadata, (existing,), shots)
     # 변화 후보 목록의 개수가 1과 일치하는지 확인
     assert len(result.candidates) == 1
     # 변화 후보 목록의 선택 항목을 후속 비교에 사용할 값으로 보관
@@ -173,9 +172,9 @@ def test_summaries_beyond_candidate_budget_are_explicitly_truncated(tmp_path, mo
         source, root, observations=[observation("a", 100, 200), observation("b", 8000, 8500)]
     )
     # 소수 관측으로 상한 초과를 재현하도록 신규 후보 한도 축소
-    monkeypatch.setattr(api(), "MAX_NEW_CANDIDATES", 1)
+    monkeypatch.setattr("replay_video.infrastructure.perception.MAX_NEW_CANDIDATES", 1)
     # 모델 관측을 미검증 상태의 규정 입력 계약으로 변환
-    result = api().adaptation(raw, root, metadata, (), shots)
+    result = adaptation(raw, root, metadata, (), shots)
     # 변화 후보 목록의 개수가 1과 일치하는지 확인
     assert len(result.candidates) == 1
     # 수집 상한 초과 여부가 참인지 확인
@@ -196,7 +195,7 @@ def test_diagnostic_artifact_cannot_reference_a_file_outside_job_root(tmp_path):
     # 진단 산출물의 작업 경로 외 참조 차단을 위한 예상 예외 확인
     with pytest.raises(ValueError, match="PERCEPTION_ARTIFACT_PATH_INVALID"):
         # 모델 관측을 미검증 상태의 규정 입력 계약으로 변환
-        api().adaptation(raw, root, metadata, (), shots)
+        adaptation(raw, root, metadata, (), shots)
 
 # 기존 용량 초과에도 관측 후보의 시간 클립 확보 확인
 def test_observation_candidates_always_receive_temporal_clip_even_over_legacy_budget(
@@ -227,7 +226,6 @@ def test_observation_candidates_always_receive_temporal_clip_even_over_legacy_bu
 
 # 증거 생성 전 관측과 실제 시간 클립만 연결 확인
 def test_pipeline_observes_before_evidence_and_binds_only_actual_temporal_clips(tmp_path):
-    from replay_video.infrastructure.interactions import enrichment
     # 운영 파이프라인 연결 시험용 원본과 메타데이터 준비
     source, metadata, shots = setup(tmp_path)
     # 출력 기준 경로를 시험용 기준 경로에서 구성
@@ -240,7 +238,7 @@ def test_pipeline_observes_before_evidence_and_binds_only_actual_temporal_clips(
         # 호출 이력에 이번 항목 추가
         calls.append("perception")
         # 모델 관측을 미검증 상태의 규정 입력 계약으로 변환 결과 반환
-        return api().adaptation(
+        return adaptation(
             local_report(source, target), target, meta, candidates, actual_shots
         )
 
@@ -323,7 +321,6 @@ def test_new_pipeline_version_cannot_silently_run_without_observer_port(tmp_path
 def test_default_analyze_job_selects_operating_ports_but_validation_never_loads_models(
     tmp_path, monkeypatch
 ):
-    from replay_video.worker import job
     # 작업자 기본 운영 포트 연결 시험용 원본과 시간축 준비
     source, metadata, shots = setup(tmp_path)
     # 해시 계산 호출 여부를 누적할 빈 자료 구조 준비
@@ -331,8 +328,6 @@ def test_default_analyze_job_selects_operating_ports_but_validation_never_loads_
 
     # 관측 결과 반환
     def observed(source, target, meta, candidates, shots):
-        from replay_video.infrastructure.audio import AudioScan, AudioScanStatus
-        from replay_video.infrastructure.sounds import observations
         # 관측 배열이 비어 있는 정상 인식 보고서 생성
         raw = local_report(source, target, observations=[])
         # 음향 부재를 정상 탐색 완료와 구별하는 탐색 대역 생성
@@ -343,12 +338,12 @@ def test_default_analyze_job_selects_operating_ports_but_validation_never_loads_
         raw.update(
             schemaVersion="perception-run-v2",
             pipelineVersion="video-local-observers-av-v1",
-            audio=observations(source, duration_ms=meta.duration_ms, scan=lambda *a, **kw: absent)[
-                "observations"
-            ],
+            audio=sounds.observations(
+                source, duration_ms=meta.duration_ms, scan=lambda *a, **kw: absent
+            )["observations"],
         )
         # 모델 관측을 미검증 상태의 규정 입력 계약으로 변환 결과 반환
-        return api().adaptation(raw, target, meta, candidates, shots)
+        return adaptation(raw, target, meta, candidates, shots)
 
     # 운영 포트 모형
     def operating(**kwargs):
@@ -386,7 +381,6 @@ def test_default_analyze_job_selects_operating_ports_but_validation_never_loads_
 def test_default_operating_factory_cannot_fall_back_to_baseline_after_losing_its_port(
     tmp_path, monkeypatch
 ):
-    from replay_video.worker import job
     # 모델 호출 전 계약 검증용 원본과 샷 준비
     source, metadata, shots = setup(tmp_path)
     # 운영 관측 호출에 시험용 결과를 제공하는 대역 연결
@@ -462,7 +456,7 @@ def test_expanded_candidate_tracking_is_recounted_from_original_full_scan(tmp_pa
     # 관측 기록 파일에 시험 내용을 기록
     (tracking / "context.jsonl").write_text("\n".join(json.dumps(item) for item in samples) + "\n")
     # 모델 관측을 규정 입력 계약으로 옮기는 어댑터 생성
-    adapter = api().PerceptionAdapter(observe=lambda *args, **kwargs: raw)
+    adapter = PerceptionAdapter(observe=lambda *args, **kwargs: raw)
     # 기존 후보를 보존하며 상호작용 모델 관측 연결 실행
     observed = adapter(source, root, metadata, (previous,), shots)
     # 표본 수가 2과 일치하는지 확인
@@ -491,7 +485,7 @@ def test_tracking_refresh_rejects_another_source_scan(tmp_path):
     # 관측 기록 파일에 시험 내용을 기록
     (tracking / "context.jsonl").write_text("")
     # 모델 관측을 규정 입력 계약으로 옮기는 어댑터 생성
-    adapter = api().PerceptionAdapter(observe=lambda *args, **kwargs: raw)
+    adapter = PerceptionAdapter(observe=lambda *args, **kwargs: raw)
     # 추적 갱신의 다른 원본 탐색 거부를 위한 예상 예외 확인
     with pytest.raises(ValueError, match="TRACKING_SOURCE_MISMATCH"):
         # 취소 콜백이 연결된 인식 어댑터 실행

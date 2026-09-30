@@ -1,3 +1,6 @@
+// 음향 관측 계약 가져오기
+import { audioObservationsData, type AudioObservations } from "./audio-observations";
+
 // 승인된 모델의 기능 구분의 자료 구조 정의
 export type PerceptionModelComponent = "detector" | "role" | "pose";
 
@@ -40,9 +43,6 @@ export type PerceptionIncident = Readonly<{
     // 확인 불가 또는 차단 사유 목록
     reasons: readonly string[];
 }>;
-
-// 음향 관측 계약 가져오기
-import { audioObservationsData, type AudioObservations } from "./audio-observations";
 
 // 시각 인식 실행 계약의 자료 구조 정의
 export type PerceptionRunV1 = Readonly<{

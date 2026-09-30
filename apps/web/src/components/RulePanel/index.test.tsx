@@ -5,7 +5,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { scopeVerdict, pipelineFilter } from "@replay/rule-engine";
 import { competitionRules, ruleSet } from "@replay/rule-data";
-import { knownVideoSource } from "../../adapters/sources";
+import { knownVideoSource } from "@replay/shared-types";
 import { analysis, candidate, judgment } from "../../../test/fixtures/result";
 import { RulePanel } from "./index";
 import { automaticJudgment } from "../../../test/fixtures/automatic";

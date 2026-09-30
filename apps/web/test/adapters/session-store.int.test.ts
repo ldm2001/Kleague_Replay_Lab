@@ -1,8 +1,9 @@
 // 세션 저장소 통합 테스트
-import { createHash as digest } from "node:crypto";
+import { createHash as digest, randomUUID } from "node:crypto";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { client } from "@replay/database";
-import { sessionStore } from "@replay/adapters";
+import { hash, secret, sessionStore } from "@replay/adapters";
+import { session } from "@replay/application";
 
 // 데이터베이스 주소 시험용 실행환경 환경설정 데이터베이스 주소 준비
 const databaseUrl = process.env.DATABASE_URL;
@@ -44,8 +45,16 @@ describeDatabase("PostgreSQL session repository", () => {
     });
 
     it("issues a random token and stores only its hash", async () => {
-        // 저장소 결과를 결과에 저장
-        const result = await repository.issue({ createdAt, expiresAt });
+        // 실제 해시와 비밀 토큰 어댑터로 세션 발급 유스케이스 조립
+        const issue = session({
+            clock: { now: () => new Date(createdAt) },
+            hasher: hash(),
+            policy: { ttlMs: 24 * 60 * 60 * 1000 },
+            repository,
+            secret: secret()
+        });
+        // 세션 발급 결과를 결과에 저장
+        const result = await issue();
         // 세션 식별자목록 추가 결과 처리 수행
         sessionIds.push(result.sessionId);
 
@@ -56,6 +65,8 @@ describeDatabase("PostgreSQL session repository", () => {
 
         // 결과 토큰 길이의 20 초과 확인
         expect(result.token.length).toBeGreaterThan(20);
+        // 저장된 해시가 발급 토큰의 SHA 256 바이트와 같음 확인
+        expect(row?.token_hash).toEqual(digest("sha256").update(result.token, "utf8").digest());
         // 행 토큰 해시의 바이트버퍼 변환 결과 기준 구조 불일치 확인
         expect(row?.token_hash).not.toEqual(Buffer.from(result.token));
         // 행 토큰 해시의 항목 수 32 확인
@@ -65,12 +76,12 @@ describeDatabase("PostgreSQL session repository", () => {
     });
 
     it("looks up only active sessions by the token hash", async () => {
+        // 토큰 해시 시험용 바이트배열 변환 결과 준비
+        const tokenHash = Uint8Array.from(digest("sha256").update(randomUUID(), "utf8").digest());
         // 저장소 결과를 결과에 저장
-        const result = await repository.issue({ createdAt, expiresAt });
+        const result = await repository.issue({ tokenHash, createdAt, expiresAt });
         // 세션 식별자목록 추가 결과 처리 수행
         sessionIds.push(result.sessionId);
-        // 토큰 해시 시험용 바이트배열 변환 결과 준비
-        const tokenHash = Uint8Array.from(digest("sha256").update(result.token, "utf8").digest());
 
         // 저장소 결과의 세션 식별자 자료 기준 구조 일치 확인
         await expect(repository.lookup({ tokenHash, now: createdAt })).resolves.toEqual({

@@ -2,7 +2,6 @@
 
 // 화면 구성에 필요한 기능과 공유 자료 형식 읽음
 import * as React from "react";
-import { useEffect, useRef } from "react";
 
 // 화면 구성에 필요한 읽기 전용 입력 속성 형식 정의
 type Props = React.PropsWithChildren<React.ComponentPropsWithoutRef<"section">>;
@@ -10,10 +9,10 @@ type Props = React.PropsWithChildren<React.ComponentPropsWithoutRef<"section">>;
 // 스크롤 상태 연결
 export function HeroMotion({ children, className, ...props }: Props) {
     // 영웅 영역 참조
-    const element = useRef<HTMLElement>(null);
+    const element = React.useRef<HTMLElement>(null);
 
     // 수동 스크롤 감지
-    useEffect(() => {
+    React.useEffect(() => {
         // 영웅 영역 스크롤 대상 확인
         const target = element.current;
         // 실제 화면 요소가 없으면 효과 연결 종료

@@ -12,6 +12,8 @@ import type {
 } from "@replay/application";
 // 데이터베이스 연결과 저장 구조 가져옴
 import type { DatabaseClient } from "@replay/database";
+// 조회 시점과 보존 규칙이 정한 행 가시성 조건 가져옴
+import { activeSession } from "./visibility";
 
 // 저장소 구현에 필요한 데이터베이스 연결 부분 정의
 type DatabaseHandle = Pick<DatabaseClient, "db">;
@@ -83,11 +85,10 @@ export class UploadStore implements IntentPort, CompletionPort {
         return this.client.db.transaction(async (transaction) => {
             // 세션 소유권 조회
             const sessionRows = await transaction.execute(sql`
-        select id
-        from anonymous_sessions
-        where id = ${command.anonymousSessionId}
-          and revoked_at is null
-          and expires_at > ${command.rightsConfirmedAt}
+        select session.id
+        from anonymous_sessions as session
+        where session.id = ${command.anonymousSessionId}
+          and ${activeSession(command.rightsConfirmedAt)}
         for update
       `);
             // 세션 행 선택
@@ -146,17 +147,37 @@ export class UploadStore implements IntentPort, CompletionPort {
         return row ? intentRecord(row) : null;
     }
 
+    // 완료된 세션 소유 업로드의 영상 자산 조회
+    public async replay(
+        input: Readonly<{ anonymousSessionId: string; uploadIntentId: string }>
+    ): Promise<string | null> {
+        // 완료 의도에 연결된 영상 자산 조회
+        const rows = await this.client.db.execute(sql`
+      select asset.id
+      from upload_intents as intent
+      join video_assets as asset
+        on asset.object_key = intent.object_key
+       and asset.anonymous_session_id = intent.anonymous_session_id
+      where intent.id = ${input.uploadIntentId}
+        and intent.anonymous_session_id = ${input.anonymousSessionId}
+        and intent.status = 'COMPLETED'
+    `);
+        // 자산 행 선택
+        const [row] = rows as unknown as Array<{ id: string }>;
+        // 기존 영상 식별자 반환
+        return row?.id ?? null;
+    }
+
     // 업로드 완료 상태 기록
     public async complete(command: CompletionCommand): Promise<UploadCompletionResult> {
         // 업로드 완료 트랜잭션 시작
         return this.client.db.transaction(async (transaction) => {
             // 세션 소유권 조회
             const sessionRows = await transaction.execute(sql`
-        select id
-        from anonymous_sessions
-        where id = ${command.anonymousSessionId}
-          and revoked_at is null
-          and expires_at > ${command.createdAt}
+        select session.id
+        from anonymous_sessions as session
+        where session.id = ${command.anonymousSessionId}
+          and ${activeSession(command.createdAt)}
         for update
       `);
             // 세션 행 선택
@@ -184,16 +205,6 @@ export class UploadStore implements IntentPort, CompletionPort {
                 // 현재 조건에서 사용할 업로드 기록이 없는 결과 반환
                 return { kind: "UPLOAD_NOT_FOUND" };
             }
-            // 완료 상태 확인
-            if (intent.status === "COMPLETED") {
-                // 이미 완료된 업로드의 재완료 거부 반환
-                return { kind: "UPLOAD_ALREADY_COMPLETED" };
-            }
-            // 처리 가능 상태 확인
-            if (intent.status !== "CREATED" && intent.status !== "UPLOADING") {
-                // 파일 전송 준비가 되지 않은 업로드 결과 반환
-                return { kind: "UPLOAD_NOT_READY" };
-            }
             // 소유권과 객체 키 확인
             if (
                 intent.anonymous_session_id !== command.anonymousSessionId ||
@@ -201,6 +212,30 @@ export class UploadStore implements IntentPort, CompletionPort {
             ) {
                 // 완료 처리 대상 업로드 부재 반환
                 return { kind: "UPLOAD_NOT_FOUND" };
+            }
+            // 완료 상태 확인
+            if (intent.status === "COMPLETED") {
+                // 먼저 끝난 같은 완료 요청의 영상 자산 조회
+                const replayRows = await transaction.execute(sql`
+        select id
+        from video_assets
+        where object_key = ${intent.object_key}
+          and anonymous_session_id = ${intent.anonymous_session_id}
+      `);
+                // 기존 자산 행 선택
+                const [replayed] = replayRows as unknown as Array<{ id: string }>;
+                // 기존 자산 존재 확인
+                if (replayed) {
+                    // 같은 업로드 완료 결과 재응답 반환
+                    return { kind: "REPLAYED", videoAssetId: replayed.id };
+                }
+                // 이미 완료된 업로드의 재완료 거부 반환
+                return { kind: "UPLOAD_ALREADY_COMPLETED" };
+            }
+            // 처리 가능 상태 확인
+            if (intent.status !== "CREATED" && intent.status !== "UPLOADING") {
+                // 파일 전송 준비가 되지 않은 업로드 결과 반환
+                return { kind: "UPLOAD_NOT_READY" };
             }
             // 의도 만료 확인
             if (new Date(intent.expires_at).getTime() <= new Date(command.createdAt).getTime()) {

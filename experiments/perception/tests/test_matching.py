@@ -1,16 +1,11 @@
-# 인식 모듈 지연 읽기 도구 읽음
-import importlib
 # 예외 기대와 반복 사례 검증 도구 읽음
 import pytest
+# 시험에 필요한 인식 구현과 자료 계약 읽음
+from replay_perception.matching import assignments
 # 시험에 필요한 인식 구현과 자료 계약 읽음
 from replay_perception.models import Detection
 # 시험에 필요한 인식 구현과 자료 계약 읽음
 from replay_perception.observations import RoleDetection
-
-# 역할 연결 실행
-def assign(*args):
-    # 사람 검출과 역할 후보의 겹침에 따른 연결 결과 반환
-    return importlib.import_module('replay_perception.matching').assignments(*args)
 
 # 사람 검출 생성
 def person(identifier=1, box=(10, 20, 30, 100)):
@@ -24,7 +19,7 @@ def test_matching_preserves_raw_person_box_score_and_unproven_role():
     # 저장 계약에 맞춘 직렬화 자료 생성
     before = source.as_record()
     # 사람 검출과 역할 후보의 연결 결과 생성
-    result = assign((source,), (RoleDetection(8, "referee", source.box, .7),))
+    result = assignments((source,), (RoleDetection(8, "referee", source.box, .7),))
     # 역할 가설 값이 심판인지 확인
     assert result[0].as_record()["role"] == "referee"
     # 역할 검출 식별자 값이 8인지 확인
@@ -45,7 +40,7 @@ def test_matching_keeps_original_person_order_and_excludes_raw_ball():
     # 상자와 점수를 가진 원시 검출 생성
     ball = Detection(99, "sports ball", (0, 0, 2, 2), .8)
     # 사람 검출과 역할 후보의 연결 결과 생성
-    result = assign(
+    result = assignments(
         (second, ball, person(1)),
         (
             # 심판 후보의 상자와 점수 지정
@@ -69,7 +64,7 @@ def test_matching_keeps_original_person_order_and_excludes_raw_ball():
 ])
 def test_missing_low_score_wrong_place_or_ball_role_stays_unknown(roles):
     # 사람 검출과 역할 후보의 연결 결과 생성
-    result = assign((person(),), roles)
+    result = assignments((person(),), roles)
     # 처리 상태 값이 연결되지 않은 상태인지 확인
     assert result[0].status == "UNMATCHED"
     # 역할 가설 부재 확인
@@ -78,7 +73,7 @@ def test_missing_low_score_wrong_place_or_ball_role_stays_unknown(roles):
 # 한 사람의 동등 역할 후보 모호성 확인
 def test_equal_roles_on_one_person_are_ambiguous():
     # 사람 검출과 역할 후보의 연결 결과 생성
-    result = assign(
+    result = assignments(
         (person(),),
         (
             # 심판 후보의 상자와 점수 지정
@@ -95,14 +90,14 @@ def test_equal_roles_on_one_person_are_ambiguous():
 # 중복 사람 사이 역할 검출 공유 방지 확인
 def test_two_duplicate_people_cannot_share_one_role_detection():
     # 사람 검출과 역할 후보의 연결 결과 생성
-    result = assign((person(1), person(2)), (RoleDetection(0, "referee", person().box, .9),))
+    result = assignments((person(1), person(2)), (RoleDetection(0, "referee", person().box, .9),))
     # 처리 상태 목록의 비교 자료 값이 연결이 모호한 상태 · 연결이 모호한 상태인지 확인
     assert tuple(item.status for item in result) == ("AMBIGUOUS", "AMBIGUOUS")
 
 # 최선 역할 후보의 최소 겹침 차이 요구 확인
 def test_best_role_candidate_requires_minimum_overlap_margin():
     # 사람 검출과 역할 후보의 연결 결과 생성
-    result = assign(
+    result = assignments(
         (person(),),
         (
             # 심판 후보의 상자와 점수 지정
@@ -117,7 +112,7 @@ def test_best_role_candidate_requires_minimum_overlap_margin():
 # 점수 경계의 유일한 최선 역할 연결 확인
 def test_unique_best_match_uses_role_at_exact_score_boundary():
     # 사람 검출과 역할 후보의 연결 결과 생성
-    result = assign(
+    result = assignments(
         (person(),),
         (
             # 심판 후보의 상자와 점수 지정
@@ -134,7 +129,7 @@ def test_unique_best_match_uses_role_at_exact_score_boundary():
 # 정확한 겹침 비율 경계 허용 확인
 def test_exact_iou_boundary_is_allowed():
     # 사람 검출과 역할 후보의 연결 결과 생성
-    result = assign((person(),), (RoleDetection(0, "referee", (10, 20, 30, 180), .8),))
+    result = assignments((person(),), (RoleDetection(0, "referee", (10, 20, 30, 180), .8),))
     # 처리 상태 값이 유일하게 연결된 상태인지 확인
     assert result[0].status == "MATCHED"
     # 상자 겹침 비율의 기대 자료 일치 확인
@@ -143,7 +138,7 @@ def test_exact_iou_boundary_is_allowed():
 # 빈 사람 목록의 역할 가설 부재 확인
 def test_empty_people_produces_no_hypotheses():
     # 사람 검출과 역할 후보의 연결 결과 값이 빈 목록인지 확인
-    assert assign((), ()) == ()
+    assert assignments((), ()) == ()
 
 # 중복 식별자와 잘못된 타입 거부 확인
 @pytest.mark.parametrize("case", ["people", "roles", "wrong_person_type", "wrong_role_type"])
@@ -170,14 +165,14 @@ def test_duplicate_ids_and_invalid_types_are_rejected(case):
     # 입력값 오류 발생 기대
     with pytest.raises(ValueError):
         # 사람 검출과 역할 후보의 연결 결과 실행
-        assign(people, roles)
+        assignments(people, roles)
 
 # 유한 상자의 겹침 계산 넘침 방지 확인
 def test_iou_does_not_overflow_finite_boxes():
     # 고정 상자와 점수를 가진 사람 검출 생성
     source = person(box=(0, 0, 1e200, 1e200))
     # 사람 검출과 역할 후보의 연결 결과 생성
-    result = assign((source,), (RoleDetection(0, "referee", source.box, .9),))
+    result = assignments((source,), (RoleDetection(0, "referee", source.box, .9),))
     # 상자 겹침 비율 값이 1점0인지 확인
     assert result[0].iou == 1.
 
@@ -187,7 +182,7 @@ def test_identical_anisotropic_boxes_keep_iou_one(box):
     # 고정 상자와 점수를 가진 사람 검출 생성
     source = person(box=box)
     # 사람 검출과 역할 후보의 연결 결과 생성
-    result = assign((source,), (RoleDetection(0, "referee", source.box, .9),))
+    result = assignments((source,), (RoleDetection(0, "referee", source.box, .9),))
     # 처리 상태 값이 유일하게 연결된 상태인지 확인
     assert result[0].status == "MATCHED"
     # 상자 겹침 비율 값이 1점0인지 확인

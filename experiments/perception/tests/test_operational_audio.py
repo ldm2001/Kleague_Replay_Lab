@@ -4,8 +4,10 @@ import hashlib
 import subprocess
 # 예외 기대와 반복 사례 검증 도구 읽음
 import pytest
+# 시험에 필요한 인식 구현과 자료 계약 읽음
+from replay_perception import operational
 # 시험에 필요한 검증 도구와 의존성 읽음
-from test_operational import api, bundle, records, video
+from test_operational import bundle, records, video
 
 # 음향 포함 시험 영상 생성
 def video_with_audio(path):
@@ -128,7 +130,7 @@ def test_audio_run_writes_v2_header_and_cue_rows_before_visual_frames(tmp_path):
     # 원본 시간에 맞춘 음향 시험 입력 생성
     supplied = audio_input(source)
     # 시험 프레임의 관측 결과 생성
-    result = api().observations(
+    result = operational.observations(
         source, tmp_path / "audio-output", bundle(), duration_ms=500, audio_input=supplied
     )
     # 저장된 기록 목록 읽음
@@ -165,7 +167,7 @@ def test_audio_summary_is_bounded_while_every_cue_is_raw(tmp_path):
     # 원본 시간에 맞춘 음향 시험 입력 생성
     supplied = audio_input(source, count=300, duration_ms=90_000)
     # 시험 프레임의 관측 결과 생성
-    result = api().observations(
+    result = operational.observations(
         source,
         tmp_path / "output",
         bundle(empty=True),
@@ -212,7 +214,7 @@ def test_audio_intervals_must_fit_duration_and_scanned_range_before_artifact(tmp
     # 입력값 오류 발생 기대
     with pytest.raises(ValueError, match="AUDIO_INPUT_INVALID"):
         # 시험 프레임의 관측 결과 실행
-        api().observations(source, output, models, duration_ms=500, audio_input=supplied)
+        operational.observations(source, output, models, duration_ms=500, audio_input=supplied)
     # 파일 존재 여부의 부재 또는 비활성 확인
     assert not output.exists()
     # 호출 이력의 기대 자료 일치 확인
@@ -230,7 +232,7 @@ def test_audio_failure_makes_complete_visual_run_partial(tmp_path, status):
     # 판단 보류 이유의 시험 항목 구성
     supplied["observations"]["reasons"] = [f"AUDIO_{status}"]
     # 시험 프레임의 관측 결과 생성
-    result = api().observations(
+    result = operational.observations(
         source, tmp_path / "output", bundle(empty=True), duration_ms=500, audio_input=supplied
     )
     # 처리한 표본 수 값이 5인지 확인
@@ -247,7 +249,7 @@ def test_absent_audio_does_not_make_complete_visual_run_partial(tmp_path):
     # 디코더 검사용 합성 영상 실행
     video(source)
     # 시험 프레임의 관측 결과 생성
-    result = api().observations(
+    result = operational.observations(
         source,
         tmp_path / "output",
         bundle(empty=True),
@@ -278,7 +280,7 @@ def test_wrong_audio_source_rejected_before_artifact_or_models(tmp_path):
     # 원본 일치 오류 발생 기대
     with pytest.raises(ValueError, match="AUDIO_SOURCE_MISMATCH"):
         # 시험 프레임의 관측 결과 실행
-        api().observations(source, output, models, duration_ms=500, audio_input=supplied)
+        operational.observations(source, output, models, duration_ms=500, audio_input=supplied)
     # 파일 존재 여부의 부재 또는 비활성 확인
     assert not output.exists()
     # 호출 이력의 기대 자료 일치 확인
@@ -305,7 +307,7 @@ def test_malformed_audio_input_rejected_before_artifact(tmp_path, mutate):
     # 입력값 오류 발생 기대
     with pytest.raises(ValueError, match="AUDIO_INPUT_INVALID"):
         # 시험 프레임의 관측 결과 실행
-        api().observations(source, output, bundle(), duration_ms=500, audio_input=supplied)
+        operational.observations(source, output, bundle(), duration_ms=500, audio_input=supplied)
     # 파일 존재 여부의 부재 또는 비활성 확인
     assert not output.exists()
 
@@ -320,7 +322,7 @@ def test_audio_header_does_not_copy_unknown_timeline_payload(tmp_path):
     # 큰 내부 시험 자료 준비
     supplied["observations"]["timeline"]["largeInternalPayload"] = ["x"] * 1000
     # 시험 프레임의 관측 결과 생성
-    result = api().observations(
+    result = operational.observations(
         source, tmp_path / "output", bundle(empty=True), duration_ms=500, audio_input=supplied
     )
     # 원본 시간축에 지정한 항목 미포함 확인
@@ -339,7 +341,7 @@ def test_negative_audio_offset_is_valid_source_timeline_metadata(tmp_path):
     # 원본 대비 음향 시각 차이 준비
     supplied["observations"]["timeline"]["audioOffsetMs"] = -50
     # 시험 프레임의 관측 결과 생성
-    result = api().observations(
+    result = operational.observations(
         source, tmp_path / "output", bundle(empty=True), duration_ms=500, audio_input=supplied
     )
     # 원본 대비 음향 시각 차이의 기대 자료 일치 확인
@@ -359,7 +361,7 @@ def test_complete_audio_with_late_origin_and_zero_decoded_frames_is_valid(tmp_pa
         audioOffsetMs=600, scannedStartMs=500, scannedEndMs=500, decodedFrameCount=0
     )
     # 시험 프레임의 관측 결과 생성
-    result = api().observations(
+    result = operational.observations(
         source, tmp_path / "output", bundle(empty=True), duration_ms=500, audio_input=supplied
     )
     # 처리 완료 상태 값이 처리 완료 상태인지 확인
@@ -392,7 +394,7 @@ def test_invalid_audio_metadata_rejected_before_artifact(tmp_path, field, value)
     # 입력값 오류 발생 기대
     with pytest.raises(ValueError, match="AUDIO_INPUT_INVALID"):
         # 시험 프레임의 관측 결과 실행
-        api().observations(source, output, bundle(), duration_ms=500, audio_input=supplied)
+        operational.observations(source, output, bundle(), duration_ms=500, audio_input=supplied)
     # 파일 존재 여부의 부재 또는 비활성 확인
     assert not output.exists()
 
@@ -403,9 +405,9 @@ def test_audio_extension_does_not_change_visual_observations(tmp_path):
     # 음향 확장 전후 시각 관측 불변 대상 동작 실행
     video_with_audio(source)
     # 시험 프레임의 관측 결과 생성
-    old = api().observations(source, tmp_path / "old", bundle(), duration_ms=500)
+    old = operational.observations(source, tmp_path / "old", bundle(), duration_ms=500)
     # 시험 프레임의 관측 결과 생성
-    new = api().observations(
+    new = operational.observations(
         source, tmp_path / "new", bundle(), duration_ms=500, audio_input=audio_input(source)
     )
     # 기록 형식 판본의 기대 자료 일치 확인

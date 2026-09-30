@@ -24,8 +24,12 @@ from pathlib import Path
 from typing import Any, Callable, Protocol
 # 영상과 모델 결과를 배열로 다룰 수치 도구 읽음
 import numpy as np
+# 모델 자산 관련 함수와 자료형 읽음
+from .assets import directory
 # 연속 구간 관련 함수와 자료형 읽음
 from .continuity import AppearanceContinuity
+# 검출기 관련 함수와 자료형 읽음
+from .detector import RtdetrDetector
 # 영상 읽기 관련 함수와 자료형 읽음
 from .media import VideoReader
 # 모델 목록 관련 함수와 자료형 읽음
@@ -286,9 +290,6 @@ def inspection(
 
 # 명령행 인자 검증과 진단·영상 작업 실행
 def main() -> int:
-    # 모델 자산 관련 함수와 자료형 읽음
-    from .assets import directory
-
     # 명령행 해석기에 인자 명령행 해석기 처리 결과 저장
     parser = argparse.ArgumentParser(description="RT-DETR 검출과 ByteTrack 추적의 독립 진단")
     # 명령행에서 받을 원본의 형식과 기본값 등록
@@ -319,9 +320,6 @@ def main() -> int:
 
     # 실패 시 아래 예외 처리로 정리할 작업 시작
     try:
-        # 검출기 관련 함수와 자료형 읽음
-        from .detector import RtdetrDetector
-
         # 시작 시각에 경과 시간 측정용 현재 시각 저장
         started = time.perf_counter()
         # 검출기에 사람과 공 검출 모델 검출기 처리 결과 저장

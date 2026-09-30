@@ -1,5 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
-import { WORKER_PROTOCOL } from "../shared/worker-protocol";
+import { WORKER_PROTOCOL } from "@replay/shared-types";
 
 // 내부 조회에 허용하는 식별자와 제한된 페이지 계약
 export interface IncidentQueryInput {
@@ -9,11 +9,20 @@ export interface IncidentQueryInput {
     limit: number;
 }
 
-// 내부 인증과 소유 범위를 확인한 비공개 사건 조회
-export async function incidents(request: Request, analysisId: string, dependencies: {
+// 내부 사건 조회 처리 의존성
+export type IncidentApiDependencies = Readonly<{
+    // 작업자 요청 인증에 사용하는 비밀 값
     key: string;
+    // 소유 범위 안의 비공개 사건 한 쪽 조회 기능
     query: (input: IncidentQueryInput) => Promise<unknown | null>;
-}): Promise<Response> {
+}>;
+
+// 내부 인증과 소유 범위를 확인한 비공개 사건 조회
+export async function incidents(
+    request: Request,
+    analysisId: string,
+    dependencies: IncidentApiDependencies
+): Promise<Response> {
     // 모든 성공과 오류 응답의 공유 캐시 차단
     const response = (body: unknown, status: number) => Response.json(body, {
         status, headers: { "cache-control": "no-store" }

@@ -566,11 +566,9 @@ def test_different_pts_is_rejected_even_when_rounded_milliseconds_match(recorded
 def test_partial_iteration_and_body_exception_close_decoder(recorded_run, monkeypatch):
     # 원본 입력과 실행 결과 폴더 준비
     source, run_dir, _ = recorded_run
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    import replay_perception.frames as module
 
     # 변경 전 영상 읽기 객체 준비
-    original_reader = module.VideoReader
+    original_reader = VideoReader
     # 자원 종료 호출 기록의 빈 누적 공간 생성
     closes: list[str] = []
 
@@ -607,7 +605,7 @@ def test_partial_iteration_and_body_exception_close_decoder(recorded_run, monkey
             return self.wrapped.as_record()
 
     # 원본 표시 시각을 보존할 영상 읽기 객체의 시험 대역 주입
-    monkeypatch.setattr(module, "VideoReader", TrackingReader)
+    monkeypatch.setattr("replay_perception.frames.VideoReader", TrackingReader)
     # 실행 실패 발생 기대
     with pytest.raises(RuntimeError, match="stop downstream"):
         # 저장된 검출과 원본 영상을 대조할 읽기 객체의 사용 구간 시작

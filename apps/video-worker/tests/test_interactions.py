@@ -1,14 +1,12 @@
 from copy import deepcopy
-import importlib
 import pytest
+from replay_video.domain.interactions import InteractionObservations, validation
 from fixtures.interaction import frame
 
 # 측정 생성기 반환
 def builder():
     # 관측과 사실 판단을 분리하는 상호작용 관측기 반환
-    return importlib.import_module('replay_video.domain.interactions').InteractionObservations(
-        "a" * 64
-    )
+    return InteractionObservations("a" * 64)
 
 # 중립 관측 쌍과 역순 중복 제거 확인
 def test_pair_is_neutral_and_reverse_pair_deduplicated():
@@ -128,13 +126,11 @@ def test_invalid_inputs_are_rejected(bad):
 
 # 생성 기록의 저장 전 구조 검증 확인
 def test_generated_record_has_structure_validation_before_storage():
-    # 직접 측정값 검증을 호출할 관측 모듈 읽음
-    module = importlib.import_module('replay_video.domain.interactions')
     # 검증 가능한 정상 측정 기록 생성
     row = builder().update(frame(), "s0")[0]
     # 변조 전 정상 측정 기록의 계약 검증
-    module.validation(row)
+    validation(row)
     # 계산된 거리 값을 비유한 수로 바꾸어 사후 검증 실패 재현
     row["measurements"]["centerDistance"]["value"] = float("nan")
     # 생성 기록의 저장 전 구조 검증을 위한 예상 예외 확인
-    with pytest.raises(ValueError): module.validation(row)
+    with pytest.raises(ValueError): validation(row)

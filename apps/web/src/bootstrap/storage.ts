@@ -2,19 +2,11 @@
 import { S3Client } from "@aws-sdk/client-s3";
 // 저장소와 외부 기능 구현 가져옴
 import { s3, type S3Storage } from "@replay/adapters";
+// 프로세스 공용 필수 설정 조회 기능 가져옴
+import { env } from "./runtime";
 
 // 요청마다 재생성하지 않을 의존 객체 보관 위치 마련
 let cached: S3Storage | undefined;
-
-// 환경 변수 조회
-const env = (name: string): string => {
-    // 환경 변수 값 읽기
-    const value = process.env[name];
-    // 필수 환경 변수 확인
-    if (!value) throw new Error(`${name} is required`);
-    // 환경 변수 반환
-    return value;
-};
 
 // 객체 저장소 의존성 조립
 export const storage = (): S3Storage => {

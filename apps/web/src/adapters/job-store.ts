@@ -1,39 +1,37 @@
-// 비밀 토큰과 파일 해시의 암호 기능 가져옴
-import { createHash as digest, randomBytes } from "node:crypto";
 // 저장소 질의와 자료 구조 정의 기능 가져옴
-import { sql } from "drizzle-orm";
-// 분석 처리 유스케이스와 저장소 계약 가져옴
-import type {
-    JobClaim,
-    JobClaimCommand,
-    JobProgress,
-    JobProgressCommand,
-    JobProgressStore as ProgressPort,
-    JobStore as JobPort,
-    JobResult,
-    JobResultCommand,
-    JobResultPreflight,
-    JobResultPreflightCommand,
-    JobResultStore as ResultPort,
-    JobStage,
-    JobType,
-    EvidenceAccess,
-    EvidenceAccessCommand,
-    EvidenceStore as EvidencePort
+import { sql, type SQL } from "drizzle-orm";
+// 저장소 계약과 자동 평가 묶음의 원본 작업 후보 근거 결합 검사 가져옴
+import {
+    validAutomaticBatch,
+    type JobClaimCommand,
+    type JobLease,
+    type JobProgress,
+    type JobProgressCommand,
+    type JobProgressStore as ProgressPort,
+    type JobStore as JobPort,
+    type JobResult,
+    type JobResultCommand,
+    type JobResultPreflight,
+    type JobResultPreflightCommand,
+    type JobResultStore as ResultPort,
+    type JobStage,
+    type JobType,
+    type EvidenceAccess,
+    type EvidenceAccessCommand,
+    type EvidenceStore as EvidencePort,
+    type AutomaticEvidenceBinding
 } from "@replay/application";
 // 데이터베이스 연결과 저장 구조 가져옴
 import type { DatabaseClient } from "@replay/database";
-// 자동 평가의 경기 문맥과 증거 연결 기능 가져옴
-import { validAutomaticBatch, type AutomaticEvidenceBinding } from "./binding";
-// 공유 자료 계약과 검증 기능 가져옴
-import type { AutomaticRuleContext } from "../shared/review";
-// 규정 자료와 평가 기능 가져옴
-import { perceptionModelPins } from "@replay/rule-engine";
+// 공유 자료 계약과 원본 해시에 대응하는 검증된 경기 문맥 가져옴
+import { knownVideoSource, type AutomaticRuleContext } from "@replay/shared-types";
+// 승인된 고정 모델 출처 충족 검사 가져옴
+import { pinnedModels } from "@replay/rule-engine";
 // 자동 평가의 경기 문맥과 증거 연결 기능 가져옴
 import { automaticContext } from "./automatic-context";
-// 원본 해시에 대응하는 검증된 경기 문맥 가져옴
-import { knownVideoSource } from "./sources";
 import { incidentRows } from "./incidents";
+// 조회 시점과 보존 규칙이 정한 행 가시성 조건 가져옴
+import { liveJob } from "./visibility";
 
 // 저장소 구현에 필요한 데이터베이스 연결 부분 정의
 type DatabaseHandle = Pick<DatabaseClient, "db">;
@@ -76,6 +74,41 @@ type JobRow = Readonly<{
     object_key: string | null;
 }>;
 
+// 선택한 작업을 재시도 없는 실패로 닫고 검증 영상과 분석 상태 및 실패 이벤트를 같은 사유로 한 문장에 기록
+const termination = (
+    selection: SQL,
+    code: "WORKER_TIMEOUT" | "SOURCE_UNAVAILABLE",
+    now: string
+) => sql`
+    with expired as (${selection}), failed as (
+      update processing_jobs as job
+      set status = 'FAILED', stage = 'FAILED', failure_code = ${code},
+          retryable = false, lease_owner = null, lease_token_hash = null,
+          lease_until = null, updated_at = ${now}
+      from expired where job.id = expired.id
+      returning job.id, job.analysis_id, job.video_asset_id, job.job_type,
+                job.job_revision, job.attempt, job.progress_percent
+    ), videos as (
+      update video_assets as video
+      set status = 'REJECTED', validation_error_code = ${code},
+          state_version = video.state_version + 1
+      from failed
+      where video.id = failed.video_asset_id and failed.job_type = 'VALIDATE_VIDEO'
+        and video.status = 'VALIDATING'
+      returning video.id
+    ), analyses as (
+      update analyses as analysis
+      set status = 'FAILED', failure_code = ${code},
+          state_version = analysis.state_version + 1
+      from failed
+      where analysis.id = failed.analysis_id and failed.job_type = 'ANALYZE_VIDEO'
+        and analysis.status not in ('COMPLETED', 'FAILED')
+      returning analysis.id
+    )
+    insert into processing_job_events (job_id, job_revision, attempt, event_type, stage, progress_percent, message, created_at)
+    select id, job_revision, attempt, 'FAILED', 'FAILED', progress_percent, ${code}, ${now} from failed
+`;
+
 // 작업 저장소 어댑터
 export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort {
     // 저장소 연결과 저장 직전 만료 검사 시계 주입
@@ -84,57 +117,38 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
         private readonly wallClock: WallClock = () => new Date()
     ) {}
 
-    // 처리할 작업 선점과 임대 발급
-    public async claim(command: JobClaimCommand): Promise<JobClaim | null> {
-        // 작업 임대 토큰 생성
-        const leaseToken = randomBytes(32).toString("base64url");
-        // 작업 임대 토큰 해시
-        const leaseTokenHash = digest("sha256").update(leaseToken, "utf8").digest();
-
+    // 처리할 작업 선점과 해시로 받은 임대 저장
+    public async claim(command: JobClaimCommand): Promise<JobLease | null> {
         // 작업 선점 트랜잭션
         const rows = await this.client.db.transaction(async (transaction) => {
             // 마지막 시도에서 만료된 작업을 작은 배치로 종료
-            await transaction.execute(sql`
-        with expired as (
-          select id from processing_jobs
-          where job_type = ${command.jobType} and status = 'PROCESSING'
-            and lease_until <= ${command.now} and attempt >= max_attempts
-          order by lease_until, id
-          for update skip locked limit 100
-        ), failed as (
-          update processing_jobs as job
-          set status = 'FAILED', stage = 'FAILED', failure_code = 'WORKER_TIMEOUT',
-              retryable = false, lease_owner = null, lease_token_hash = null,
-              lease_until = null, updated_at = ${command.now}
-          from expired where job.id = expired.id
-          returning job.id, job.analysis_id, job.video_asset_id, job.job_type,
-                    job.job_revision, job.attempt, job.progress_percent
-        ), videos as (
-          update video_assets as video
-          set status = 'REJECTED', validation_error_code = 'WORKER_TIMEOUT',
-              state_version = video.state_version + 1
-          from failed
-          where video.id = failed.video_asset_id and failed.job_type = 'VALIDATE_VIDEO'
-            and video.status = 'VALIDATING'
-          returning video.id
-        ), analyses as (
-          update analyses as analysis
-          set status = 'FAILED', failure_code = 'WORKER_TIMEOUT',
-              state_version = analysis.state_version + 1
-          from failed
-          where analysis.id = failed.analysis_id and failed.job_type = 'ANALYZE_VIDEO'
-            and analysis.status not in ('COMPLETED', 'FAILED')
-          returning analysis.id
-        )
-        insert into processing_job_events (job_id, job_revision, attempt, event_type, stage, progress_percent, message, created_at)
-        select id, job_revision, attempt, 'FAILED', 'FAILED', progress_percent,
-               'WORKER_TIMEOUT', ${command.now} from failed
-      `);
-            // 선점 대상 선택과 잠금
+            await transaction.execute(termination(sql`
+        select id from processing_jobs
+        where job_type = ${command.jobType} and status = 'PROCESSING'
+          and lease_until <= ${command.now} and attempt >= max_attempts
+        order by lease_until, id
+        for update skip locked limit 100
+      `, "WORKER_TIMEOUT", command.now));
+            // 대상 원본이나 소유 세션이 보존 규칙을 벗어나 다시 살아날 수 없는 선점 가능 작업을 작은 배치로 종료
+            await transaction.execute(termination(sql`
+        select job.id from processing_jobs as job
+        where job.job_type = ${command.jobType}
+          and (
+            job.status = 'QUEUED'
+            or (
+              job.status = 'PROCESSING' and job.lease_until <= ${command.now}
+              and job.attempt < job.max_attempts
+            )
+          )
+          and not ${liveJob(command.now)}
+        order by job.created_at, job.id
+        for update skip locked limit 100
+      `, "SOURCE_UNAVAILABLE", command.now));
+            // 보존 규칙 안의 선점 대상 선택과 잠금
             const selected = await transaction.execute(sql`
         with picked as (
           select id
-          from processing_jobs
+          from processing_jobs as job
           where job_type = ${command.jobType}
             and (
               (status = 'QUEUED' and (next_attempt_at is null or next_attempt_at <= ${command.now}))
@@ -142,6 +156,7 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
               (status = 'PROCESSING' and lease_until <= ${command.now})
             )
             and attempt < max_attempts
+            and ${liveJob(command.now)}
           order by next_attempt_at nulls first, created_at, id
           for update skip locked
           limit 1
@@ -151,7 +166,7 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
             job_revision = job.job_revision + 1,
             attempt = job.attempt + 1,
             lease_owner = ${command.workerId},
-            lease_token_hash = ${leaseTokenHash},
+            lease_token_hash = ${Buffer.from(command.leaseTokenHash)},
             lease_until = ${command.leaseUntil},
             stage = case
               when job.job_type = 'VALIDATE_VIDEO' then 'VALIDATING'::job_stage
@@ -216,11 +231,9 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
             // 현재 작업 실행 시도 횟수
             attempt: row.attempt,
             // 현재 영상 처리 단계
-            stage: row.stage as JobClaim["stage"],
+            stage: row.stage as JobLease["stage"],
             // 작업 진행률의 백분율
             progressPercent: row.progress_percent,
-            // 현재 작업 임대를 증명하는 비밀 토큰
-            leaseToken,
             // 현재 작업 임대의 유효 기한
             leaseUntil: new Date(row.lease_until).toISOString(),
             // 분석 기록의 식별자
@@ -310,7 +323,7 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
       select job.analysis_id, video.content_sha256, analysis.source_fingerprint,
              analysis.expires_at, analysis.match_id, rule.id as rule_version_id,
              rule.verification_status, rule.ifab_edition, rule.competition, rule.season, video.duration_ms,
-             fixture.match_date::text as match_date
+             fixture.match_date::text as match_date, ${liveJob(command.now)} as live
       from processing_jobs as job
       join analyses as analysis on analysis.id = job.analysis_id
       join video_assets as video on video.id = analysis.video_asset_id
@@ -350,9 +363,13 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
             // 영상 전체 길이의 밀리초 값
             duration_ms: number | null;
             match_date?: string | null;
+            // 작업 대상과 소유 세션이 보존 규칙 안에 있는지 여부
+            live: boolean;
         }>;
         // 유효한 작업 임대와 원본 문맥 조회 성공 여부 확인
         if (row) {
+            // 임대는 유효해도 작업 대상이 보존 규칙을 벗어났으면 무거운 파일 검사 전에 원본 거부 반환
+            if (!row.live) return { kind: "INVALID_RESULT", reason: "SOURCE" };
             // 경기 연결이 없는 등록 원본에 대해서만 자동 문맥 연결 시도
             if (
                 !row.match_id &&
@@ -364,7 +381,7 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
                 const linked = await this.client.db.transaction(async (transaction) => {
                     // 임대와 원본 유효 기한 재검사에 사용할 실제 시각 읽음
                     const now = this.wallClock().toISOString();
-                    // 현재 임대와 보존 기한을 충족한 분석 및 원본 잠금 조회
+                    // 현재 임대와 작업 대상 생존 조건을 충족한 분석 및 원본 잠금 조회
                     const locked = await transaction.execute(sql`
             select analysis.id, video.content_sha256
             from processing_jobs as job join analyses as analysis on analysis.id = job.analysis_id
@@ -372,7 +389,8 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
             where job.id = ${command.jobId} and job.job_type = 'ANALYZE_VIDEO' and job.status = 'PROCESSING'
               and job.job_revision = ${command.jobRevision} and job.lease_owner = ${command.workerId}
               and job.lease_token_hash = ${Buffer.from(command.leaseTokenHash)} and job.lease_until > ${now}
-              and analysis.expires_at > ${now} and analysis.match_id is null and analysis.applied_rule_version_id is null
+              and ${liveJob(now)}
+              and analysis.match_id is null and analysis.applied_rule_version_id is null
               and analysis.source_fingerprint = video.content_sha256
               and video.content_sha256 = ${row.content_sha256}
             for update of job, analysis, video
@@ -395,11 +413,18 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
                     if (!context) return false;
                     // 문맥 저장 직전의 실제 시각 읽음
                     const saveNow = this.wallClock().toISOString();
-                    // 유효 기한을 다시 확인한 뒤 경기와 규정 연결 저장
-                    const saved =
-                        await transaction.execute(sql`update analyses set match_id = ${context.matchId}, applied_rule_version_id = ${context.ruleId},
-            state_version = state_version + 1 where id = ${target.id} and expires_at > ${saveNow}
-              and exists(select 1 from processing_jobs where id = ${command.jobId} and lease_until > ${saveNow}) returning id`);
+                    // 작업 임대와 작업 대상 생존 조건을 저장 시각에 다시 확인한 뒤 경기와 규정 연결 저장
+                    const saved = await transaction.execute(sql`
+            update analyses
+            set match_id = ${context.matchId}, applied_rule_version_id = ${context.ruleId},
+                state_version = state_version + 1
+            where id = ${target.id}
+              and exists(
+                select 1 from processing_jobs as job
+                where job.id = ${command.jobId} and job.lease_until > ${saveNow} and ${liveJob(saveNow)}
+              )
+            returning id
+          `);
                     // 유효 기한 재검사 후 실제 연결한 행의 존재 여부 반환
                     return saved.length === 1;
                 });
@@ -465,14 +490,24 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
             // 영상 검증 결과 저장과 분석 작업 생성
             const payload = command.payload;
             // 영상 검증 완료와 후속 분석 작업 생성을 한 묶음으로 저장
-            rows = await this.client.db.transaction(async (transaction) =>
+            const validated = await this.client.db.transaction(async (transaction) =>
                 transaction.execute(sql`
           with target as materialized (
             select id, status, job_type, job_revision, attempt, lease_owner,
-                   lease_token_hash, lease_until, video_asset_id
-            from processing_jobs
+                   lease_token_hash, lease_until, video_asset_id,
+                   ${liveJob(command.now)} as live
+            from processing_jobs as job
             where id = ${command.jobId}
             for update
+          ), leased as (
+            select * from target
+            where target.status = 'PROCESSING'
+              and target.job_type = 'VALIDATE_VIDEO'
+              and target.video_asset_id is not null
+              and target.job_revision = ${command.jobRevision}
+              and target.lease_owner = ${command.workerId}
+              and target.lease_token_hash = ${lease}
+              and target.lease_until > ${command.now}
           ), accepted as (
             update processing_jobs as job
             set status = 'SUCCEEDED',
@@ -485,15 +520,8 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
                 failure_code = null,
                 retryable = null,
                 updated_at = ${command.now}
-            from target
-            where job.id = target.id
-              and target.status = 'PROCESSING'
-              and target.job_type = 'VALIDATE_VIDEO'
-              and target.video_asset_id is not null
-              and target.job_revision = ${command.jobRevision}
-              and target.lease_owner = ${command.workerId}
-              and target.lease_token_hash = ${lease}
-              and target.lease_until > ${command.now}
+            from leased
+            where job.id = leased.id and leased.live
             returning job.id, job.video_asset_id, job.job_revision, job.attempt
           ), asset as (
             update video_assets as video
@@ -553,9 +581,14 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
             when exists(select 1 from event) and exists(select 1 from analysis) then 'ACCEPTED'
             when not exists(select 1 from target) then 'NOT_FOUND'
             when (select status from target) <> 'PROCESSING' then 'ALREADY_FINISHED'
+            when exists(select 1 from leased where not leased.live) then 'SOURCE_UNAVAILABLE'
             else 'STALE_LEASE'
           end as kind
         `)
+            );
+            // 보존 규칙을 벗어난 원본의 검증 결과를 결과 계약의 원본 거부로 변환
+            rows = (validated as unknown as Array<{ kind: string }>).map((row) =>
+                row.kind === "SOURCE_UNAVAILABLE" ? { kind: "INVALID_RESULT", reason: "SOURCE" } : row
             );
         } else if (command.payload.kind === "ANALYZED") {
             // 영상 분석 결과와 증거 저장
@@ -694,6 +727,12 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
                         new Date(target.lease_until).getTime() > new Date(lockedNow).getTime();
                     // 현재 시각에 임대 권한이 유효하지 않으면 결과 저장 차단
                     if (!validLease) return [{ kind: "STALE_LEASE" }];
+                    // 잠금 이후 기준 시각에 작업 대상과 소유 세션이 보존 규칙 안에 있는지 조회
+                    const [state] = (await transaction.execute(sql`
+            select ${liveJob(lockedNow)} as live from processing_jobs as job where job.id = ${target.id}
+          `)) as unknown as Array<{ live: boolean }>;
+                    // 보존 규칙을 벗어난 원본의 결과는 기준선 경로를 포함해 저장 거부
+                    if (!state?.live) return [{ kind: "INVALID_RESULT", reason: "SOURCE" }];
 
                     // 새 비공개 관측은 원본 자체의 상태와 보존 기한도 확인한 뒤 저장
                     const privateSourceValid = () => command.privateIndex?.status !== "INDEXED" || (
@@ -706,16 +745,14 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
                     if (perception && command.perceptionVerification) {
                         // 서버가 검증한 원본 해시를 저장 값 비교용 바이트로 변환
                         const verified = Buffer.from(command.perceptionVerification.sourceSha256);
-                        // 원본 해시와 분석 소유 관계 및 보존 기한 일치 확인
+                        // 보존 기한은 생존 조건이 확인했으므로 원본 해시와 분석 소유 관계 일치 확인
                         const sourceMatches =
                             command.perceptionVerification.analysisId === target.analysis_id &&
                             verified.length === 32 &&
                             target.source_fingerprint?.length === 32 &&
                             target.content_sha256?.length === 32 &&
                             Buffer.compare(target.source_fingerprint, verified) === 0 &&
-                            Buffer.compare(target.content_sha256, verified) === 0 &&
-                            target.expires_at !== null &&
-                            new Date(target.expires_at).getTime() > new Date(lockedNow).getTime();
+                            Buffer.compare(target.content_sha256, verified) === 0;
                         // 검증한 원본과 저장된 분석 원본이 다르면 결과 거부
                         if (!sourceMatches) return [{ kind: "INVALID_RESULT", reason: "SOURCE" }];
                     }
@@ -797,29 +834,16 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
                         // 완료 평가가 있다면 승인된 고정 모델 출처가 모두 존재하는지 확인
                         if (
                             automatic.rows.some((row) => row.status === "COMPLETED") &&
-                            (!perception ||
-                                Object.values(perceptionModelPins).some(
-                                    (pin) =>
-                                        !perception.models.some(
-                                            (model) =>
-                                                model.component === pin.component &&
-                                                model.modelId === pin.modelId &&
-                                                model.revision === pin.revision &&
-                                                model.weightsSha256 === pin.weightsSha256
-                                        )
-                                ))
+                            (!perception || !pinnedModels(perception.models))
                         ) {
                             // 고정 모델 출처를 충족하지 못한 완료 결과 거부 반환
                             return [{ kind: "INVALID_RESULT", reason: "CONTEXT" }];
                         }
-                        // 원본 보존 기한과 해시 및 자동 평가 계약과 용량 재검사
+                        // 보존 기한은 생존 조건이 확인했으므로 원본 해시와 자동 평가 계약과 용량 재검사
                         if (
                             !target.source_fingerprint ||
                             !target.content_sha256 ||
                             !target.source_fingerprint.equals(target.content_sha256) ||
-                            !target.expires_at ||
-                            new Date(target.expires_at).getTime() <=
-                                new Date(lockedNow).getTime() ||
                             !validAutomaticBatch(automatic, {
                                 // 분석 기록의 식별자
                                 analysisId: target.analysis_id!,
@@ -1133,8 +1157,8 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
     public async access(command: EvidenceAccessCommand): Promise<EvidenceAccess> {
         // 현재 작업 임대가 증거 업로드 권한을 가지는지 확인
         const rows = await this.client.db.execute(sql`
-      select analysis_id
-      from processing_jobs
+      select analysis_id, ${liveJob(command.now)} as live
+      from processing_jobs as job
       where id = ${command.jobId}
         and job_type = 'ANALYZE_VIDEO'
         and analysis_id is not null
@@ -1146,7 +1170,9 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
       limit 1
     `);
         // 저장소 조회 목록에서 필요한 첫 번째 행 읽음
-        const [row] = rows as unknown as Array<{ analysis_id: string }>;
+        const [row] = rows as unknown as Array<{ analysis_id: string; live: boolean }>;
+        // 임대는 유효해도 원본이 보존 규칙을 벗어났으면 고아 증거 객체를 막도록 권한 거부
+        if (row && !row.live) return { kind: "SOURCE_UNAVAILABLE" };
         // 유효한 작업 임대면 분석 식별자 반환
         if (row) return { kind: "AUTHORIZED", analysisId: row.analysis_id };
         // 작업 상태 확인

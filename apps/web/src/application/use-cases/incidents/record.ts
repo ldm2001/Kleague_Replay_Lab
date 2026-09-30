@@ -2,18 +2,16 @@ import { createHash } from "node:crypto";
 import {
     INCIDENT_CONTEXT_KEYS,
     INCIDENT_OBSERVATION_KEYS,
+    incidentLineage,
+    incidentRecordData,
+    interactionData,
     type IncidentAssertion,
     type IncidentContext,
     type IncidentMeasurement,
-    type IncidentRecordV1
-} from "../../../shared/incident";
-import { incidentRecordData } from "../../../shared/incident-schema";
-import {
-    interactionData,
-    incidentLineage,
+    type IncidentRecordV1,
     type InteractionObservationV1,
     type InteractionRecordLink
-} from "../../../shared/interaction";
+} from "@replay/shared-types";
 
 // 관측 보존과 유형별 기록 생성의 분기 자료형 정의
 type Conversion = {

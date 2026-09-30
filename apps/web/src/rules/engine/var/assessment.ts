@@ -1,21 +1,20 @@
-// 공통 관측과 판정 자료형 가져오기
-import type {
-    CompetitionOptions,
-    RuleCitation,
-    RuleSet,
-    VarAssessment,
-    VarCategory,
-    VarCategoryRule,
-    VarFacts,
-    VarNotReviewableReason,
-    VarOutcome,
-    VarReviewProcedure,
-    SendOffCategory,
-    VarThresholdResult,
-    VarWindowException
+// 공통 관측과 판정 자료형과 재개 후 예외 어휘 가져오기
+import {
+    VAR_WINDOW_EXCEPTIONS,
+    type CompetitionOptions,
+    type RuleCitation,
+    type RuleSet,
+    type VarAssessment,
+    type VarCategory,
+    type VarCategoryRule,
+    type VarFacts,
+    type VarNotReviewableReason,
+    type VarOutcome,
+    type VarReviewProcedure,
+    type SendOffCategory,
+    type VarThresholdResult,
+    type VarWindowException
 } from "@replay/shared-types";
-// 공통 관측과 판정 자료형 가져오기
-import { VAR_WINDOW_EXCEPTIONS } from "@replay/shared-types";
 // 사실 내용 해시 기능 가져오기
 import { factSignature } from "../signatures/fact-signature";
 

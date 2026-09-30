@@ -5,8 +5,10 @@ import subprocess
 from pathlib import Path
 import numpy as np
 import pytest
+from replay_video.infrastructure import evidence
+from replay_video.infrastructure.audio import audioCues, AudioScanStatus
 from replay_video.infrastructure.evidence import clip
-from replay_video.infrastructure.streams import ClipStreams, clipStreams
+from replay_video.infrastructure.streams import ClipAudioResult, ClipStreams, clipStreams
 from replay_video.domain.models import Candidate, VideoMetadata
 
 
@@ -233,7 +235,6 @@ def test_clip_does_not_claim_preserved_audio_when_source_track_has_no_samples_in
 
     # 도구 판본에 따라 가능한 음향 없는 정상 인코딩 결과도 독립적으로 재현
     if empty_success:
-        from replay_video.infrastructure import evidence
         original = evidence.subprocess.run
 
         # 첫 인코딩만 실제 영상 단독 파일로 만들고 이후 검증과 재시도는 유지
@@ -371,7 +372,6 @@ def test_clip_seeks_near_a_late_selected_interval_without_shifting_pts(tmp_path,
     source, output = tmp_path / "source.mkv", tmp_path / "clip.mp4"
     # 늦은 원점과 뒤쪽 음향 펄스를 가진 긴 시험 영상 생성
     media(source, video_origin=5, audio_origin=5.3, pulse_local=3.0, duration=4.5)
-    from replay_video.infrastructure import evidence
     # 명령 인자를 기록한 뒤 실제 인코딩을 이어갈 원래 함수 보관
     original = evidence.subprocess.run
     # 미디어 명령 실행 이력을 누적할 빈 자료 구조 준비
@@ -470,7 +470,6 @@ def test_clip_retries_video_only_after_av_encode_failure_and_reports_omission(
     source, output = tmp_path / "source.mkv", tmp_path / "clip.mp4"
     # 음향 인코딩 실패 뒤 영상 재시도를 시험할 원본 생성
     media(source, video_origin=0, audio_origin=0, pulse_local=0.2)
-    from replay_video.infrastructure import evidence
     # 재시도에서는 실제 인코더를 사용할 원래 실행 함수 보관
     original = evidence.subprocess.run
     # 미디어 명령 실행 이력을 누적할 빈 자료 구조 준비
@@ -507,7 +506,6 @@ def test_clip_does_not_mislabel_video_failure_as_audio_failure(tmp_path, monkeyp
     source, output = tmp_path / "source.mkv", tmp_path / "clip.mp4"
     # 모든 인코딩 실패 경로를 시험할 정상 원본 생성
     media(source, video_origin=0, audio_origin=0, pulse_local=0.2)
-    from replay_video.infrastructure import evidence
     # 메타데이터 조회는 유지할 원래 미디어 실행 함수 보관
     original = evidence.subprocess.run
 
@@ -529,7 +527,6 @@ def test_clip_does_not_mislabel_video_failure_as_audio_failure(tmp_path, monkeyp
 
 # 인코딩 오류 로그가 있는 정상 종료의 음향 보존 오인 방지 확인
 def test_encoder_error_output_with_zero_exit_omits_audio(tmp_path, monkeypatch):
-    from replay_video.infrastructure import evidence
     # 실제 정상 미디어를 준비해 종료 코드 이외의 오류 처리만 격리
     source, output = tmp_path / "source.mkv", tmp_path / "clip.mp4"
     media(source, video_origin=0, audio_origin=0, pulse_local=0.2)
@@ -551,7 +548,6 @@ def test_encoder_error_output_with_zero_exit_omits_audio(tmp_path, monkeypatch):
 
 # 영상 재시도 오류를 음향 생략 성공으로 오인하지 않는지 확인
 def test_video_retry_errors_are_not_audio_omission_success(tmp_path, monkeypatch):
-    from replay_video.infrastructure import evidence
     # 정상 파일이 남아도 영상 디코딩 오류를 무시하지 않는지 확인할 원본 준비
     source, output = tmp_path / "source.mkv", tmp_path / "clip.mp4"
     media(source, video_origin=0, audio_origin=0, pulse_local=0.2)
@@ -571,7 +567,6 @@ def test_video_retry_errors_are_not_audio_omission_success(tmp_path, monkeypatch
 
 # 출력 음향의 메타데이터만으로 손상된 패킷 보존 승인 방지
 def test_corrupt_encoded_audio_is_not_preserved(tmp_path, monkeypatch):
-    from replay_video.infrastructure import evidence
     # 음향 패킷이 충분한 실제 원본과 출력 경로 준비
     source, output = tmp_path / "source.mkv", tmp_path / "clip.mp4"
     media(source, video_origin=0, audio_origin=0, pulse_local=0.2)
@@ -653,7 +648,6 @@ def test_clip_does_not_claim_preserved_audio_for_damaged_aac_packets(tmp_path):
     assert source_decode.stderr, "fixture must expose audio decoder errors"
 
     # 손상 원본의 전체 음향 관측도 완료가 아닌 실패로 남는지 확인
-    from replay_video.infrastructure.audio import audioCues, AudioScanStatus
     scan = audioCues(damaged)
     assert scan.status is AudioScanStatus.FAILED
     assert scan.cues == ()
@@ -670,8 +664,6 @@ def test_clip_does_not_claim_preserved_audio_for_damaged_aac_packets(tmp_path):
 
 # 클립에만 음향 누락 상태 연결 확인
 def test_evidence_attaches_audio_omission_status_to_clip_only(tmp_path, monkeypatch):
-    from replay_video.infrastructure import evidence as module
-    from replay_video.infrastructure.streams import ClipAudioResult
     # 입력 영상을 시험용 기준 경로에서 구성
     source = tmp_path / "source.mp4"
     # 입력 영상에 시험 내용을 기록
@@ -681,10 +673,10 @@ def test_evidence_attaches_audio_omission_status_to_clip_only(tmp_path, monkeypa
     # 변화 구간과 대표 시각을 가진 시험 후보 생성
     candidate = Candidate(1, "OTHER", 0, 800, 400, 0.9, "UNKNOWN", (), ())
     # 증거 생성 경로를 통제하도록 프레임·클립 처리 대역 연결
-    monkeypatch.setattr(module, "frame", lambda _source, target, _ms: target.write_bytes(b"jpeg"))
+    monkeypatch.setattr(evidence, "frame", lambda _source, target, _ms: target.write_bytes(b"jpeg"))
     # 증거 생성 경로를 통제하도록 프레임·클립 처리 대역 연결
     monkeypatch.setattr(
-        module,
+        evidence,
         "clip",
         lambda _source, target, _start, _end: (
             target.write_bytes(b"mp4"),
@@ -693,7 +685,7 @@ def test_evidence_attaches_audio_omission_status_to_clip_only(tmp_path, monkeypa
     )
 
     # 변화 후보의 프레임과 클립 증거 생성
-    entries = module.evidence(source, tmp_path / "output", metadata, (candidate,))
+    entries = evidence.evidence(source, tmp_path / "output", metadata, (candidate,))
 
     # 프레임과 클립별 음향 상태 및 누락 사유가 정확히 남는지 확인
     assert [(entry.kind, entry.audio_status, entry.audio_reason) for entry in entries] == [

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
 import { describe, expect, it, vi } from "vitest";
 import { result } from "../../src/application/use-cases/job/result";
+import type { JobResultCommand } from "../../src/application/ports/repositories/job-store";
 import type { InteractionObservationV1 } from "../../src/shared/interaction";
 import { interactionFixture } from "../fixtures/interaction";
 import { perceptionPayload, PERCEPTION_ANALYSIS_ID, PERCEPTION_JOB_ID, PERCEPTION_SOURCE_SHA256,
@@ -32,7 +33,7 @@ const fixture = (options: { edit?: (observation: InteractionObservationV1) => vo
             sourceSha256: Buffer.from(PERCEPTION_SOURCE_SHA256, "hex"), analysisSourceSha256: Buffer.from(PERCEPTION_SOURCE_SHA256, "hex"),
             expiresAt: "2031-01-01T00:00:00.000Z", durationMs: options.durationMs === undefined ? 5000 : options.durationMs,
             ruleEdition: null })),
-        result: vi.fn(async (_command: import("../../src/application/ports/repositories/job-store").JobResultCommand) => ({ kind: "ACCEPTED" as const }))
+        result: vi.fn(async (_command: JobResultCommand) => ({ kind: "ACCEPTED" as const }))
     };
     const storage = { head: vi.fn(async (key: string) => ({ sizeBytes: key.endsWith(".gz") ? bytes.length : 12,
         contentSha256: Buffer.from(key.endsWith(".gz") ? digest : PERCEPTION_EVIDENCE_SHA256, "hex") })) };

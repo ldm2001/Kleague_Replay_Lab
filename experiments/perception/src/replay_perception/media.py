@@ -171,6 +171,7 @@ class VideoReader:
 
     # 처리 자원 준비
     def __enter__(self) -> VideoReader:
+        # 복호화 도구 없는 환경에서도 모듈을 읽도록 사용 시점에 지연 읽음
         # 원본 표시 시각을 보존할 영상 복호화 도구 읽음
         import av
 

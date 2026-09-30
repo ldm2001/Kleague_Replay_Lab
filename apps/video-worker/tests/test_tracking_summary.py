@@ -59,7 +59,10 @@ def test_corner_enrichment_preserves_the_overlapping_candidate_interval(tmp_path
     # 관측 기록 파일에 시험 내용을 기록
     (tmp_path / "context.jsonl").write_text("")
     # 실제 진단 대신 미리 만든 코너 관측 요약 제공
-    monkeypatch.setattr('replay_video.inspection.inspection', lambda source, output: summary)
+    monkeypatch.setattr(
+        'replay_video.infrastructure.tracking.inspection',
+        lambda source, output: summary,
+    )
     # 영상 길이와 크기 및 시간축의 시험 메타데이터 생성
     metadata = VideoMetadata(Path("source.mp4"), 15000, 960, 540, 15, 225, "h264")
     # 변화 구간과 대표 시각을 가진 시험 후보 생성
@@ -94,7 +97,10 @@ def test_goal_graphic_adds_a_scope_candidate_without_a_motion_peak(tmp_path, mon
     # 관측 기록 파일에 시험 내용을 기록
     (tmp_path / "context.jsonl").write_text("")
     # 변화 정점 없이 득점 표시만 있는 진단 요약 제공
-    monkeypatch.setattr('replay_video.inspection.inspection', lambda source, output: summary)
+    monkeypatch.setattr(
+        'replay_video.infrastructure.tracking.inspection',
+        lambda source, output: summary,
+    )
     # 영상 길이와 크기 및 시간축의 시험 메타데이터 생성
     metadata = VideoMetadata(Path("source.mp4"), 40000, 960, 540, 15, 600, "h264")
     # 기존 변화 후보가 없는 입력에서 방송 표시 후보 생성

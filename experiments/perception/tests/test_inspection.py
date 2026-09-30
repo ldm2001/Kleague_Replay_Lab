@@ -1,7 +1,5 @@
 # 원본과 가중치의 해시 계산 도구 읽음
 import hashlib
-# 인식 모듈 지연 읽기 도구 읽음
-import importlib
 # 기록 직렬화와 읽기 도구 읽음
 import json
 # 격리 명령 실행 도구 읽음
@@ -9,19 +7,9 @@ import subprocess
 # 예외 기대와 반복 사례 검증 도구 읽음
 import pytest
 # 시험에 필요한 인식 구현과 자료 계약 읽음
+from replay_perception.inspection import inspection
+# 시험에 필요한 인식 구현과 자료 계약 읽음
 from replay_perception.models import Detection
-
-# 실증 처리 실행
-def run_inspection(*args, **kwargs):
-    # 실증 처리의 실패 가능 구간 처리
-    try:
-        # 검사할 처리 동작 준비
-        operation = importlib.import_module('replay_perception.inspection').inspection
-    except ModuleNotFoundError:
-        # 실증 처리의 금지 경로 실행 실패 처리
-        pytest.fail("The standalone perception inspection is not implemented")
-    # 검사할 처리 동작 반환
-    return operation(*args, **kwargs)
 
 # 시험 영상 생성
 def make_video(path):
@@ -96,7 +84,7 @@ def test_real_decode_runs_detection_tracking_and_durable_diagnostics(tmp_path):
     # 모의 검출기 생성
     model = Detector()
     # 저장된 원본 검출의 재관측 실행 결과 읽음
-    summary = run_inspection(source, output, model, max_previews=3)
+    summary = inspection(source, output, model, max_previews=3)
     # 직렬화 문자열에서 읽은 자료 읽음
     persisted = json.loads((output / "summary.json").read_text())
     # 기록 행 목록의 조건별 항목 수집
@@ -141,7 +129,7 @@ def test_inference_failure_preserves_partial_trace_and_failed_summary(tmp_path):
     # 디코더 검사용 합성 영상 실행
     make_video(source)
     # 저장된 원본 검출의 재관측 실행 결과 읽음
-    summary = run_inspection(source, output, Detector(fail_after=1))
+    summary = inspection(source, output, Detector(fail_after=1))
     # 처리 상태 값이 처리 실패 상태인지 확인
     assert summary["status"] == "FAILED"
     # 처리 실패 이유의 조건 충족 확인
@@ -162,7 +150,7 @@ def test_empty_model_output_is_not_a_no_foul_judgment(tmp_path):
     # 디코더 검사용 합성 영상 실행
     make_video(source)
     # 저장된 원본 검출의 재관측 실행 결과 읽음
-    summary = run_inspection(source, output, Detector(empty=True))
+    summary = inspection(source, output, Detector(empty=True))
     # 처리 상태 값이 처리 완료 상태인지 확인
     assert summary["status"] == "COMPLETE"
     # 규정 입력 채택 상태 값이 규정 입력에 채택하지 않은 상태인지 확인
@@ -189,7 +177,7 @@ def test_existing_output_is_not_modified_and_does_not_run_model(tmp_path):
     # 기존 파일 충돌 발생 기대
     with pytest.raises(FileExistsError):
         # 저장된 원본 검출의 재관측 실행 결과 실행
-        run_inspection(source, output, model)
+        inspection(source, output, model)
     # 호출 이력 값이 0인지 확인
     assert model.calls == 0
     # 파일에 저장한 문자열의 기대 자료 일치 확인
@@ -204,7 +192,7 @@ def test_corrupt_media_creates_failed_report_not_empty_success(tmp_path):
     # 원본 입력에 시험 바이트 기록
     source.write_bytes(b"not a video")
     # 저장된 원본 검출의 재관측 실행 결과 읽음
-    summary = run_inspection(source, output, Detector())
+    summary = inspection(source, output, Detector())
     # 처리 상태 값이 처리 실패 상태인지 확인
     assert summary["status"] == "FAILED"
     # 처리 실패 이유의 기대 자료 일치 확인
@@ -229,7 +217,7 @@ def test_existing_dangling_output_link_is_rejected_before_side_effects(tmp_path)
     # 기존 파일 충돌 발생 기대
     with pytest.raises(FileExistsError):
         # 저장된 원본 검출의 재관측 실행 결과 실행
-        run_inspection(source, link, model)
+        inspection(source, link, model)
     # 심볼릭 링크 여부의 조건 충족 확인
     assert link.is_symlink()
     # 파일 존재 여부의 부재 또는 비활성 확인

@@ -4,13 +4,18 @@ import json
 import subprocess
 from pathlib import Path
 import pytest
+import replay_video.av as evaluator
 from replay_video.av import (
     audioComparison,
     visualComparison,
     fixture,
     cueScores,
+    baselineClip,
+    synthetic,
+    decoding,
 )
 from replay_video.infrastructure.evidence import clip
+from replay_video.infrastructure.streams import ClipAudioResult
 
 # 시험용 시각 보고서 반환
 def visual_report():
@@ -247,7 +252,6 @@ def test_audio_measurement_fails_on_missing_and_misaligned_av_output(tmp_path):
 
 # 음향 없는 원본의 유효 영상과 길이 요구 확인
 def test_no_audio_source_still_requires_valid_av_video_and_duration(tmp_path):
-    from replay_video.av import baselineClip
     # 입력 영상을 시험용 기준 경로에서 구성
     source = tmp_path / "source.mkv"
     # 원점과 음향 상태를 지정한 합성 시험 영상 생성
@@ -288,15 +292,14 @@ def test_no_audio_source_still_requires_valid_av_video_and_duration(tmp_path):
 
 # 메타데이터만으로 디코딩 불가 출력의 승인 방지 확인
 def test_video_metadata_alone_cannot_validate_undecodable_output(tmp_path, monkeypatch):
-    import replay_video.av as evaluator
     # 입력 영상을 시험용 기준 경로에서 구성
     source = tmp_path / "source.mkv"
     # 원점과 음향 상태를 지정한 합성 시험 영상 생성
-    evaluator.fixture(source, video_origin=0, audio_origin=None, pulse_local=None, kind="no_audio")
+    fixture(source, video_origin=0, audio_origin=None, pulse_local=None, kind="no_audio")
     # 비교 기준 결과를 시험용 기준 경로에서 구성
     baseline = tmp_path / "baseline.mp4"
     # 정상 디코딩되는 기준 영상 클립 생성
-    evaluator.baselineClip(source, baseline, 0, 1000)
+    baselineClip(source, baseline, 0, 1000)
     # 메타데이터는 정상처럼 보일 손상 클립 경로 구성
     broken = tmp_path / "broken.mp4"
     # 디코딩 실패를 일으킬 가짜 영상 내용 기록
@@ -316,7 +319,7 @@ def test_video_metadata_alone_cannot_validate_undecodable_output(tmp_path, monke
     # 미디어 스트림 목록을 시험용 값으로 교체
     monkeypatch.setattr(evaluator, 'tracks', misleading_tracks)
     # 원본과 증거 클립의 음향 보존 및 시간 정렬 비교
-    measured = evaluator.audioComparison(source, baseline, broken, 0, 1000, expected_onset_ms=None)
+    measured = audioComparison(source, baseline, broken, 0, 1000, expected_onset_ms=None)
     # 음향 결합 영상 유효성이 거짓인지 확인
     assert measured["avValidVideo"] is False
     # 음향 결합 영상의 소리 존재 여부가 비어 있는지 확인
@@ -324,7 +327,6 @@ def test_video_metadata_alone_cannot_validate_undecodable_output(tmp_path, monke
 
 # 헤더·첫 프레임 정상이어도 꼬리 손상 영상 거부 확인
 def test_no_audio_output_with_valid_header_and_first_frame_but_corrupt_tail_is_invalid(tmp_path):
-    from replay_video.av import baselineClip
     # 입력 영상을 시험용 기준 경로에서 구성
     source = tmp_path / "source.mkv"
     # 원점과 음향 상태를 지정한 합성 시험 영상 생성
@@ -397,19 +399,16 @@ def test_no_audio_output_with_valid_header_and_first_frame_but_corrupt_tail_is_i
 
 # 정상 종료와 전체 진행 기록이 있어도 디코딩 오류가 있으면 거부
 def test_decoding_error_with_complete_progress_is_invalid(tmp_path, monkeypatch):
-    import replay_video.av as evaluator
     # 전체 길이를 처리한 것처럼 보이는 진행 기록과 오류를 함께 주입
     monkeypatch.setattr(evaluator, "process", lambda *args, **kwargs: subprocess.CompletedProcess(
         [], 0, stdout=b"frame=20\nout_time_us=1000000\nprogress=end\n",
         stderr=b"decoder reported damaged data",
     ))
     # 오류가 있는 출력을 유효한 전체 디코딩으로 채택하지 않음 확인
-    assert evaluator.decoding(tmp_path / "clip.mp4", {"index": 0}, 1000) is None
+    assert decoding(tmp_path / "clip.mp4", {"index": 0}, 1000) is None
 
 # 인코더 출력 없는 합성 무음 영상의 실패 확인
 def test_synthetic_no_audio_case_fails_if_encoder_returns_without_output(tmp_path, monkeypatch):
-    import replay_video.av as evaluator
-    from replay_video.infrastructure.streams import ClipAudioResult
     # 특정 실패 사례 이외에는 실제 클립을 만들 원래 함수 보관
     real_clip = evaluator.clip
 
@@ -425,7 +424,7 @@ def test_synthetic_no_audio_case_fails_if_encoder_returns_without_output(tmp_pat
     # 증거 생성 경로를 통제하도록 프레임·클립 처리 대역 연결
     monkeypatch.setattr(evaluator, "clip", omit_no_audio)
     # 잘못된 음향 부재 처리 대역을 포함해 합성 비교 실행
-    report = evaluator.synthetic(tmp_path / "benchmark")
+    report = synthetic(tmp_path / "benchmark")
     # 합성 신호 검사 통과 여부가 거짓인지 확인
     assert report["syntheticChecksPass"] is False
     # 음향 결합 영상 유효성이 거짓인지 확인
@@ -433,7 +432,6 @@ def test_synthetic_no_audio_case_fails_if_encoder_returns_without_output(tmp_pat
 
 # 합성 무음 트랙에 음 삽입 시 실패 확인
 def test_synthetic_silent_track_fails_if_av_output_contains_injected_tone(tmp_path, monkeypatch):
-    import replay_video.av as evaluator
     # 일부 입력 교체 이외에는 실제 클립을 만들 원래 함수 보관
     real_clip = evaluator.clip
 
@@ -451,7 +449,7 @@ def test_synthetic_silent_track_fails_if_av_output_contains_injected_tone(tmp_pa
     # 증거 생성 경로를 통제하도록 프레임·클립 처리 대역 연결
     monkeypatch.setattr(evaluator, "clip", inject_tone_into_silent_output)
     # 무음 오염을 주입한 상태로 전체 합성 비교 실행
-    report = evaluator.synthetic(tmp_path / "benchmark")
+    report = synthetic(tmp_path / "benchmark")
     # 전체 결과에서 무음 보존 사례만 선택
     silent = next(case for case in report["cases"] if case["name"] == "silent_tracked")
     # 원본에서 읽은 신호 시작 시각이 비어 있는지 확인
@@ -469,7 +467,6 @@ def test_audio_measurement_accepts_real_encoded_clip_and_independent_pcm_onset(t
     fixture(source, video_origin=5, audio_origin=5.3, pulse_local=0.1, kind="multitone")
     # 비교 기준 결과를 시험용 기준 경로에서 구성
     baseline = tmp_path / "baseline.mp4"
-    from replay_video.av import baselineClip
     # 음향 없는 기준 클립 생성
     baselineClip(source, baseline, 0, 1000)
     # 원본 음향을 포함할 비교 클립 경로 구성
@@ -495,7 +492,6 @@ def test_audio_measurement_accepts_real_encoded_clip_and_independent_pcm_onset(t
 
 # 합성 실행의 배타성과 의미 정확도 미검증 표시 확인
 def test_synthetic_run_is_exclusive_and_marks_semantic_accuracy_unproven(tmp_path):
-    from replay_video.av import synthetic
     # 출력 경로를 시험용 기준 경로에서 구성
     output = tmp_path / "benchmark"
     # 알려진 영상·음향 신호로 전체 합성 비교 보고서 생성

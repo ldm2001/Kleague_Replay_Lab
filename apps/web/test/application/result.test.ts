@@ -9,8 +9,10 @@ import {
 import { analysis as fixture } from "../fixtures/result";
 import { competitionRules } from "@replay/rule-data";
 import { scopeVerdict } from "@replay/rule-engine";
-import { knownVideoSource } from "../../src/adapters/sources";
+import { knownVideoSource } from "@replay/shared-types";
 import { automaticJudgment } from "../fixtures/automatic";
+import { publicAnalysis } from "../../src/application/use-cases/status/report";
+import { mediaSnapshot } from "../fixtures/status";
 
 // 세션 시험용 11111111 1111 4111 8111 111111111111 준비
 const SESSION = "11111111-1111-4111-8111-111111111111";
@@ -18,6 +20,9 @@ const SESSION = "11111111-1111-4111-8111-111111111111";
 const ANALYSIS = "22222222-2222-4222-8222-222222222222";
 // 현재시각 시험용 날짜 준비
 const NOW = new Date("2026-09-03T00:00:00.000Z");
+
+// 후보 없는 과거 이력 분석의 결과 원자료 모형
+const snapshot = mediaSnapshot({ status: "CANDIDATES_READY", limitations: [], candidates: [] });
 
 // 결과 화면 모형
 const view = {
@@ -29,6 +34,15 @@ const view = {
     progressPercent: 100,
     failureCode: null,
     limitations: [],
+    rule: null,
+    evaluatedCount: 0,
+    filterSummary: {
+        checkedCount: 0,
+        excludedCount: 0,
+        undeterminedCount: 0,
+        observedCount: 0,
+        applicableCount: 0
+    },
     candidates: [],
 } satisfies AnalysisView;
 
@@ -39,8 +53,8 @@ class ResultDouble implements AnalysisResultStore {
     async analysis(command: AnalysisResultCommand) {
         // 입력 조건 명령목록 추가 결과 처리 수행
         this.commands.push(command);
-        // 화면자료 반환
-        return view;
+        // 결과 원자료 반환
+        return snapshot;
     }
 }
 
@@ -81,13 +95,8 @@ describe("analysis result", () => {
                 reasons: []
             }
         };
-        // 작업 시험용 보고서 결과 준비
-        const operation = report({
-            clock: { now: () => NOW },
-            repository: { analysis: async () => internal }
-        });
-        // 작업 결과를 출력에 저장
-        const output = await operation({ anonymousSessionId: SESSION, analysisId: ANALYSIS });
+        // 공개 정책 적용 결과를 출력에 저장
+        const output = publicAnalysis(internal);
         // 출력의 결과정책 완료 및 평가완료 개수 1 및 완료 적용범위 개수 0 및 판정 상태 부분 자료의 필드 일치 확인
         expect(output).toMatchObject({
             resultPolicy: "COMPLETED_ONLY",
@@ -111,17 +120,11 @@ describe("analysis result", () => {
             { ...automatic, result: { ...automatic.result, decision: "INCONCLUSIVE" } },
             { ...automatic, result: { ...automatic.result, restart: null } }
         ]) {
-            // 보고서 결과를 결과에 저장
-            const result = await report({
-                clock: { now: () => NOW },
-                repository: {
-                    analysis: async () =>
-                        ({
-                            ...internal,
-                            candidates: [{ ...base.candidates[0]!, automaticJudgment: changed }]
-                        }) as AnalysisView
-                }
-            })({ anonymousSessionId: SESSION, analysisId: ANALYSIS });
+            // 공개 정책 적용 결과를 결과에 저장
+            const result = publicAnalysis({
+                ...internal,
+                candidates: [{ ...base.candidates[0]!, automaticJudgment: changed }]
+            } as AnalysisView);
             // 결과의 후보목록 및 평가완료 개수 0 자료의 필드 일치 확인
             expect(result).toMatchObject({ candidates: [], evaluatedCount: 0 });
         }
@@ -173,13 +176,8 @@ describe("analysis result", () => {
                 reasons: []
             }
         };
-        // 작업 시험용 보고서 결과 준비
-        const operation = report({
-            clock: { now: () => NOW },
-            repository: { analysis: async () => internal }
-        });
-        // 작업 결과를 값에 저장
-        const value = await operation({ anonymousSessionId: SESSION, analysisId: ANALYSIS });
+        // 공개 정책 적용 결과를 값에 저장
+        const value = publicAnalysis(internal);
         // 미평가 조건을 포함한 기대 결과 일치 확인
         expect(value).toMatchObject({
             resultPolicy: "COMPLETED_ONLY",
@@ -188,8 +186,8 @@ describe("analysis result", () => {
             judgmentStatus: "NOT_EVALUATED",
             candidates: [{ varScopeEvaluation: scope, judgment: null }]
         });
-        // 값 비교 조건 비교 조건의 항목 수 1 확인
-        expect(value && !("kind" in value) && value.candidates).toHaveLength(1);
+        // 값 후보목록의 항목 수 1 확인
+        expect(value.candidates).toHaveLength(1);
         // 값의 규정 항목 존재 확인
         expect(value).toHaveProperty("rule", null);
         // 내부 후보목록의 항목 수 2 확인
@@ -215,15 +213,8 @@ describe("analysis result", () => {
                     timestamps: [1000]
                 }
             };
-            // 보고서 결과를 공개값에 저장
-            const published = await report({
-                clock: { now: () => NOW },
-                repository: {
-                    analysis: async () => ({ ...internal, candidates: [mixed] }) as AnalysisView
-                }
-            })({ anonymousSessionId: SESSION, analysisId: ANALYSIS });
-            // 공개값 부정 조건 비교 조건에 따른 처리 경로 분기
-            if (!published || "kind" in published) throw new Error("missing-scope-report");
+            // 공개 정책 적용 결과를 공개값에 저장
+            const published = publicAnalysis({ ...internal, candidates: [mixed] } as AnalysisView);
             // 공개값 후보목록의 항목 수 1 확인
             expect(published.candidates).toHaveLength(1);
             // 공개값 후보목록 중 선택 항목 판정의 빈 값 확인
@@ -256,16 +247,8 @@ describe("analysis result", () => {
                 }
             }
         ]) {
-            // 보고서 결과를 결과에 저장
-            const result = await report({
-                clock: { now: () => NOW },
-                repository: {
-                    analysis: async () => ({ ...internal, candidates: [changed] }) as AnalysisView
-                }
-            })({
-                anonymousSessionId: SESSION,
-                analysisId: ANALYSIS
-            });
+            // 공개 정책 적용 결과를 결과에 저장
+            const result = publicAnalysis({ ...internal, candidates: [changed] } as AnalysisView);
             // 결과의 후보목록 및 완료 적용범위 개수 0 자료의 필드 일치 확인
             expect(result).toMatchObject({ candidates: [], completedScopeCount: 0 });
         }
@@ -292,14 +275,8 @@ describe("analysis result", () => {
         };
         // 원본 시험용 깊은복사 결과 준비
         const original = structuredClone(internal);
-        // 보고서 결과를 값에 저장
-        const value = await report({
-            clock: { now: () => NOW },
-            repository: { analysis: async () => internal }
-        })({
-            anonymousSessionId: SESSION,
-            analysisId: ANALYSIS
-        });
+        // 공개 정책 적용 결과를 값에 저장
+        const value = publicAnalysis(internal);
         // 미평가 조건을 포함한 기대 결과 일치 확인
         expect(value).toMatchObject({
             resultPolicy: "COMPLETED_ONLY",
@@ -338,14 +315,8 @@ describe("analysis result", () => {
                     reasons: []
                 }
             };
-            // 보고서 결과를 값에 저장
-            const value = await report({
-                clock: { now: () => NOW },
-                repository: { analysis: async () => internal }
-            })({
-                anonymousSessionId: SESSION,
-                analysisId: ANALYSIS
-            });
+            // 공개 정책 적용 결과를 값에 저장
+            const value = publicAnalysis(internal);
             // 미평가 조건을 포함한 기대 결과 일치 확인
             expect(value).toMatchObject({
                 resultPolicy: "COMPLETED_ONLY",
@@ -366,6 +337,25 @@ describe("analysis result", () => {
                 }
             )
         ).toBeNull();
+    });
+
+    it("re-verifies stored pipeline rows through the internal view before publishing", async () => {
+        // 원시 변화 후보만 가진 처리 산출 원자료 준비
+        const stored = mediaSnapshot({ pipelineVersion: "video-baseline-v1" });
+        // 보고서 결과를 값에 저장
+        const value = await report({
+            clock: { now: () => NOW },
+            repository: { analysis: async () => stored }
+        })({ anonymousSessionId: SESSION, analysisId: ANALYSIS });
+        // 원시 변화 후보를 공개하지 않는 완료 결과 정책 확인
+        expect(value).toMatchObject({
+            resultPolicy: "COMPLETED_ONLY",
+            candidates: [],
+            evaluatedCount: 0,
+            judgmentStatus: "NOT_EVALUATED"
+        });
+        // 값의 진단 항목 없음 확인
+        expect(value).not.toHaveProperty("diagnostics");
     });
 
     it("loads only an analysis owned by the active anonymous session", async () => {

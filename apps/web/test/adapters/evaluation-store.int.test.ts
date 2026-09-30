@@ -13,6 +13,7 @@ import {
     type RuleCitation
 } from "@replay/shared-types";
 import { context as pushContext } from "../fixtures/push-context";
+import { analysisView } from "../fixtures/status";
 
 // 데이터베이스 주소 시험용 실행환경 환경설정 데이터베이스 주소 준비
 const databaseUrl = process.env.DATABASE_URL;
@@ -478,7 +479,7 @@ describeDatabase("PostgreSQL evaluation repository", () => {
                 )
             ).toBe(true);
             // 상태 저장소 결과 분석 결과를 결과에 저장
-            const result = await statusStore(database).analysis({
+            const result = await analysisView(statusStore(database), {
                 anonymousSessionId: sessionId,
                 analysisId,
                 now: reevaluatedAt.toISOString()
@@ -633,5 +634,318 @@ describeDatabase("PostgreSQL evaluation repository", () => {
         >`select status, state_version from analyses where id = ${analysisId}`;
         // 처리 실패 내용을 포함한 기대 결과 일치 확인
         expect(analysis).toEqual({ status: "FAILED", state_version: 1 });
+    });
+
+    it("stops replaying a fact patch once its analysis and idempotency record have expired", async () => {
+        // 세션 식별자 시험용 무작위식별자 결과 준비
+        const sessionId = randomUUID();
+        // 영상 식별자 시험용 무작위식별자 결과 준비
+        const videoId = randomUUID();
+        // 분석 식별자 시험용 무작위식별자 결과 준비
+        const analysisId = randomUUID();
+        // 후보 식별자 시험용 무작위식별자 결과 준비
+        const candidateId = randomUUID();
+        // 이전 사실 식별자 시험용 무작위식별자 결과 준비
+        const factId = randomUUID();
+        // 세션목록 추가 결과 처리 수행
+        sessions.push(sessionId);
+        // 익명 세션 삽입
+        await database.sql`
+      insert into anonymous_sessions (id, token_hash, created_at, expires_at)
+      values (${sessionId}, ${Buffer.from(randomUUID())}, '2026-09-02T00:00:00.000Z', ${EXPIRES})
+    `;
+        // 영상 자산 삽입
+        await database.sql`
+      insert into video_assets (id, anonymous_session_id, object_key, content_sha256, content_type, size_bytes, status, competition, season, rights_confirmed_at, created_at, expires_at)
+      values (${videoId}, ${sessionId}, ${`tests/${videoId}.mp4`}, ${Buffer.from([5])}, 'video/mp4', 100, 'VALID', 'K리그1', '2026', '2026-09-02T00:00:00.000Z', '2026-09-02T00:00:00.000Z', ${EXPIRES})
+    `;
+        // 대회 규정 판본 조회
+        const [version] = await database.sql<{ id: string }[]>`
+      select id from competition_rule_versions
+      where competition = 'K리그1' and season = '2026' and ifab_edition = '2026-27'
+      limit 1
+    `;
+        // 멱등 기록보다 먼저 만료되는 임시 분석 삽입
+        await database.sql`
+      insert into analyses (id, anonymous_session_id, video_asset_id, status, retention_class, applied_rule_version_id, created_at, expires_at)
+      values (${analysisId}, ${sessionId}, ${videoId}, 'CANDIDATES_READY', 'TEMPORARY', ${version!.id}, '2026-09-02T00:00:00.000Z', '2026-09-03T00:00:00.000Z')
+    `;
+        // 인식 후보 사건 삽입
+        await database.sql`
+      insert into incident_candidates (id, analysis_id, candidate_index, review_scenario, start_ms, end_ms, camera_sufficiency, review_status)
+      values (${candidateId}, ${analysisId}, 1, 'PENALTY_NOT_GIVEN', 0, 1800, 'HIGH', 'CONFIRMED')
+    `;
+        // 사실 시험 입력 생성
+        const facts: EvaluationFacts = {
+            push: {
+                contactDetected: observation(false, "NORMAL", []),
+                severity: observation("CARELESS", "NORMAL", []),
+                opponentDisplacement: observation("none", "NORMAL", []),
+                insidePenaltyArea: observation(false, "NORMAL", []),
+                cameraSufficiency: "HIGH"
+            },
+            variable: {
+                reviewScenario: "PENALTY_NOT_GIVEN",
+                restartOccurred: false,
+                sendOffCategory: "NONE",
+                mistakenIdentity: false,
+                decisionNature: "SUBJECTIVE",
+                errorMagnitude: "CLEAR_AND_OBVIOUS",
+                seriousMissedIncident: false
+            },
+            observed: {
+                restartType: "PLAY_CONTINUED",
+                restartBeneficiary: "NONE",
+                card: null,
+                goalDecision: "NOT_APPLICABLE",
+                source: "USER_INPUT"
+            }
+        };
+        // 전날 같은 키로 저장한 이전 사실 판본 삽입
+        await database.sql`
+      insert into fact_revisions (id, analysis_id, incident_candidate_id, revision, facts, fact_schema_version, source, created_at)
+      values (${factId}, ${analysisId}, ${candidateId}, 1, ${JSON.stringify(facts)}::jsonb, 2, 'USER', '2026-09-02T01:00:00.000Z')
+    `;
+        // 인식 후보 사건의 현재 사실 판본 갱신
+        await database.sql`update incident_candidates set current_fact_revision_id = ${factId} where id = ${candidateId}`;
+        // 키 해시 시험용 해시 결과 준비
+        const keyHash = digest("sha256").update(`expired-${sessionId}`).digest();
+        // 요청 해시 시험용 해시 결과 준비
+        const requestHash = digest("sha256").update(JSON.stringify(facts)).digest();
+        // 한 시간 전에 만료된 같은 요청의 같은 키 기록 삽입
+        await database.sql`
+      insert into idempotency_records (anonymous_session_id, operation, key_hash, request_hash, analysis_id, incident_candidate_id, fact_revision_id, created_at, expires_at)
+      values (${sessionId}, 'PATCH_FACTS', ${keyHash}, ${requestHash}, ${analysisId}, ${candidateId}, ${factId}, '2026-09-02T01:00:00.000Z', '2026-09-03T01:00:00.000Z')
+    `;
+
+        // 만료 기록이 재생 대신 만료 분석 부재 결과로 이어지는지 확인
+        await expect(
+            repository.patch({
+                anonymousSessionId: sessionId,
+                analysisId,
+                candidateId,
+                expectedFactRevisionId: factId,
+                facts,
+                keyHash,
+                requestHash,
+                now: NOW
+            })
+        ).resolves.toEqual({ kind: "NOT_FOUND" });
+        // 같은 키 멱등 기록 개수 조회
+        const [records] = await database.sql<{ count: string }[]>`
+      select count(*)::text as count from idempotency_records
+      where anonymous_session_id = ${sessionId} and operation = 'PATCH_FACTS' and key_hash = ${keyHash}
+    `;
+        // 만료 기록이 잠금 안에서 정리됐는지 확인
+        expect(records?.count).toBe("0");
+    });
+
+    // 세션과 원본 영상과 분석이 모두 살아 있는 평가 대상 후보와 현재 사실 판본 준비
+    const liveCandidate = async () => {
+        // 세션 식별자 생성
+        const sessionId = randomUUID();
+        // 영상 식별자 생성
+        const videoId = randomUUID();
+        // 분석 식별자 생성
+        const analysisId = randomUUID();
+        // 후보 식별자 생성
+        const candidateId = randomUUID();
+        // 사실 식별자 생성
+        const factId = randomUUID();
+        // 시험 후 정리할 세션 등록
+        sessions.push(sessionId);
+        // 평가 가능한 사실 입력 생성
+        const facts: EvaluationFacts = {
+            push: {
+                contactDetected: observation(true, "NORMAL", []),
+                severity: observation("CARELESS", "NORMAL", []),
+                opponentDisplacement: observation("possible", "NORMAL", []),
+                insidePenaltyArea: observation(false, "NORMAL", []),
+                cameraSufficiency: "HIGH"
+            },
+            variable: {
+                reviewScenario: "GOAL_DISALLOWED",
+                restartOccurred: false,
+                sendOffCategory: "NONE",
+                mistakenIdentity: false,
+                decisionNature: "SUBJECTIVE",
+                errorMagnitude: "UNDETERMINED",
+                seriousMissedIncident: false
+            },
+            observed: {
+                restartType: "DIRECT_FREE_KICK",
+                restartBeneficiary: "DEFENDING_TEAM",
+                card: null,
+                goalDecision: "NO_GOAL",
+                source: "USER_INPUT"
+            }
+        };
+        // 익명 세션 삽입
+        await database.sql`
+      insert into anonymous_sessions (id, token_hash, created_at, expires_at)
+      values (${sessionId}, ${Buffer.from(randomUUID())}, '2026-09-02T00:00:00.000Z', ${EXPIRES})
+    `;
+        // 조회 시각 전에 만료 시각을 기록할 수 있도록 하루 전에 만든 원본 영상 삽입
+        await database.sql`
+      insert into video_assets (id, anonymous_session_id, object_key, content_sha256, content_type, size_bytes, status, competition, season, rights_confirmed_at, created_at, expires_at)
+      values (${videoId}, ${sessionId}, ${`tests/${videoId}.mp4`}, ${Buffer.from([6])}, 'video/mp4', 100, 'VALID', 'K리그1', '2026', '2026-09-02T00:00:00.000Z', '2026-09-02T00:00:00.000Z', ${EXPIRES})
+    `;
+        // 대회 규정 판본 조회
+        const [version] = await database.sql<{ id: string }[]>`
+      select id from competition_rule_versions
+      where competition = 'K리그1' and season = '2026' and ifab_edition = '2026-27'
+      limit 1
+    `;
+        // 자체 보존 기한이 남은 분석 삽입
+        await database.sql`
+      insert into analyses (id, anonymous_session_id, video_asset_id, status, retention_class, applied_rule_version_id, state_version, created_at, expires_at)
+      values (${analysisId}, ${sessionId}, ${videoId}, 'CANDIDATES_READY', 'TEMPORARY', ${version!.id}, 0, ${NOW}, ${EXPIRES})
+    `;
+        // 인식 후보 사건 삽입
+        await database.sql`
+      insert into incident_candidates (id, analysis_id, candidate_index, review_scenario, start_ms, end_ms, camera_sufficiency, review_status)
+      values (${candidateId}, ${analysisId}, 1, 'GOAL_DISALLOWED', 0, 1800, 'HIGH', 'CONFIRMED')
+    `;
+        // 현재 사실 판본 삽입
+        await database.sql`
+      insert into fact_revisions (id, analysis_id, incident_candidate_id, revision, facts, fact_schema_version, source, created_at)
+      values (${factId}, ${analysisId}, ${candidateId}, 1, ${JSON.stringify(facts)}::jsonb, 2, 'USER', ${NOW})
+    `;
+        // 인식 후보 사건의 현재 사실 판본 갱신
+        await database.sql`update incident_candidates set current_fact_revision_id = ${factId} where id = ${candidateId}`;
+        // 준비한 식별자와 사실 입력 반환
+        return { sessionId, videoId, analysisId, candidateId, factId, facts };
+    };
+
+    it.each([
+        ["object deletion", "object_deleted_at"],
+        ["retention expiry", "expires_at"]
+    ] as const)("refuses evaluation reads and writes after source video %s", async (_, column) => {
+        // 살아 있는 평가 대상 후보 준비
+        const { sessionId, videoId, analysisId, candidateId, factId, facts } = await liveCandidate();
+        // 원본이 살아 있는 동안의 평가 문맥 조회
+        const context = await repository.context({
+            anonymousSessionId: sessionId,
+            analysisId,
+            candidateId,
+            now: NOW
+        });
+        // 원본 생존 중 평가 문맥 준비 확인
+        expect(context.kind).toBe("READY");
+        // 평가 문맥이 없으면 이후 확인 중단
+        if (context.kind !== "READY") return;
+        // 저장 명령에 넣을 규정 평가 실행기 생성
+        const run = assessment({
+            rule: ruleSet,
+            competitionRule: competitionSet,
+            push: pushResult,
+            variable: varResult,
+            hash: async (input) => Uint8Array.from(digest("sha256").update(input).digest())
+        });
+        // 원본 생존 중 규정 평가 실행
+        const judged = await run({
+            ruleVersionId: context.value.ruleVersionId,
+            ...(context.value.competition ? { competition: context.value.competition } : {}),
+            push: facts.push,
+            variable: facts.variable,
+            observed: facts.observed,
+            options: context.value.competitionOptions
+        });
+        // 규정 평가 완료 확인
+        expect(judged.kind).toBe("EVALUATED");
+        // 평가 결과가 없으면 이후 확인 중단
+        if (judged.kind !== "EVALUATED") return;
+        // 분석 자체 기한은 남긴 채 원본 영상 객체 삭제 또는 보존 기한 종료 기록
+        await database.sql`update video_assets set ${database.sql(column)} = '2026-09-03T01:00:00.000Z' where id = ${videoId}`;
+
+        // 원본이 사라진 뒤 평가 문맥 조회 차단 확인
+        await expect(
+            repository.context({ anonymousSessionId: sessionId, analysisId, candidateId, now: NOW })
+        ).resolves.toEqual({ kind: "NOT_FOUND" });
+        // 원본이 사라진 뒤 평가 결과 저장 차단 확인
+        await expect(
+            repository.save({
+                anonymousSessionId: sessionId,
+                analysisId,
+                candidateId,
+                factRevisionId: factId,
+                ruleVersionId: context.value.ruleVersionDbId,
+                analysisStateVersion: context.value.analysisStateVersion,
+                facts,
+                evaluation: judged.value,
+                ruleEngineVersion: "rule-engine-v1",
+                evaluationSchemaVersion: 1,
+                now: NOW
+            })
+        ).resolves.toEqual({ kind: "NOT_FOUND" });
+        // 원본이 사라진 뒤 사실 수정 차단 확인
+        await expect(
+            repository.patch({
+                anonymousSessionId: sessionId,
+                analysisId,
+                candidateId,
+                expectedFactRevisionId: factId,
+                facts,
+                keyHash: digest("sha256").update(`source-${column}-${sessionId}`).digest(),
+                requestHash: digest("sha256").update(JSON.stringify(facts)).digest(),
+                now: NOW
+            })
+        ).resolves.toEqual({ kind: "NOT_FOUND" });
+        // 거부된 요청이 남긴 사실 판본과 판정 및 멱등 기록 개수와 분석 상태 조회
+        const [written] = await database.sql<
+            { facts: number; decisions: number; records: number; state_version: number }[]
+        >`
+      select
+        (select count(*)::int from fact_revisions where incident_candidate_id = ${candidateId}) as facts,
+        (select count(*)::int from decision_results where analysis_id = ${analysisId}) as decisions,
+        (select count(*)::int from idempotency_records where anonymous_session_id = ${sessionId}) as records,
+        (select state_version from analyses where id = ${analysisId}) as state_version
+    `;
+        // 거부된 요청이 어떤 행도 추가하거나 분석 상태를 바꾸지 않았는지 확인
+        expect(written).toEqual({ facts: 1, decisions: 0, records: 0, state_version: 0 });
+    });
+
+    it("replays a fact patch only while its analysis stays visible", async () => {
+        // 살아 있는 평가 대상 후보 준비
+        const { sessionId, videoId, analysisId, candidateId, factId, facts } = await liveCandidate();
+        // 같은 키와 같은 내용으로 반복할 사실 수정 요청 구성
+        const command = {
+            anonymousSessionId: sessionId,
+            analysisId,
+            candidateId,
+            expectedFactRevisionId: factId,
+            facts,
+            keyHash: digest("sha256").update(`visible-${sessionId}`).digest(),
+            requestHash: digest("sha256").update(JSON.stringify(facts)).digest(),
+            now: NOW
+        };
+        // 첫 사실 수정 결과 조회
+        const created = await repository.patch(command);
+        // 새 사실 판본 생성 확인
+        expect(created).toMatchObject({ kind: "CREATED", revision: 2 });
+        // 생성 실패 시 이후 확인 중단
+        if (created.kind !== "CREATED") return;
+        // 원본이 살아 있는 동안 같은 요청의 재생 확인
+        await expect(repository.patch(command)).resolves.toEqual({
+            kind: "REPLAYED",
+            factRevisionId: created.factRevisionId,
+            revision: 2
+        });
+        // 분석 기한과 멱등 기록 기한은 남긴 채 원본 영상 객체 삭제 기록
+        await database.sql`update video_assets set object_deleted_at = ${NOW} where id = ${videoId}`;
+        // 원본이 사라진 분석의 사실 판본은 같은 요청으로도 재생하지 않음 확인
+        await expect(repository.patch(command)).resolves.toEqual({ kind: "NOT_FOUND" });
+        // 같은 키의 다른 요청은 여전히 재사용 충돌로 거부 확인
+        await expect(
+            repository.patch({ ...command, requestHash: digest("sha256").update("other").digest() })
+        ).resolves.toEqual({ kind: "IDEMPOTENCY_KEY_REUSED" });
+        // 사실 판본과 멱등 기록 개수 조회
+        const [written] = await database.sql<{ facts: number; records: number }[]>`
+      select
+        (select count(*)::int from fact_revisions where incident_candidate_id = ${candidateId}) as facts,
+        (select count(*)::int from idempotency_records where anonymous_session_id = ${sessionId}) as records
+    `;
+        // 재생 거부가 사실 판본과 멱등 기록을 추가하거나 지우지 않았는지 확인
+        expect(written).toEqual({ facts: 2, records: 1 });
     });
 });

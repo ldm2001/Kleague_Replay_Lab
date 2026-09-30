@@ -325,8 +325,52 @@ describeDatabase("PostgreSQL submit-analysis repository", () => {
         expect(await counts(seed)).toEqual({ analyses: 1, jobs: 1, idempotency: 1 });
     });
 
+    it("caps the analysis retention at the source video expiry", async () => {
+        // 요청 보존 기한보다 먼저 끝나는 원본 영상 기한 준비
+        const videoExpiresAt = "2030-01-01T18:00:00.000Z";
+        // 요청 기한보다 짧게 남은 원본 영상 시나리오 구성
+        const seed = await seedScenario({ videoExpiresAt });
+        // 분석 생성 요청 결과 조회
+        const result = await repository.submission(request(seed));
+        // 분석 생성 성공 확인
+        expect(result.kind).toBe("CREATED");
+        // 생성 실패 시 이후 확인 중단
+        if (result.kind !== "CREATED") return;
+        // 저장된 분석 보존 기한 조회
+        const [analysis] = await database.sql<{ expires_at: string }[]>`
+      select expires_at from analyses where id = ${result.analysisId}
+    `;
+        // 분석이 원본 영상보다 오래 남지 않도록 영상 기한으로 제한됐는지 확인
+        expect(new Date(analysis!.expires_at).toISOString()).toBe(videoExpiresAt);
+    });
+
+    it("stops replaying a submission once its source video object is deleted", async () => {
+        // 기초자료 결과를 기초자료에 저장
+        const seed = await seedScenario();
+        // 같은 키와 같은 내용의 요청 구성
+        const command = request(seed);
+        // 첫 분석 생성 결과 조회
+        const created = await repository.submission(command);
+        // 첫 요청 생성 성공 확인
+        expect(created.kind).toBe("CREATED");
+        // 원본 영상 객체 삭제 기록
+        await database.sql`
+      update video_assets set object_deleted_at = '2030-01-01T11:00:00.000Z' where id = ${seed.videoId}
+    `;
+        // 원본이 사라진 분석은 같은 요청으로도 재생하지 않고 원본 사용 불가 반환 확인
+        await expect(repository.submission(command)).resolves.toEqual({
+            kind: "VIDEO_ASSET_UNAVAILABLE"
+        });
+        // 같은 키의 다른 요청은 여전히 재사용 충돌로 거부 확인
+        await expect(
+            repository.submission({ ...command, requestHash: Uint8Array.from([8, 7, 6, 5]) })
+        ).resolves.toEqual({ kind: "IDEMPOTENCY_KEY_REUSED" });
+        // 거부된 재요청이 분석과 작업 및 멱등 기록을 추가하지 않았는지 확인
+        expect(await counts(seed)).toEqual({ analyses: 1, jobs: 1, idempotency: 1 });
+    });
+
     it("returns VIDEO_ASSET_UNAVAILABLE for invalid session or video ownership state", async () => {
-        // 무효 시험용 6개 항목 목록 준비
+        // 무효 시험용 7개 항목 목록 준비
         const invalidStates: Array<{
             name: string;
             overrides: Parameters<typeof seedScenario>[0];
@@ -343,7 +387,8 @@ describeDatabase("PostgreSQL submit-analysis repository", () => {
             { name: "rejected video", overrides: { videoStatus: "REJECTED" } },
             { name: "expired video", overrides: { videoExpiresAt: "2030-01-01T11:59:59.000Z" } },
             { name: "deleted object", overrides: { objectDeletedAt: "2030-01-01T11:00:00.000Z" } },
-            { name: "unconfirmed rights", overrides: { rightsConfirmedAt: null } }
+            { name: "unconfirmed rights", overrides: { rightsConfirmedAt: null } },
+            { name: "unbounded video", overrides: { videoExpiresAt: null } }
         ];
 
         // 무효 항목목록 결과의 각 사례 순회

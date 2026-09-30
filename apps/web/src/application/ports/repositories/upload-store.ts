@@ -81,6 +81,7 @@ export type CompletionCommand = Readonly<{
 // 업로드 완료 결과
 export type UploadCompletionResult =
     | Readonly<{ kind: "COMPLETED"; videoAssetId: string }>
+    | Readonly<{ kind: "REPLAYED"; videoAssetId: string }>
     | Readonly<{ kind: "UPLOAD_ALREADY_COMPLETED" }>
     | Readonly<{ kind: "UPLOAD_NOT_FOUND" }>
     | Readonly<{ kind: "UPLOAD_NOT_READY" }>
@@ -95,6 +96,13 @@ export type UploadCompletionStore = Readonly<{
         // 업로드 허가 기록의 식별자
         uploadIntentId: string;
     }>) => Promise<UploadIntentRecord | null>;
+    // 완료된 업로드의 기존 영상 식별자를 찾는 기능
+    replay: (input: Readonly<{
+        // 업로드 소유자를 구별하는 익명 세션 식별자
+        anonymousSessionId: string;
+        // 업로드 허가 기록의 식별자
+        uploadIntentId: string;
+    }>) => Promise<string | null>;
     // 업로드 완료와 후속 영상 검증 연결
     complete: (command: CompletionCommand) => Promise<UploadCompletionResult>;
 }>;

@@ -1,7 +1,5 @@
 # 원본과 가중치의 해시 계산 도구 읽음
 import hashlib
-# 인식 모듈 지연 읽기 도구 읽음
-import importlib
 # 기록 직렬화와 읽기 도구 읽음
 import json
 # 시험 파일 경로 도구 읽음
@@ -12,6 +10,8 @@ import shutil
 import subprocess
 # 예외 기대와 반복 사례 검증 도구 읽음
 import pytest
+# 시험에 필요한 인식 구현과 자료 계약 읽음
+from replay_perception import observer
 # 시험에 필요한 인식 구현과 자료 계약 읽음
 from replay_perception.media import VideoReader
 # 시험에 필요한 인식 구현과 자료 계약 읽음
@@ -29,11 +29,6 @@ PEOPLE = (
     # 사람 후보의 상자와 점수 지정
     Detection(2, "person", (120, 20, 180, 150), 0.9, "0:0:person:2"),
 )
-
-# 인터페이스 반환
-def api():
-    # 검사할 인식 구현 모듈 반환
-    return importlib.import_module('replay_perception.observer')
 
 # 대상 자세 관측 생성
 def pose_for(person):
@@ -213,7 +208,9 @@ def test_real_decode_to_derivative_report_keeps_raw_detections_and_separate_refe
     # 파일의 원래 바이트 자료 읽음
     upstream_before = (upstream / "frames.jsonl").read_bytes()
     # 단일 프레임의 관측 결과 생성
-    summary = api().observation(source, upstream, output, RoleModel(), PoseModel(), max_previews=3)
+    summary = observer.observation(
+        source, upstream, output, RoleModel(), PoseModel(), max_previews=3
+    )
     # 실행 요약의 기대 자료 일치 확인
     assert summary == read_summary(output)
     # 처리 상태 값이 처리 완료 상태인지 확인
@@ -268,7 +265,7 @@ def test_empty_roles_are_not_no_foul_and_do_not_run_pose_model(inputs):
     # 고정 관절 좌표를 반환할 모의 자세 모델 생성
     pose = PoseModel()
     # 단일 프레임의 관측 결과 생성
-    result = api().observation(source, upstream, output, RoleModel(empty=True), pose)
+    result = observer.observation(source, upstream, output, RoleModel(empty=True), pose)
     # 처리 상태 값이 처리 완료 상태인지 확인
     assert result["status"] == "COMPLETE"
     # 후보 개수 값이 0인지 확인
@@ -297,7 +294,7 @@ def test_existing_output_is_rejected_before_inference(inputs):
     # 기존 파일 충돌 발생 기대
     with pytest.raises(FileExistsError):
         # 단일 프레임의 관측 결과 실행
-        api().observation(source, upstream, output, role, PoseModel())
+        observer.observation(source, upstream, output, role, PoseModel())
     # 호출 이력 값이 0인지 확인
     assert role.calls == 0
     # 파일에 저장한 문자열의 기대 자료 일치 확인
@@ -314,7 +311,7 @@ def test_dangling_output_symlink_is_not_followed(inputs):
     # 기존 파일 충돌 발생 기대
     with pytest.raises(FileExistsError):
         # 단일 프레임의 관측 결과 실행
-        api().observation(source, upstream, output, RoleModel(), PoseModel())
+        observer.observation(source, upstream, output, RoleModel(), PoseModel())
     # 심볼릭 링크 여부의 조건 충족 확인
     assert output.is_symlink()
     # 파일 존재 여부의 부재 또는 비활성 확인
@@ -330,7 +327,7 @@ def test_model_failure_records_partial_work_not_complete(inputs, failed_stage):
     # 고정 관절 좌표를 반환할 모의 자세 모델 생성
     pose = PoseModel(fail_on=2 if failed_stage == "pose" else None)
     # 단일 프레임의 관측 결과 생성
-    result = api().observation(source, upstream, output, role, pose)
+    result = observer.observation(source, upstream, output, role, pose)
     # 처리 상태 값이 처리 실패 상태인지 확인
     assert result["status"] == "FAILED"
     # 처리 실패 이유의 기대 자료 일치 확인
@@ -349,7 +346,7 @@ def test_failed_pose_batch_keeps_attempted_people_separate_from_valid_outputs(in
     # 원본 입력과 상위 실행 기록 준비
     source, upstream, output = inputs
     # 단일 프레임의 관측 결과 생성
-    result = api().observation(source, upstream, output, RoleModel(), PoseModel(fail_on=2))
+    result = observer.observation(source, upstream, output, RoleModel(), PoseModel(fail_on=2))
     # 처리 상태 값이 처리 실패 상태인지 확인
     assert result["status"] == "FAILED"
     # 자세 추론 시도한 사람 수 값이 4인지 확인
@@ -362,7 +359,7 @@ def test_missing_pose_output_fails_instead_of_silently_omitting_person(inputs):
     # 원본 입력과 상위 실행 기록 준비
     source, upstream, output = inputs
     # 단일 프레임의 관측 결과 생성
-    result = api().observation(source, upstream, output, RoleModel(), PoseModel(missing=True))
+    result = observer.observation(source, upstream, output, RoleModel(), PoseModel(missing=True))
     # 처리 상태 값이 처리 실패 상태인지 확인
     assert result["status"] == "FAILED"
     # 처리 실패 이유의 기대 자료 일치 확인
@@ -383,7 +380,7 @@ def test_input_change_during_model_execution_prevents_complete_summary(inputs):
             source.touch()
 
     # 단일 프레임의 관측 결과 생성
-    result = api().observation(
+    result = observer.observation(
         source, upstream, output, RoleModel(effect=touch_source), PoseModel()
     )
     # 처리 상태 값이 처리 실패 상태인지 확인
@@ -398,11 +395,11 @@ def test_runtime_budget_is_checked_before_model_execution(inputs, monkeypatch):
     # 원본 입력과 상위 실행 기록 준비
     source, upstream, output = inputs
     # 모델 실행 전 시간 예산 점검 의존성의 시험 대역 주입
-    monkeypatch.setattr(api(), "MAX_RUNTIME_SECONDS", 0)
+    monkeypatch.setattr(observer, "MAX_RUNTIME_SECONDS", 0)
     # 고정 역할을 반환할 모의 역할 모델 생성
     role = RoleModel()
     # 단일 프레임의 관측 결과 생성
-    result = api().observation(source, upstream, output, role, PoseModel())
+    result = observer.observation(source, upstream, output, role, PoseModel())
     # 처리 상태 값이 처리 실패 상태인지 확인
     assert result["status"] == "FAILED"
     # 처리 실패 이유의 기대 자료 일치 확인
@@ -415,9 +412,9 @@ def test_sample_budget_keeps_valid_written_prefix(inputs, monkeypatch):
     # 원본 입력과 상위 실행 기록 준비
     source, upstream, output = inputs
     # 표본 예산 소진 시 유효한 기록 앞부분 보존 의존성의 시험 대역 주입
-    monkeypatch.setattr(api(), "MAX_PROCESSED_FRAMES", 1)
+    monkeypatch.setattr(observer, "MAX_PROCESSED_FRAMES", 1)
     # 단일 프레임의 관측 결과 생성
-    result = api().observation(source, upstream, output, RoleModel(), PoseModel())
+    result = observer.observation(source, upstream, output, RoleModel(), PoseModel())
     # 처리 상태 값이 처리 실패 상태인지 확인
     assert result["status"] == "FAILED"
     # 처리 실패 이유의 기대 자료 일치 확인
@@ -436,7 +433,7 @@ def test_progress_failure_keeps_already_recorded_frame_count(inputs):
         raise ValueError("TEST_PROGRESS_FAILED")
 
     # 단일 프레임의 관측 결과 생성
-    result = api().observation(
+    result = observer.observation(
         source, upstream, output, RoleModel(), PoseModel(), progress=fail_progress
     )
     # 처리 상태 값이 처리 실패 상태인지 확인
@@ -455,7 +452,7 @@ def test_renamed_original_is_accepted_using_content_and_pts(inputs):
     # 이름을 바꾼 시험 파일 실행
     source.rename(renamed)
     # 단일 프레임의 관측 결과 생성
-    result = api().observation(renamed, upstream, output, RoleModel(), PoseModel())
+    result = observer.observation(renamed, upstream, output, RoleModel(), PoseModel())
     # 처리 상태 값이 처리 완료 상태인지 확인
     assert result["status"] == "COMPLETE"
     # 파일 경로의 기대 자료 일치 확인

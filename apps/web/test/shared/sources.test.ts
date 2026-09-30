@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { knownVideoSource } from "../../src/adapters/sources";
+import { knownVideoSource } from "../../src/shared/sources";
 
 // 원본 시험용 지정 문자열 준비
 const SOURCE = "2242f5fc1b0e61e7b6ef9e184aab7ef4ff3dc13bfc9e03f9a16ab0e015b00857";

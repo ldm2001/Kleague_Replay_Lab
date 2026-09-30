@@ -2,7 +2,6 @@
 
 // 화면 구성에 필요한 기능과 공유 자료 형식 읽음
 import * as React from "react";
-import { useRef, useState } from "react";
 
 // 검토 범위 카드 한 건의 읽기 전용 자료 형식 정의
 export type CaseItem = Readonly<{
@@ -22,9 +21,9 @@ type Props = Readonly<{ items: readonly CaseItem[] }>;
 // 검토 범위 슬라이더
 export function CaseSlider({ items }: Props) {
     // 현재 이동 위치
-    const [index, setIndex] = useState(0);
+    const [index, setIndex] = React.useState(0);
     // 목록 참조
-    const list = useRef<HTMLDivElement>(null);
+    const list = React.useRef<HTMLDivElement>(null);
 
     // 목록 이동
     const slide = (direction: -1 | 1) => {

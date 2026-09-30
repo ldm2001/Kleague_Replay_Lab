@@ -6,6 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 import pytest
+from replay_video.validation import evaluate
 
 
 # 검증 모듈의 구현 존재 확인
@@ -38,7 +39,6 @@ def dataset(cases=None):
 
 # 검증 실행 함수 연결
 def report(data):
-    from replay_video.validation import evaluate
     return evaluate(data)
 
 

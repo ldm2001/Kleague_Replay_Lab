@@ -4,6 +4,8 @@ import math
 import numpy as np
 # 예외 기대와 반복 사례 검증 도구 읽음
 import pytest
+# 외부 추적기와 주고받을 검출 배열 규격 읽음
+import supervision as sv
 # 시험에 필요한 인식 구현과 자료 계약 읽음
 from replay_perception.models import Detection
 # 시험에 필요한 인식 구현과 자료 계약 읽음
@@ -236,9 +238,6 @@ class AlteredBoxTracker:
 
     # 모의 갱신 결과 반환
     def update(self, detections, *, timestamp):
-        # 시험에 필요한 검증 도구와 의존성 읽음
-        import supervision as sv
-
         # 검출 목록의 개수의 비교 결과별 분기
         if len(detections) == 0:
             # 빈 모의 출력 배열 반환
@@ -273,9 +272,6 @@ class UnknownSourceTracker:
 
     # 모의 갱신 결과 반환
     def update(self, detections, *, timestamp):
-        # 시험에 필요한 검증 도구와 의존성 읽음
-        import supervision as sv
-
         # 추적기에 전달할 검출 배열 반환
         return sv.Detections(
             xyxy=np.array([[1, 1, 2, 2]], dtype=float),
@@ -303,9 +299,6 @@ class MissingSourceTracker:
 
     # 모의 갱신 결과 반환
     def update(self, detections, *, timestamp):
-        # 시험에 필요한 검증 도구와 의존성 읽음
-        import supervision as sv
-
         # 추적기에 전달할 검출 배열 반환
         return sv.Detections(
             xyxy=detections.xyxy.copy(),
@@ -332,9 +325,6 @@ class OmittedDetectionTracker:
 
     # 모의 갱신 결과 반환
     def update(self, detections, *, timestamp):
-        # 시험에 필요한 검증 도구와 의존성 읽음
-        import supervision as sv
-
         # 빈 모의 출력 배열 반환
         return sv.Detections.empty()
 
@@ -357,9 +347,6 @@ class DuplicateTrackerIdentifier:
 
     # 모의 갱신 결과 반환
     def update(self, detections, *, timestamp):
-        # 시험에 필요한 검증 도구와 의존성 읽음
-        import supervision as sv
-
         # 검출 목록의 개수의 비교 결과별 분기
         if len(detections) == 0:
             # 빈 모의 출력 배열 반환

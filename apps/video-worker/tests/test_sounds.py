@@ -1,15 +1,11 @@
 from dataclasses import replace
 import hashlib
-import importlib
 import subprocess
 import pytest
 from replay_video.domain.models import Candidate, Evidence
 from replay_video.infrastructure.audio import AudioCue, AudioScan, AudioScanStatus, audioCues
-
-# 시험용 호출 규약 반환
-def api():
-    # 원본 결합 음향 관측 구현을 지연 로드하여 반환
-    return importlib.import_module('replay_video.infrastructure.sounds')
+from replay_video.infrastructure.sounds import association, observations
+from test_audio import run_ffmpeg
 
 # 탐색 모형
 def scan(status=AudioScanStatus.COMPLETE):
@@ -34,7 +30,7 @@ def test_source_bound_audio_keeps_original_offset_without_applying_it_twice(tmp_
     # 입력 영상에 시험 내용을 기록
     source.write_bytes(b"source")
     # 영상 원본 지문과 결합한 음향 관측 정보 생성
-    result = api().observations(source, duration_ms=10000, scan=lambda *a, **kw: scan())
+    result = observations(source, duration_ms=10000, scan=lambda *a, **kw: scan())
     # 관측 결과 목록을 후속 비교에 사용할 값으로 보관
     audio = result["observations"]
     # 원본 파일 지문이 예상 계약과 일치하는지 확인
@@ -72,7 +68,7 @@ def test_audio_scan_source_mutation_cannot_be_linked_to_visual_scan(tmp_path):
     # 음향 탐색 중 원본 변경 시 시각 연결 차단을 위한 예상 예외 확인
     with pytest.raises(ValueError, match="AUDIO_SOURCE_CHANGED"):
         # 영상 원본 지문과 결합한 음향 관측 정보 생성
-        api().observations(source, duration_ms=10000, scan=changed)
+        observations(source, duration_ms=10000, scan=changed)
 
 # 완전 무음과 음향 부재 구분 확인
 def test_complete_silence_and_missing_audio_remain_different(tmp_path):
@@ -81,7 +77,7 @@ def test_complete_silence_and_missing_audio_remain_different(tmp_path):
     # 입력 영상에 시험 내용을 기록
     source.write_bytes(b"source")
     # 소리 트랙은 있지만 단서가 없는 완료 관측 생성
-    silent = api().observations(
+    silent = observations(
         source, duration_ms=10000, scan=lambda *a, **kw: replace(scan(), cues=())
     )["observations"]
     # 소리 트랙 자체가 없는 탐색 대역 생성
@@ -89,7 +85,7 @@ def test_complete_silence_and_missing_audio_remain_different(tmp_path):
         AudioScanStatus.ABSENT, "AUDIO_STREAM_ABSENT", (), None, None, None, None, None, None, 0
     )
     # 음향 부재 상태의 관측 결과만 추출
-    missing = api().observations(source, duration_ms=10000, scan=lambda *a, **kw: absent)[
+    missing = observations(source, duration_ms=10000, scan=lambda *a, **kw: absent)[
         "observations"
     ]
     # 무음 트랙은 단서가 영 개인 정상 완료로 남는지 확인
@@ -108,7 +104,7 @@ def test_audio_raw_scan_is_not_truncated_before_diagnostic_writer(tmp_path):
     # 고정 개수보다 많은 단서를 만들어 전체 구간 보존 시험
     many = tuple(AudioCue(i * 300, i * 300 + 200, (3700., 4100.), 2) for i in range(300))
     # 관측 결과 목록을 후속 비교에 사용할 값으로 보관
-    result = api().observations(
+    result = observations(
         source, duration_ms=100000, scan=lambda *a, **kw: replace(scan(), cues=many)
     )["observations"]
     # 음향 단서 수가 관측 단서 목록의 개수와 일치하는지 확인
@@ -125,7 +121,7 @@ def test_association_is_pure_temporal_and_requires_same_candidate_covering_clip(
     # 입력 영상에 시험 내용을 기록
     source.write_bytes(b"source")
     # 관측 결과 목록을 후속 비교에 사용할 값으로 보관
-    audio = api().observations(source, duration_ms=10000, scan=lambda *a, **kw: scan())[
+    audio = observations(source, duration_ms=10000, scan=lambda *a, **kw: scan())[
         "observations"
     ]
     # 변화 후보 목록을 비교에 사용할 고정 시험 자료로 구성
@@ -138,7 +134,7 @@ def test_association_is_pure_temporal_and_requires_same_candidate_covering_clip(
         Evidence(7, "CLIP", tmp_path / "d.mp4", 1300, 1000, 2000, audio_status="PRESERVED"),
     )
     # 후보와 소리 포함 증거의 겹치는 시간 구간 연결
-    linked = api().association(audio, candidates, evidence)
+    linked = association(audio, candidates, evidence)
     # 음향과 증거의 시간 연결 목록이 예상 계약과 일치하는지 확인
     assert linked["associations"] == [{"cueId": audio["cues"][0]["id"], "candidateIndex": 7,
                                       "evidenceIndices": [3], "relation": "TEMPORAL_OVERLAP_ONLY"}]
@@ -147,13 +143,13 @@ def test_association_is_pure_temporal_and_requires_same_candidate_covering_clip(
     # 후보 범주가 예상 계약과 일치하는지 확인
     assert candidates[0].category == "OTHER"
     # 음향과 증거의 시간 연결 목록이 빈 값으로 유지되는지 확인
-    assert api().association(audio, candidates, evidence[:3])["associations"] == []
+    assert association(audio, candidates, evidence[:3])["associations"] == []
     # 소리 미보존과 미지원 및 디코딩 실패 상태를 각각 시험
     for status in (None, "ABSENT", "OMITTED_UNSUPPORTED", "OMITTED_DECODE_FAILED"):
         # 음향이 없는 증거 묶음을 비교에 사용할 고정 시험 자료로 구성
         without_audio = (replace(evidence[3], audio_status=status),)
         # 음향과 증거의 시간 연결 목록이 빈 값으로 유지되는지 확인
-        assert api().association(audio, candidates, without_audio)["associations"] == []
+        assert association(audio, candidates, without_audio)["associations"] == []
 
 # 음향 취소의 디코딩 실패 변환 금지 확인
 def test_audio_cancellation_is_not_rewritten_as_decode_failure(tmp_path):
@@ -178,7 +174,7 @@ def test_association_caps_and_input_immutability(tmp_path):
     # 입력 영상에 시험 내용을 기록
     source.write_bytes(b"source")
     # 관측 결과 목록을 후속 비교에 사용할 값으로 보관
-    audio = api().observations(source, duration_ms=10000, scan=lambda *a, **kw: scan())[
+    audio = observations(source, duration_ms=10000, scan=lambda *a, **kw: scan())[
         "observations"
     ]
     # 관측 단서 목록의 선택 항목 목록을 후속 비교에 사용할 값으로 보관
@@ -204,7 +200,7 @@ def test_association_caps_and_input_immutability(tmp_path):
         for index in range(17)
     )
     # 후보와 소리 포함 증거의 겹치는 시간 구간 연결
-    linked = api().association(audio, candidates, evidence)
+    linked = association(audio, candidates, evidence)
     # 음향과 증거의 시간 연결 목록의 개수가 512과 일치하는지 확인
     assert len(linked["associations"]) == 512
     # 각 연결의 증거 번호 목록도 열여섯 개 상한을 지키는지 확인
@@ -220,7 +216,6 @@ def test_association_caps_and_input_immutability(tmp_path):
 
 # 원시 음향 디코딩 중 취소 시 디코더 종료 확인
 def test_cancellation_during_pcm_decode_terminates_decoder(tmp_path, monkeypatch):
-    from test_audio import run_ffmpeg
     # 입력 영상을 시험용 기준 경로에서 구성
     source = tmp_path / "source.mkv"
     # 외부 미디어 도구로 합성 시험 파일 생성
@@ -239,8 +234,6 @@ def test_cancellation_during_pcm_decode_terminates_decoder(tmp_path, monkeypatch
         "pcm_s16le",
         str(source),
     )
-    # 디코더 생성 함수를 교체할 음향 구현 모듈 읽음
-    module = importlib.import_module("replay_video.infrastructure.audio")
     # 생성 이력 기록 후 실제 디코더를 실행할 원래 함수 보관
     spawn = subprocess.Popen
     # 생성한 디코더 프로세스 목록을 누적할 빈 자료 구조 준비
@@ -255,7 +248,7 @@ def test_cancellation_during_pcm_decode_terminates_decoder(tmp_path, monkeypatch
         # 디코더 프로세스를 호출자에게 반환
         return process
     # 디코더 실행을 유지하면서 프로세스 이력만 수집하는 대역 연결
-    monkeypatch.setattr(module.subprocess, "Popen", recording)
+    monkeypatch.setattr("replay_video.infrastructure.audio.subprocess.Popen", recording)
     # 취소 확인 횟수를 시험 조건에 맞춰 고정
     checks = 0
 
@@ -278,7 +271,6 @@ def test_cancellation_during_pcm_decode_terminates_decoder(tmp_path, monkeypatch
 
 # 손상 음향 패킷의 탐색 완료 오인 방지 확인
 def test_damaged_audio_packets_cannot_be_reported_as_complete_scan(tmp_path):
-    from test_audio import run_ffmpeg
     # 입력 영상 · 손상시킨 시험 영상을 비교에 사용할 고정 시험 자료로 구성
     source, damaged = tmp_path / "source.mkv", tmp_path / "damaged.mkv"
     # 외부 미디어 도구로 합성 시험 파일 생성

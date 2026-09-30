@@ -16,6 +16,8 @@ from replay_perception.overlay import preview
 from replay_perception.observations import KEYPOINT_NAMES, Keypoint, PoseObservation, RoleHypothesis
 # 시험에 필요한 인식 구현과 자료 계약 읽음
 from replay_perception.frames import RecordedFrame
+# 시험에 필요한 인식 구현과 자료 계약 읽음
+from replay_perception.journal import ObservationReport
 
 # 프레임 생성
 def _frame(index: int = 0, *, width: int = 200, height: int = 120) -> RecordedFrame:
@@ -332,9 +334,6 @@ def test_preview_omits_not_raised_clutter_but_keeps_actionable_raw_arm_states(mo
 
 # 24개 상한 내 첫·중간·마지막 미리보기 선택 확인
 def test_preview_selection_is_bounded_at_24_and_spans_first_interior_last(tmp_path):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception.journal import ObservationReport
-
     # 원본 입력 준비
     source = tmp_path / "source"
     # 원본 입력에 시험 바이트 기록

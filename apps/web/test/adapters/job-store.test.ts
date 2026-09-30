@@ -16,13 +16,15 @@ import {
     avPerceptionPayload,
     perceptionPayload
 } from "../fixtures/perception";
+import { liveness, livenessQuery } from "../fixtures/liveness";
 
-// 명령 시험 입력으로 작업자 식별자 작업자 1 및 작업 유형 영상 및 현재시각 2026 08 00 00 및 임대 종료시각 2026 08 00 30 자료 생성
+// 명령 시험 입력으로 작업자 식별자 작업자 1 및 작업 유형 영상 및 현재시각 2026 08 00 00 및 임대 종료시각 2026 08 00 30 및 임대 토큰 해시 자료 생성
 const command: JobClaimCommand = {
     workerId: "worker-1",
     jobType: "ANALYZE_VIDEO",
     now: "2026-08-29T00:00:00.000Z",
     leaseUntil: "2026-08-29T00:00:30.000Z",
+    leaseTokenHash: Uint8Array.from([7, 8, 9]),
 };
 
 // 진행률 시험 입력으로 작업 식별자 11111111 1111 4111 8111 111111111111 및 작업자 식별자 작업자 1 및 작업 개정번호 2 및 임대 토큰 해시 자료 생성
@@ -86,6 +88,9 @@ describe("JobStore", () => {
             const writes: string[] = [];
             // 전송자료 시험 입력으로 기존 항목 및 근거 자료 생성
             const payload = { ...perceptionPayload(), evidence: [] };
+            // 보존 기한 시험용 만료 필드에 따른 원본 만료 시각 준비
+            const retention =
+                expiredField === "retention" ? "2030-01-01T00:00:10.000Z" : "2030-01-01T01:00:00.000Z";
             // 저장소 시험용 작업 저장소 준비
             const repository = new JobStore(
                 {
@@ -122,14 +127,15 @@ describe("JobStore", () => {
                                                         PERCEPTION_SOURCE_SHA256,
                                                         "hex"
                                                     ),
-                                                    expires_at:
-                                                        expiredField === "retention"
-                                                            ? "2030-01-01T00:00:10.000Z"
-                                                            : "2030-01-01T01:00:00.000Z",
+                                                    expires_at: retention,
                                                     match_id: "match",
                                                     applied_rule_version_id: "rule"
                                                 }
                                             ];
+                                        // 잠금 이후 생존 조건 질의에 보존 기한 비교 결과 응답
+                                        if (livenessQuery(query))
+                                            // 기준 시각과 보존 기한의 비교 결과 반환
+                                            return liveness(query, PERCEPTION_JOB_ID, retention);
                                         // 질의 질의 포함여부 결과에 따른 처리 경로 분기
                                         if (query.sql.includes("for share of rule")) {
                                             // 시점 비교 조건에 따른 처리 경로 분기
@@ -221,6 +227,8 @@ describe("JobStore", () => {
             expect(writes).toEqual([]);
             // 시험자료의 기대값 시점 비교 조건 일치 확인
             expect(rolledBack).toBe(expireAt === "last-write");
+            // 거부가 생존 조건 통과 후 지정한 만료 시점에서 발생했음 확인
+            expect(expired).toBe(true);
         }
     );
     it("stores v2 audio only in the private perception summary envelope", async () => {
@@ -264,6 +272,14 @@ describe("JobStore", () => {
                                             expires_at: "2030-01-01T00:00:00.000Z"
                                         }
                                     ];
+                                // 잠금 이후 생존 조건 질의에 보존 기한 비교 결과 응답
+                                if (livenessQuery(query))
+                                    // 기준 시각과 보존 기한의 비교 결과 반환
+                                    return liveness(
+                                        query,
+                                        PERCEPTION_JOB_ID,
+                                        "2030-01-01T00:00:00.000Z"
+                                    );
                                 // 질의 질의 포함여부 결과 비교 조건에 따른 처리 경로 분기
                                 if (
                                     query.sql.includes("select id") &&
@@ -344,8 +360,14 @@ describe("JobStore", () => {
                 transaction: async (operation: (tx: unknown) => unknown) =>
                     operation({
                         execute: async (statement: SQL) => {
+                            // 질의 시험용 의존성 모의객체 질의 질의 결과 준비
+                            const query = new PgDialect().sqlToQuery(statement);
                             // 질의목록 추가 결과 처리 수행
-                            queries.push(new PgDialect().sqlToQuery(statement));
+                            queries.push(query);
+                            // 잠금 이후 생존 조건 질의에 보존 기한 비교 결과 응답
+                            if (livenessQuery(query))
+                                // 기준 시각과 보존 기한의 비교 결과 반환
+                                return liveness(query, result.jobId, "2030-01-01T00:00:00Z");
                             // 입력 조건 반환
                             return queries.length === 1
                                 ? [
@@ -438,8 +460,14 @@ describe("JobStore", () => {
                 transaction: async (operation: (tx: unknown) => unknown) =>
                     operation({
                         execute: async (statement: SQL) => {
+                            // 질의 시험용 의존성 모의객체 질의 질의 결과 준비
+                            const query = new PgDialect().sqlToQuery(statement);
                             // 질의목록 추가 결과 처리 수행
-                            queries.push(new PgDialect().sqlToQuery(statement).sql);
+                            queries.push(query.sql);
+                            // 잠금 이후 생존 조건 질의에 보존 기한 비교 결과 응답
+                            if (livenessQuery(query))
+                                // 기준 시각과 보존 기한의 비교 결과 반환
+                                return liveness(query, result.jobId, "2030-01-01T00:00:00Z");
                             // 입력 조건 반환
                             return queries.length === 1
                                 ? [
@@ -481,24 +509,36 @@ describe("JobStore", () => {
         // 갱신의 완료 시점 미포함 확인
         expect(update).not.toContain("completed_at = null");
     });
-    it("maps a claimed row and returns an opaque lease token", async () => {
+    it("maps a claimed row and stores only the given lease token hash", async () => {
+        // 질의목록 시험용 0개 항목 목록 준비
+        const queries: ReturnType<PgDialect["sqlToQuery"]>[] = [];
         // 저장소 시험용 작업 저장소 준비
         const repository = new JobStore({
-            db: database([
-                {
-                    id: "11111111-1111-4111-8111-111111111111",
-                    job_type: "ANALYZE_VIDEO",
-                    payload_version: 1,
-                    job_revision: 2,
-                    attempt: 1,
-                    stage: "SEGMENTING",
-                    progress_percent: 0,
-                    lease_until: command.leaseUntil,
-                    analysis_id: "22222222-2222-4222-8222-222222222222",
-                    video_asset_id: "33333333-3333-4333-8333-333333333333",
-                    object_key: "uploads/video.mp4"
-                }
-            ])
+            db: {
+                transaction: async (operation: (tx: unknown) => unknown) =>
+                    operation({
+                        execute: async (statement: SQL) => {
+                            // 질의목록 추가 결과 처리 수행
+                            queries.push(new PgDialect().sqlToQuery(statement));
+                            // 선점된 작업 행 반환
+                            return [
+                                {
+                                    id: "11111111-1111-4111-8111-111111111111",
+                                    job_type: "ANALYZE_VIDEO",
+                                    payload_version: 1,
+                                    job_revision: 2,
+                                    attempt: 1,
+                                    stage: "SEGMENTING",
+                                    progress_percent: 0,
+                                    lease_until: command.leaseUntil,
+                                    analysis_id: "22222222-2222-4222-8222-222222222222",
+                                    video_asset_id: "33333333-3333-4333-8333-333333333333",
+                                    object_key: "uploads/video.mp4"
+                                }
+                            ];
+                        }
+                    })
+            }
         } as never);
 
         // 저장소 작업선점 결과를 결과에 저장
@@ -513,8 +553,10 @@ describe("JobStore", () => {
             leaseUntil: command.leaseUntil,
             objectKey: "uploads/video.mp4"
         });
-        // 결과 임대 토큰의 지정 패턴 일치 확인
-        expect(result?.leaseToken).toMatch(/^[A-Za-z0-9_-]{40,}$/);
+        // 저장소가 원문 임대 토큰을 만들거나 돌려주지 않음 확인
+        expect(result).not.toHaveProperty("leaseToken");
+        // 선점 갱신 문장이 받은 해시 바이트를 그대로 저장함 확인
+        expect(queries[2]?.params).toContainEqual(Buffer.from(command.leaseTokenHash));
     });
 
     it("returns null when the queue has no eligible row", async () => {
@@ -523,6 +565,38 @@ describe("JobStore", () => {
 
         // 저장소 작업선점 결과의 빈 값 확인
         await expect(repository.claim(command)).resolves.toBeNull();
+    });
+
+    it("closes exhausted and unrecoverable jobs before leasing only a live target", async () => {
+        // 질의목록 시험용 0개 항목 목록 준비
+        const queries: ReturnType<PgDialect["sqlToQuery"]>[] = [];
+        // 저장소 시험용 작업 저장소 준비
+        const repository = new JobStore({
+            db: {
+                transaction: async (operation: (tx: unknown) => unknown) =>
+                    operation({
+                        execute: async (statement: SQL) => {
+                            // 질의목록 추가 결과 처리 수행
+                            queries.push(new PgDialect().sqlToQuery(statement));
+                            // 선점 가능한 작업 없음 반환
+                            return [];
+                        }
+                    })
+            }
+        } as never);
+
+        // 선점 대상이 없으면 빈 값 확인
+        await expect(repository.claim(command)).resolves.toBeNull();
+        // 마지막 시도에서 만료된 작업의 시간 초과 종료가 먼저 실행됨 확인
+        expect(queries[0]?.params).toContain("WORKER_TIMEOUT");
+        // 되살릴 수 없는 작업이 생존 조건의 부정으로 선택되어 원본 사용 불가로 종료됨 확인
+        expect(queries[1]?.sql).toContain("and not (case job.job_type");
+        // 원본 사용 불가 종료 사유 전달 확인
+        expect(queries[1]?.params).toContain("SOURCE_UNAVAILABLE");
+        // 선점 대상 선택이 생존 조건을 요구하고 잠긴 행을 건너뜀 확인
+        expect(queries[2]?.sql).toMatch(/and \(case job\.job_type[\s\S]*for update skip locked/);
+        // 선점 대상이 없으면 선점 이벤트를 기록하지 않음 확인
+        expect(queries).toHaveLength(3);
     });
 
     it("maps a progress update returned by the transaction", async () => {
@@ -565,9 +639,18 @@ describe("JobStore", () => {
     });
 
     it("maps authorized analysis evidence access", async () => {
+        // 질의목록 시험용 0개 항목 목록 준비
+        const queries: ReturnType<PgDialect["sqlToQuery"]>[] = [];
         // 저장소 시험용 작업 저장소 준비
         const repository = new JobStore({
-            db: { execute: async () => [{ analysis_id: "22222222-2222-4222-8222-222222222222" }] }
+            db: {
+                execute: async (statement: SQL) => {
+                    // 질의목록 추가 결과 처리 수행
+                    queries.push(new PgDialect().sqlToQuery(statement));
+                    // 보존 규칙 안의 임대 작업 행 반환
+                    return [{ analysis_id: "22222222-2222-4222-8222-222222222222", live: true }];
+                }
+            }
         } as never);
 
         // 저장소 결과의 종류 지정 문자열 및 분석 식별자 22222222 2222 4222 8222 222222222222 자료 기준 구조 일치 확인
@@ -575,6 +658,22 @@ describe("JobStore", () => {
             kind: "AUTHORIZED",
             analysisId: "22222222-2222-4222-8222-222222222222"
         });
+        // 접근 권한 질의가 작업 대상 생존 조건을 함께 평가함 확인
+        expect(queries[0]?.sql).toContain("case job.job_type");
+    });
+
+    it("refuses evidence access when the leased target left retention", async () => {
+        // 저장소 시험용 작업 저장소 준비
+        const repository = new JobStore({
+            db: {
+                execute: async () => [
+                    { analysis_id: "22222222-2222-4222-8222-222222222222", live: false }
+                ]
+            }
+        } as never);
+
+        // 임대가 유효해도 보존 규칙을 벗어난 원본은 증거 권한 대신 원본 사용 불가 확인
+        await expect(repository.access(access)).resolves.toEqual({ kind: "SOURCE_UNAVAILABLE" });
     });
 
     it("preflights the active lease with authoritative and copied source hashes without locking", async () => {
@@ -598,7 +697,8 @@ describe("JobStore", () => {
                             match_id: "33333333-3333-4333-8333-333333333333",
                             ifab_edition: "2026-27",
                             rule_version_id: "44444444-4444-4444-8444-444444444444",
-                            verification_status: "VERIFIED"
+                            verification_status: "VERIFIED",
+                            live: true
                         }
                     ];
                 }
@@ -627,6 +727,43 @@ describe("JobStore", () => {
         expect(queries[0]?.sql).toContain("join video_assets");
         // 질의목록 중 선택 항목 질의의 갱신 미포함 확인
         expect(queries[0]?.sql).not.toContain("for update");
+        // 사전 검사 질의가 작업 대상 생존 조건을 함께 평가함 확인
+        expect(queries[0]?.sql).toContain("case job.job_type");
+    });
+
+    it("rejects preflight before heavy checks when the leased target left retention", async () => {
+        // 질의목록 시험용 0개 항목 목록 준비
+        const queries: string[] = [];
+        // 저장소 시험용 작업 저장소 준비
+        const repository = new JobStore({
+            db: {
+                execute: async (statement: SQL) => {
+                    // 질의목록 추가 결과 처리 수행
+                    queries.push(new PgDialect().sqlToQuery(statement).sql);
+                    // 보존 규칙을 벗어난 임대 작업 행 반환
+                    return [
+                        {
+                            analysis_id: PERCEPTION_ANALYSIS_ID,
+                            content_sha256: Buffer.from(PERCEPTION_SOURCE_SHA256, "hex"),
+                            source_fingerprint: Buffer.from(PERCEPTION_SOURCE_SHA256, "hex"),
+                            expires_at: "2026-09-04T00:00:00.000Z",
+                            match_id: null,
+                            ifab_edition: null,
+                            rule_version_id: null,
+                            verification_status: null,
+                            live: false
+                        }
+                    ];
+                }
+            }
+        } as never);
+
+        // 임대가 유효해도 보존 규칙을 벗어난 원본은 원본 거부 확인
+        await expect(
+            repository.preflight({ ...access, jobId: PERCEPTION_JOB_ID })
+        ).resolves.toEqual({ kind: "INVALID_RESULT", reason: "SOURCE" });
+        // 원본 거부 뒤 문맥 연결이나 상태 조회 질의 없음 확인
+        expect(queries).toHaveLength(1);
     });
 
     it("keeps a VERIFIED edition unverified when the analysis has no verified match context", async () => {
@@ -642,7 +779,8 @@ describe("JobStore", () => {
                         match_id: null,
                         ifab_edition: "2026-27",
                         rule_version_id: "44444444-4444-4444-8444-444444444444",
-                        verification_status: "VERIFIED"
+                        verification_status: "VERIFIED",
+                        live: true
                     }
                 ]
             }
@@ -713,6 +851,14 @@ describe("JobStore", () => {
                                             expires_at: "2026-09-04T00:00:00.000Z"
                                         }
                                     ];
+                                // 잠금 이후 생존 조건 질의에 보존 기한 비교 결과 응답
+                                if (livenessQuery(query))
+                                    // 기준 시각과 보존 기한의 비교 결과 반환
+                                    return liveness(
+                                        query,
+                                        PERCEPTION_JOB_ID,
+                                        "2026-09-04T00:00:00.000Z"
+                                    );
                                 // 질의 질의 포함여부 결과 비교 조건에 따른 처리 경로 분기
                                 if (
                                     query.sql.includes("select id") &&
@@ -774,6 +920,14 @@ describe("JobStore", () => {
                             const query = new PgDialect().sqlToQuery(statement);
                             // 질의목록 추가 결과 처리 수행
                             queries.push(query.sql);
+                            // 잠금 이후 생존 조건 질의에 보존 기한 비교 결과 응답
+                            if (livenessQuery(query))
+                                // 기준 시각과 보존 기한의 비교 결과 반환
+                                return liveness(
+                                    query,
+                                    PERCEPTION_JOB_ID,
+                                    "2026-09-04T00:00:00.000Z"
+                                );
                             // 1개 항목 목록 반환
                             return [
                                 {
@@ -811,8 +965,8 @@ describe("JobStore", () => {
                 }
             })
         ).resolves.toEqual({ kind: "INVALID_RESULT", reason: "SOURCE" });
-        // 질의목록의 항목 수 1 확인
-        expect(queries).toHaveLength(1);
+        // 잠금과 생존 조건 질의만 실행되고 원본 해시 불일치로 쓰기 전에 거부됨 확인
+        expect(queries.map((sql) => livenessQuery({ sql }))).toEqual([false, true]);
     });
 
     it.each([
@@ -820,21 +974,29 @@ describe("JobStore", () => {
             name: "lease expired while waiting",
             leaseUntil: "2026-09-03T00:00:00.030Z",
             expiresAt: "2026-09-03T00:00:01.000Z",
+            liveAt: null,
             expected: { kind: "STALE_LEASE" }
         },
         {
             name: "retention expired while waiting",
             leaseUntil: "2026-09-03T00:00:01.000Z",
             expiresAt: "2026-09-03T00:00:00.030Z",
+            liveAt: "2026-09-03T00:00:00.080Z",
             expected: { kind: "INVALID_RESULT", reason: "SOURCE" }
         },
         {
             name: "lease and retention remain active",
             leaseUntil: "2026-09-03T00:00:01.000Z",
             expiresAt: "2026-09-03T00:00:02.000Z",
+            liveAt: "2026-09-03T00:00:00.080Z",
             expected: { kind: "ACCEPTED" }
         }
-    ])("uses fresh post-lock wall time when $name", async ({ leaseUntil, expiresAt, expected }) => {
+    ])("uses fresh post-lock wall time when $name", async ({
+        leaseUntil,
+        expiresAt,
+        liveAt,
+        expected
+    }) => {
         // 질의목록 시험용 0개 항목 목록 준비
         const queries: ReturnType<PgDialect["sqlToQuery"]>[] = [];
         // 반환여부 시험용 거짓 준비
@@ -882,6 +1044,10 @@ describe("JobStore", () => {
                                         }
                                     ];
                                 }
+                                // 잠금 이후 생존 조건 질의에 보존 기한 비교 결과 응답
+                                if (livenessQuery(query))
+                                    // 기준 시각과 보존 기한의 비교 결과 반환
+                                    return liveness(query, PERCEPTION_JOB_ID, expiresAt);
                                 // 질의 질의 포함여부 결과 비교 조건에 따른 처리 경로 분기
                                 if (
                                     query.sql.includes("select id") &&
@@ -920,6 +1086,8 @@ describe("JobStore", () => {
 
         // 값의 기대값 기준 구조 일치 확인
         expect(value).toEqual(expected);
+        // 생존 조건 질의가 잠금 이후 벽시계로 평가되거나 임대 만료로 실행되지 않음 확인
+        expect(queries.find(livenessQuery)?.params[0] ?? null).toBe(liveAt);
         // 값 종류 비교 조건에 따른 처리 경로 분기
         if (value.kind === "ACCEPTED") {
             // 완료처리 시험용 질의목록 조회 결과 준비
@@ -927,8 +1095,8 @@ describe("JobStore", () => {
             // 완료처리 인자목록의 2026 09 00 00 포함 확인
             expect(completion?.params).toContain("2026-09-03T00:00:00.080Z");
         } else {
-            // 질의목록의 항목 수 1 확인
-            expect(queries).toHaveLength(1);
+            // 거부 결과는 잠금과 필요한 생존 조건 질의만 실행하고 쓰기 없음 확인
+            expect(queries).toHaveLength(liveAt ? 2 : 1);
         }
     });
 

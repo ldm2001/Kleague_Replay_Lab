@@ -2,26 +2,21 @@
 import gzip
 # 원본과 가중치의 해시 계산 도구 읽음
 import hashlib
-# 인식 모듈 지연 읽기 도구 읽음
-import importlib
 # 기록 직렬화와 읽기 도구 읽음
 import json
 # 시험에 필요한 검증 도구와 의존성 읽음
 import random
 # 예외 기대와 반복 사례 검증 도구 읽음
 import pytest
-
-# 인터페이스 반환
-def api():
-    # 검사할 인식 구현 모듈 반환
-    return importlib.import_module('replay_perception.artifact')
+# 시험에 필요한 인식 구현과 자료 계약 읽음
+from replay_perception import artifact
 
 # 스트리밍 행 자료의 정확한 해시와 로컬 파일명 없는 왕복 확인
 def test_streamed_jsonl_roundtrips_with_exact_digest_and_no_local_filename(tmp_path):
     # 파일 경로 준비
     path = tmp_path / "perception.jsonl.gz"
     # 내부 진단을 저장할 기록기의 사용 구간 시작
-    with api().DiagnosticArtifact(path) as writer:
+    with artifact.DiagnosticArtifact(path) as writer:
         # 보고서 기록기에 현재 관측 추가
         writer.append({"kind": "HEADER", "sourceSha256": "a" * 64})
         # 보고서 기록기에 현재 관측 추가
@@ -44,13 +39,13 @@ def test_streamed_jsonl_roundtrips_with_exact_digest_and_no_local_filename(tmp_p
 # 원시 크기 초과 시 행 전체 거부와 유효한 부분 압축 보존 확인
 def test_raw_limit_rejects_whole_record_and_preserves_valid_partial_gzip(tmp_path, monkeypatch):
     # 원시 크기 초과 시 행 전체 거부와 유효한 부분 압축 보존 의존성의 시험 대역 주입
-    monkeypatch.setattr(api(), "MAX_RAW_BYTES", 100)
+    monkeypatch.setattr(artifact, "MAX_RAW_BYTES", 100)
     # 파일 경로 준비
     path = tmp_path / "perception.jsonl.gz"
     # 입력값 오류 발생 기대
     with pytest.raises(ValueError, match="DIAGNOSTIC_RAW_LIMIT"):
         # 내부 진단을 저장할 기록기의 사용 구간 시작
-        with api().DiagnosticArtifact(path) as writer:
+        with artifact.DiagnosticArtifact(path) as writer:
             # 보고서 기록기에 현재 관측 추가
             writer.append({"kind": "HEADER"})
             # 보고서 기록기에 현재 관측 추가
@@ -63,13 +58,13 @@ def test_raw_limit_rejects_whole_record_and_preserves_valid_partial_gzip(tmp_pat
 # 압축 크기 제한 시 읽을 수 있는 앞부분 보존 확인
 def test_compressed_limit_never_leaves_an_unreadable_prefix(tmp_path, monkeypatch):
     # 압축 크기 제한 시 읽을 수 있는 앞부분 보존 의존성의 시험 대역 주입
-    monkeypatch.setattr(api(), "MAX_COMPRESSED_BYTES", 300)
+    monkeypatch.setattr(artifact, "MAX_COMPRESSED_BYTES", 300)
     # 파일 경로 준비
     path = tmp_path / "perception.jsonl.gz"
     # 입력값 오류 발생 기대
     with pytest.raises(ValueError, match="DIAGNOSTIC_COMPRESSED_LIMIT"):
         # 내부 진단을 저장할 기록기의 사용 구간 시작
-        with api().DiagnosticArtifact(path) as writer:
+        with artifact.DiagnosticArtifact(path) as writer:
             # 보고서 기록기에 현재 관측 추가
             writer.append({"kind": "HEADER"})
             # 보고서 기록기에 현재 관측 추가
@@ -86,7 +81,7 @@ def test_failure_keeps_completed_records_and_does_not_mask_primary_error(tmp_pat
     # 실행 실패 발생 기대
     with pytest.raises(RuntimeError, match="INFERENCE_FAILED"):
         # 내부 진단을 저장할 기록기의 사용 구간 시작
-        with api().DiagnosticArtifact(path) as writer:
+        with artifact.DiagnosticArtifact(path) as writer:
             # 보고서 기록기에 현재 관측 추가
             writer.append({"kind": "HEADER"})
             # 실패 시 완료 행과 주 오류 보존의 예외 상황 재현
@@ -97,7 +92,7 @@ def test_failure_keeps_completed_records_and_does_not_mask_primary_error(tmp_pat
 # 스트림 변경 전 비유한 행 거부 확인
 def test_nonfinite_record_rejected_before_mutating_stream(tmp_path):
     # 내부 진단을 저장할 기록기의 사용 구간 시작
-    with api().DiagnosticArtifact(tmp_path / "perception.jsonl.gz") as writer:
+    with artifact.DiagnosticArtifact(tmp_path / "perception.jsonl.gz") as writer:
         # 입력값 오류 발생 기대
         with pytest.raises(ValueError):
             # 보고서 기록기에 현재 관측 추가
@@ -119,7 +114,7 @@ def test_existing_output_and_repository_output_are_rejected(tmp_path):
     # 기존 파일 충돌 발생 기대
     with pytest.raises(FileExistsError):
         # 내부 진단을 저장할 기록기의 사용 구간 시작
-        with api().DiagnosticArtifact(existing):
+        with artifact.DiagnosticArtifact(existing):
             # 추가 동작 없는 모의 구현 유지
             pass
     # 파일의 원래 바이트 자료의 기대 자료 일치 확인
@@ -129,14 +124,14 @@ def test_existing_output_and_repository_output_are_rejected(tmp_path):
     # 출력 계약 오류 발생 기대
     with pytest.raises(ValueError, match="OUTPUT_INSIDE_GIT_WORKTREE"):
         # 내부 진단을 저장할 기록기의 사용 구간 시작
-        with api().DiagnosticArtifact(tmp_path / "new.jsonl.gz"):
+        with artifact.DiagnosticArtifact(tmp_path / "new.jsonl.gz"):
             # 추가 동작 없는 모의 구현 유지
             pass
 
 # 마감 후 추가와 마감 전 메타데이터 읽기 거부 확인
 def test_cannot_append_after_finalization_or_read_metadata_before_it(tmp_path):
     # 내부 진단을 저장할 기록기의 사용 구간 시작
-    with api().DiagnosticArtifact(tmp_path / "perception.jsonl.gz") as writer:
+    with artifact.DiagnosticArtifact(tmp_path / "perception.jsonl.gz") as writer:
         # 실행 실패 발생 기대
         with pytest.raises(RuntimeError, match="DIAGNOSTIC_NOT_FINALIZED"):
             # 시험 영상 메타데이터 실행
@@ -153,7 +148,7 @@ def test_finalization_and_close_failures_do_not_replace_primary_inference_failur
     # 실행 실패 발생 기대
     with pytest.raises(RuntimeError, match="INFERENCE_FAILED"):
         # 내부 진단을 저장할 기록기의 사용 구간 시작
-        with api().DiagnosticArtifact(tmp_path / "perception.jsonl.gz") as writer:
+        with artifact.DiagnosticArtifact(tmp_path / "perception.jsonl.gz") as writer:
             # 보고서 기록기에 현재 관측 추가
             writer.append({"kind": "HEADER"})
             # 변경 전 자료 준비

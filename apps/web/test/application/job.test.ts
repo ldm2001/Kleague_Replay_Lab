@@ -13,8 +13,8 @@ import {
     result,
     ObjectLimitError,
     type Clock,
-    type JobClaim,
     type JobClaimCommand,
+    type JobLease,
     type JobProgress,
     type JobProgressCommand,
     type JobProgressStore,
@@ -43,7 +43,7 @@ const clock: Clock = { now: () => NOW };
 // 작업 선점 저장소 모형
 class JobStoreFake implements JobStore {
     readonly commands: JobClaimCommand[] = [];
-    result: JobClaim | null = {
+    result: JobLease | null = {
         jobId: "11111111-1111-4111-8111-111111111111",
         jobType: "ANALYZE_VIDEO",
         payloadVersion: 1,
@@ -51,7 +51,6 @@ class JobStoreFake implements JobStore {
     attempt: 1,
     stage: "SEGMENTING",
     progressPercent: 0,
-        leaseToken: "lease-token",
         leaseUntil: "2026-08-29T00:00:30.000Z",
         analysisId: "22222222-2222-4222-8222-222222222222",
         videoAssetId: "33333333-3333-4333-8333-333333333333",
@@ -59,7 +58,7 @@ class JobStoreFake implements JobStore {
     };
 
     // 검증용 선점 구성
-    async claim(command: JobClaimCommand): Promise<JobClaim | null> {
+    async claim(command: JobClaimCommand): Promise<JobLease | null> {
         // 입력 조건 명령목록 추가 결과 처리 수행
         this.commands.push(command);
         // 입력 조건 결과 반환
@@ -71,10 +70,22 @@ describe("claim", () => {
     it("creates a bounded lease command for a supported job type", async () => {
         // 지원 작업 선점 실행
         const repository = new JobStoreFake();
+        // 해시 계산기에 넘긴 원문 토큰 기록 목록 준비
+        const hashed: string[] = [];
         // 작업선점 결과를 결과에 저장
         const result = await claim({
             clock,
+            hasher: {
+                // 입력 토큰을 기록하고 고정 해시 반환
+                sha256: async (value) => {
+                    // 해시 입력 토큰 기록
+                    hashed.push(value);
+                    // 고정 해시 바이트 반환
+                    return Uint8Array.from([4, 5, 6]);
+                }
+            },
             repository,
+            secret: { token: () => "lease-token" },
             leaseMs: 30_000,
             source: { read: async () => "http://minio.test/source" }
         })({
@@ -82,17 +93,55 @@ describe("claim", () => {
             jobType: "ANALYZE_VIDEO"
         });
 
-        // 결과의 기존 항목 및 출처주소 원본 자료 기준 구조 일치 확인
-        expect(result).toEqual({ ...repository.result, sourceUrl: "http://minio.test/source" });
-        // 저장소 명령목록의 1개 항목 목록 기준 구조 일치 확인
+        // 결과의 기존 항목 및 원문 토큰과 출처주소 원본 자료 기준 구조 일치 확인
+        expect(result).toEqual({
+            ...repository.result,
+            leaseToken: "lease-token",
+            sourceUrl: "http://minio.test/source"
+        });
+        // 결과 제출 검사와 같은 해시 계산기에 발급 토큰을 넘겼는지 확인
+        expect(hashed).toEqual(["lease-token"]);
+        // 저장소에는 원문 토큰 없이 해시만 전달했는지 확인
         expect(repository.commands).toEqual([
             {
                 workerId: "video-worker-1",
                 jobType: "ANALYZE_VIDEO",
                 now: "2026-08-29T00:00:00.000Z",
-                leaseUntil: "2026-08-29T00:00:30.000Z"
+                leaseUntil: "2026-08-29T00:00:30.000Z",
+                leaseTokenHash: Uint8Array.from([4, 5, 6])
             }
         ]);
+    });
+
+    it("returns no claim without reading the source when nothing is claimable", async () => {
+        // 선점할 작업이 없는 저장소 모형 준비
+        const repository = new JobStoreFake();
+        // 선점 결과 없음 설정
+        repository.result = null;
+        // 원본 주소 발급 호출 기록 목록 준비
+        const reads: string[] = [];
+        // 작업 선점 결과 조회
+        const result = await claim({
+            clock,
+            hasher: { sha256: async () => Uint8Array.from([4, 5, 6]) },
+            repository,
+            secret: { token: () => "lease-token" },
+            leaseMs: 30_000,
+            source: {
+                // 원본 주소 발급 요청 기록
+                read: async (key) => {
+                    // 발급 요청 객체 경로 기록
+                    reads.push(key);
+                    // 시험용 원본 주소 반환
+                    return "http://minio.test/source";
+                }
+            }
+        })({ workerId: "video-worker-1", jobType: "ANALYZE_VIDEO" });
+
+        // 선점 결과 없음 확인
+        expect(result).toBeNull();
+        // 원본 주소를 발급하지 않았는지 확인
+        expect(reads).toEqual([]);
     });
 
     it("rejects an unsupported worker or job type before the repository", async () => {
@@ -101,7 +150,9 @@ describe("claim", () => {
         // 작업 시험용 작업선점 결과 준비
         const operation = claim({
             clock,
+            hasher: { sha256: async () => Uint8Array.from([4, 5, 6]) },
             repository,
+            secret: { token: () => "lease-token" },
             leaseMs: 30_000,
             source: { read: async () => "http://minio.test/source" }
         });

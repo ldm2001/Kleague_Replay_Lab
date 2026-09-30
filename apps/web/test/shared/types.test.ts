@@ -1,13 +1,14 @@
 // 공용 타입 테스트
 import { describe, expect, expectTypeOf, it } from "vitest";
-import type {
-    EvaluationResult,
-    Observed,
-    RuleCitation,
-    VarAssessment,
-    VarOutcome
+import {
+    failure,
+    observation,
+    type EvaluationResult,
+    type Observed,
+    type RuleCitation,
+    type VarAssessment,
+    type VarOutcome
 } from "@replay/shared-types";
-import { failure, observation } from "@replay/shared-types";
 
 // 인용 시험 입력으로 규정 식별자 2025 26 조항 12 1 및 규정 개정번호 1 및 규정 내용 해시 및 권한 지정 문자열 자료 생성
 const citation: RuleCitation = {

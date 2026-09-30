@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 import { statusStore } from "@replay/adapters";
 import { client } from "@replay/database";
+import { statusView } from "../fixtures/status";
 
 // 별도 시험 데이터베이스에서 처리 중 분석 상태의 조회 시점 파생 확인
 describe.skipIf(!process.env.DATABASE_URL)("처리 중 분석 상태", () => {
@@ -59,7 +60,11 @@ describe.skipIf(!process.env.DATABASE_URL)("처리 중 분석 상태", () => {
         async (state, expected) => {
             await job(state);
             // 소유자 상태 조회의 분석 상태가 작업 단계를 따르는지 확인
-            const view = await status.status({ anonymousSessionId: session, videoAssetId: video, now });
+            const view = await statusView(status, {
+                anonymousSessionId: session,
+                videoAssetId: video,
+                now
+            });
             expect(view?.analysis?.status).toBe(expected);
             // 저장된 분석 기록은 최종 전이 전까지 대기 상태로 유지되는지 확인
             const [row] = await database.sql<{ status: string }[]>`select status from analyses where id = ${analysis}`;

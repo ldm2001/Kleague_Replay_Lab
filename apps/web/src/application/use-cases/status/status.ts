@@ -4,6 +4,8 @@ import type { Clock } from "../../ports/clock/clock";
 import type { MediaStatusStore, MediaView } from "../../ports/repositories/status-store";
 // 현재 모듈에서 사용하는 외부 기능과 자료 계약 가져옴
 import { publicAnalysis } from "./report";
+// 조회 원자료의 내부 화면 모델 구성 기능 가져옴
+import { mediaView } from "./view";
 
 // 외부 식별자의 고유 식별자 형식 검사 패턴 생성
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -42,7 +44,7 @@ export const status =
         // 업로드된 원본 영상 기록의 식별자의 대소문자 차이 제거
         const videoAssetId = input.videoAssetId.toLowerCase();
         // 상태 저장소 호출
-        const result = await repository.status({
+        const snapshot = await repository.status({
             // 업로드 소유자를 구별하는 익명 세션 식별자
             anonymousSessionId,
             // 업로드된 원본 영상 기록의 식별자
@@ -50,6 +52,10 @@ export const status =
             // 유효 기한 판단에 사용하는 현재 시각
             now: clock.now().toISOString(),
         });
+        // 소유한 유효 영상이 없으면 빈 결과 반환
+        if (!snapshot) return null;
+        // 한 스냅숏의 원자료를 규정 필터와 자동 평가 재검증에 대조
+        const result = mediaView(snapshot);
         // 연결된 분석은 완료 공개 정책을 적용한 뒤 상태 자료 반환
-        return result?.analysis ? { ...result, analysis: publicAnalysis(result.analysis) } : result;
+        return result.analysis ? { ...result, analysis: publicAnalysis(result.analysis) } : result;
     };

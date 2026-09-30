@@ -1,6 +1,5 @@
 // 규정 게이트 테스트
-import type { PushFacts } from "@replay/shared-types";
-import { observation } from "@replay/shared-types";
+import { observation, type PushFacts } from "@replay/shared-types";
 import { ruleSet } from "@replay/rule-data";
 import { describe, expect, it } from "vitest";
 import { pushGates, discipline } from "@replay/rule-engine";

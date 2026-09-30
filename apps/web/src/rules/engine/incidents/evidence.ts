@@ -1,14 +1,13 @@
 // 식별자와 해시 생성 도구 가져오기
 import { createHash } from "node:crypto";
-// 사건 관측 자료형 가져오기
-import type {
-    IncidentAction,
-    IncidentAssertion,
-    IncidentEvidence,
-    IncidentRecordV1
-} from "../../../shared/incident";
-// 사건 구조 검증 기능 가져오기
-import { incidentRecordData } from "../../../shared/incident-schema";
+// 사건 관측 자료형과 구조 검증 기능 가져오기
+import {
+    incidentRecordData,
+    type IncidentAction,
+    type IncidentAssertion,
+    type IncidentEvidence,
+    type IncidentRecordV1
+} from "@replay/shared-types";
 
 // 작업자 관측 기록과 분리된 서버 소유 승인 정보이며 신뢰도에서 승인 추정 금지
 export interface IncidentAdmission {

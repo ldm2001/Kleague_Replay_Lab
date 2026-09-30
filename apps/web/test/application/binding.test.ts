@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { automaticJudgments, validAutomaticBatch } from "../../src/adapters/binding";
+import { automaticJudgments, validAutomaticBatch } from "../../src/application/use-cases/evaluation/binding";
 import type { AutomaticReviewBatch } from "../../src/shared/review";
 import { judgment } from "../fixtures/result";
 

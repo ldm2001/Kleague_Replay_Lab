@@ -2,21 +2,16 @@
 from dataclasses import replace
 # 원본 시간축의 정확한 분수 도구 읽음
 from fractions import Fraction
-# 인식 모듈 지연 읽기 도구 읽음
-import importlib
 # 예외 기대와 반복 사례 검증 도구 읽음
 import pytest
+# 시험에 필요한 인식 구현과 자료 계약 읽음
+from replay_perception.incidents import IncidentLinker, InteractionTracker
 # 시험에 필요한 인식 구현과 자료 계약 읽음
 from replay_perception.models import Detection
 # 시험에 필요한 인식 구현과 자료 계약 읽음
 from replay_perception.observations import RoleHypothesis
 # 시험에 필요한 검증 도구와 의존성 읽음
 from test_objects import scene
-
-# 인터페이스 반환
-def api():
-    # 검사할 인식 구현 모듈 반환
-    return importlib.import_module('replay_perception.incidents')
 
 # 상호작용 프레임 생성
 def interaction_frame(ms=0, *, continuity=0, separate=False, second_role="player"):
@@ -74,7 +69,7 @@ def official(ms=300, *, continuity=0, x=240., signal="RAISED_ARM"):
 # 겹친 선수의 접촉 대신 영상 근접 유지 확인
 def test_overlapping_players_remain_image_proximity_not_contact():
     # 화면 연속성을 관리할 선수 근접 추적기 생성
-    tracker = api().InteractionTracker()
+    tracker = InteractionTracker()
     # 선수 근접 조건을 반영한 프레임과 역할 생성
     frame, roles = interaction_frame()
     # 현재 입력을 반영한 누적 관측 생성
@@ -99,12 +94,12 @@ def test_overlapping_players_remain_image_proximity_not_contact():
                                          {"second_role": "goalkeeper"}])
 def test_unsupported_role_or_depth_difference_does_not_form_player_pair(parameters):
     # 현재 입력을 반영한 누적 관측 값이 빈 목록인지 확인
-    assert api().InteractionTracker().update(*interaction_frame(**parameters)) == ()
+    assert InteractionTracker().update(*interaction_frame(**parameters)) == ()
 
 # 화면 전환·긴 간격의 상호작용 식별 초기화 확인
 def test_interaction_identity_resets_at_cut_and_long_gap():
     # 화면 연속성을 관리할 선수 근접 추적기 생성
-    tracker = api().InteractionTracker()
+    tracker = InteractionTracker()
     # 첫 번째 관측 준비
     first = tracker.update(*interaction_frame(0))[0]
     # 두 번째 관측 준비
@@ -123,9 +118,9 @@ def test_interaction_identity_resets_at_cut_and_long_gap():
 # 동일 시간·맥락의 가까운 심판 관측만 연결 확인
 def test_same_time_same_context_nearby_official_only_links_observations():
     # 화면 연속성을 관리할 선수 근접 추적기 생성
-    tracker = api().InteractionTracker()
+    tracker = InteractionTracker()
     # 선수 근접과 심판 신호를 연결할 후보 연결기 생성
-    linker = api().IncidentLinker()
+    linker = IncidentLinker()
     # 사건 연결 후보의 빈 누적 공간 생성
     links = ()
     # 동일 시간·맥락의 가까운 심판 관측만 연결 입력 목록의 항목별 순회
@@ -159,7 +154,7 @@ def test_same_time_same_context_nearby_official_only_links_observations():
                                     {"officialRole": "UNKNOWN"}])
 def test_remove_each_link_grounding_prevents_candidate_link(change):
     # 시간축 추적기과 사건 후보 연결기의 시험 항목 구성
-    tracker, linker = api().InteractionTracker(), api().IncidentLinker()
+    tracker, linker = InteractionTracker(), IncidentLinker()
     # 선수 근접 조건을 반영한 프레임과 역할 생성
     frame, roles = interaction_frame(0)
     # 사건 후보 연결기에 현재 입력 반영
@@ -174,7 +169,7 @@ def test_remove_each_link_grounding_prevents_candidate_link(change):
 # 화면 전환 전 상호작용과 이후 신호 연결 방지 확인
 def test_cut_cannot_connect_previous_interaction_to_later_signal():
     # 시간축 추적기과 사건 후보 연결기의 시험 항목 구성
-    tracker, linker = api().InteractionTracker(), api().IncidentLinker()
+    tracker, linker = InteractionTracker(), IncidentLinker()
     # 선수 근접 조건을 반영한 프레임과 역할 생성
     frame, roles = interaction_frame(0)
     # 사건 후보 연결기에 현재 입력 반영
@@ -189,11 +184,10 @@ def test_restart_pattern_cannot_backfill_original_decision_or_independent_eviden
     # 선수 근접 조건을 반영한 프레임과 역할 생성
     frame, roles = interaction_frame(100)
     # 현재 입력을 반영한 누적 관측 생성
-    interactions = api().InteractionTracker().update(frame, roles)
+    interactions = InteractionTracker().update(frame, roles)
     # 처리 결과 준비
     result = (
-        api()
-        .IncidentLinker()
+        IncidentLinker()
         .update(
             frame,
             interactions,
@@ -213,7 +207,7 @@ def test_restart_pattern_cannot_backfill_original_decision_or_independent_eviden
 # 중복·오래된 시간축 거부 확인
 def test_duplicate_or_stale_timeline_rejected():
     # 화면 연속성을 관리할 선수 근접 추적기 생성
-    tracker = api().InteractionTracker()
+    tracker = InteractionTracker()
     # 시간축 추적기에 현재 입력 반영
     tracker.update(*interaction_frame(100))
     # 원본 시간축 순서 오류 발생 기대
@@ -226,7 +220,7 @@ def test_one_official_near_multiple_interactions_abstains_from_unique_link():
     # 선수 근접 조건을 반영한 프레임과 역할 생성
     frame, roles = interaction_frame(100)
     # 선수 근접 관측 준비
-    interaction = api().InteractionTracker().update(frame, roles)[0]
+    interaction = InteractionTracker().update(frame, roles)[0]
     # 경쟁하는 근접 관측의 시험 항목 구성
     competing = {**interaction, "id": "another", "actorTrackIds": ["player-c", "player-d"]}
     # 지정 필드만 바꾼 시험 관측 생성
@@ -240,12 +234,12 @@ def test_one_official_near_multiple_interactions_abstains_from_unique_link():
         ),
     )
     # 현재 입력을 반영한 누적 관측 값이 빈 목록인지 확인
-    assert api().IncidentLinker().update(frame, (interaction, competing), (official(100),)) == ()
+    assert IncidentLinker().update(frame, (interaction, competing), (official(100),)) == ()
 
 # 현재 추적 누락 시 과거 영상 좌표 연결 방지 확인
 def test_missing_current_track_cannot_bridge_old_image_coordinates():
     # 시간축 추적기과 사건 후보 연결기의 시험 항목 구성
-    tracker, linker = api().InteractionTracker(), api().IncidentLinker()
+    tracker, linker = InteractionTracker(), IncidentLinker()
     # 선수 근접 조건을 반영한 프레임과 역할 생성
     frame, roles = interaction_frame(0)
     # 사건 후보 연결기에 현재 입력 반영
@@ -262,20 +256,20 @@ def test_official_must_have_a_matching_current_detection():
     # 선수 근접 조건을 반영한 프레임과 역할 생성
     frame, roles = interaction_frame(100)
     # 현재 입력을 반영한 누적 관측 생성
-    interactions = api().InteractionTracker().update(frame, roles)
+    interactions = InteractionTracker().update(frame, roles)
     # 지정 필드만 바꾼 시험 관측 생성
     frame = replace(frame, detections=frame.detections[:2])
     # 현재 입력을 반영한 누적 관측 값이 빈 목록인지 확인
-    assert api().IncidentLinker().update(frame, interactions, (official(100),)) == ()
+    assert IncidentLinker().update(frame, interactions, (official(100),)) == ()
 
 # 개별 행위자 소실 시 사건 연결 자격 만료 확인
 def test_individual_actor_disappearance_expires_incident_eligibility():
     # 선수 근접 조건을 반영한 프레임과 역할 생성
     frame, roles = interaction_frame(0)
     # 선수 근접과 심판 신호를 연결할 후보 연결기 생성
-    linker = api().IncidentLinker()
+    linker = IncidentLinker()
     # 사건 후보 연결기에 현재 입력 반영
-    linker.update(frame, api().InteractionTracker().update(frame, roles), ())
+    linker.update(frame, InteractionTracker().update(frame, roles), ())
     # 개별 행위자 소실 시 사건 연결 자격 만료 입력 목록의 항목별 순회
     for ms in (100, 200, 300, 400):
         # 선수 근접 조건을 반영한 프레임과 역할 생성
@@ -294,11 +288,11 @@ def test_interaction_from_different_source_time_origin_is_rejected():
     # 지정 필드만 바꾼 시험 관측 생성
     foreign = replace(frame, sample=replace(frame.sample, origin_pts=1000, pts=1100))
     # 현재 입력을 반영한 누적 관측 생성
-    interactions = api().InteractionTracker().update(foreign, roles)
+    interactions = InteractionTracker().update(foreign, roles)
     # 프레임 계약 오류 발생 기대
     with pytest.raises(ValueError, match="OBSERVATION_FRAME_MISMATCH"):
         # 선수 근접과 심판 신호를 연결할 후보 연결기에 현재 입력 반영
-        api().IncidentLinker().update(frame, interactions, (official(100),))
+        IncidentLinker().update(frame, interactions, (official(100),))
 
 # 다른 원본 시간 시작점의 심판 거부 확인
 def test_official_from_different_source_time_origin_is_rejected():
@@ -311,8 +305,8 @@ def test_official_from_different_source_time_origin_is_rejected():
     # 프레임 계약 오류 발생 기대
     with pytest.raises(ValueError, match="OBSERVATION_FRAME_MISMATCH"):
         # 선수 근접과 심판 신호를 연결할 후보 연결기에 현재 입력 반영
-        api().IncidentLinker().update(
-            frame, api().InteractionTracker().update(frame, roles), (observation,)
+        IncidentLinker().update(
+            frame, InteractionTracker().update(frame, roles), (observation,)
         )
 
 # 연결기의 현재 중복 추적 식별자 거부 확인
@@ -320,7 +314,7 @@ def test_linker_rejects_current_duplicate_track_ids():
     # 선수 근접 조건을 반영한 프레임과 역할 생성
     frame, roles = interaction_frame(100)
     # 현재 입력을 반영한 누적 관측 생성
-    interactions = api().InteractionTracker().update(frame, roles)
+    interactions = InteractionTracker().update(frame, roles)
     # 지정 필드만 바꾼 시험 관측 생성
     frame = replace(
         frame, detections=(*frame.detections, replace(frame.detections[0], detection_id=3))
@@ -328,7 +322,7 @@ def test_linker_rejects_current_duplicate_track_ids():
     # 입력값 오류 발생 기대
     with pytest.raises(ValueError, match="INTERACTION_ID_DUPLICATE"):
         # 선수 근접과 심판 신호를 연결할 후보 연결기에 현재 입력 반영
-        api().IncidentLinker().update(frame, interactions, (official(100),))
+        IncidentLinker().update(frame, interactions, (official(100),))
 
 # 상호작용 역할·검출의 일대일 대응 요구 확인
 def test_interaction_role_detection_association_must_be_one_to_one():
@@ -337,7 +331,7 @@ def test_interaction_role_detection_association_must_be_one_to_one():
     # 역할 관측 오류 발생 기대
     with pytest.raises(ValueError, match="ROLE_ASSOCIATION_AMBIGUOUS"):
         # 화면 연속성을 관리할 선수 근접 추적기에 현재 입력 반영
-        api().InteractionTracker().update(
+        InteractionTracker().update(
             frame, (roles[0], replace(roles[1], role_detection_id=10))
         )
 
@@ -346,9 +340,9 @@ def test_link_distance_is_normalized_by_current_not_historical_body_scale():
     # 선수 근접 조건을 반영한 프레임과 역할 생성
     frame, roles = interaction_frame(0)
     # 선수 근접과 심판 신호를 연결할 후보 연결기 생성
-    linker = api().IncidentLinker()
+    linker = IncidentLinker()
     # 사건 후보 연결기에 현재 입력 반영
-    linker.update(frame, api().InteractionTracker().update(frame, roles), ())
+    linker.update(frame, InteractionTracker().update(frame, roles), ())
     # 선수 근접 조건을 반영한 프레임과 역할 생성
     frame, _ = interaction_frame(100)
     # 선수 관측 목록의 시험 항목 구성
@@ -365,7 +359,7 @@ def test_link_distance_is_normalized_by_current_not_historical_body_scale():
 # 상호작용 간격의 정확한 원본 시각 사용 확인
 def test_interaction_gap_uses_exact_pts():
     # 화면 연속성을 관리할 선수 근접 추적기 생성
-    tracker = api().InteractionTracker()
+    tracker = InteractionTracker()
     # 처리 결과의 빈 누적 공간 생성
     result = []
     # 상호작용 간격의 정확한 원본 시각 사용 입력 목록의 항목별 순회
@@ -383,7 +377,7 @@ def test_interaction_gap_uses_exact_pts():
 @pytest.mark.parametrize("next_ms", [200, 400])
 def test_rejected_duplicate_does_not_advance_interaction_state(next_ms):
     # 화면 연속성을 관리할 선수 근접 추적기 생성
-    tracker = api().InteractionTracker()
+    tracker = InteractionTracker()
     # 첫 번째 관측 준비
     first = tracker.update(*interaction_frame(0))[0]
     # 선수 근접 조건을 반영한 프레임과 역할 생성
@@ -404,11 +398,11 @@ def test_rejected_duplicate_does_not_advance_interaction_state(next_ms):
 # 거부된 연결 입력의 시간축 진행 없는 수정 확인
 def test_rejected_link_input_can_be_corrected_without_advancing_timeline():
     # 선수 근접과 심판 신호를 연결할 후보 연결기 생성
-    linker = api().IncidentLinker()
+    linker = IncidentLinker()
     # 선수 근접 조건을 반영한 프레임과 역할 생성
     frame, roles = interaction_frame(100)
     # 현재 입력을 반영한 누적 관측 생성
-    interactions = api().InteractionTracker().update(frame, roles)
+    interactions = InteractionTracker().update(frame, roles)
     # 잘못된 입력의 시험 항목 구성
     bad = {**interactions[0], "lastFrame": {}}
     # 프레임 계약 오류 발생 기대
@@ -421,7 +415,7 @@ def test_rejected_link_input_can_be_corrected_without_advancing_timeline():
 # 3초 연결 만료의 정확한 원본 시각 사용 확인
 def test_link_expiry_uses_exact_pts_at_three_seconds():
     # 시간축 추적기과 사건 후보 연결기의 시험 항목 구성
-    tracker, linker = api().InteractionTracker(), api().IncidentLinker()
+    tracker, linker = InteractionTracker(), IncidentLinker()
     # 선수 근접 조건을 반영한 프레임과 역할 생성
     frame, roles = interaction_frame(0)
     # 사건 후보 연결기에 현재 입력 반영

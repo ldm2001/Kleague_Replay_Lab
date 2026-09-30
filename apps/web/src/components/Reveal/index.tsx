@@ -2,7 +2,6 @@
 
 // 화면 구성에 필요한 기능과 공유 자료 형식 읽음
 import * as React from "react";
-import { useEffect, useRef } from "react";
 
 // 화면 구성에 필요한 읽기 전용 입력 속성 형식 정의
 type Props = Readonly<{
@@ -19,10 +18,10 @@ type Props = Readonly<{
 // 화면 진입 감지
 export function Reveal({ as: Tag = "div", children, className = "", delay = 0 }: Props) {
     // 관찰 대상 참조
-    const element = useRef<HTMLElement>(null);
+    const element = React.useRef<HTMLElement>(null);
 
     // 화면 진입 효과 연결
-    useEffect(() => {
+    React.useEffect(() => {
         // 관찰 대상 확보
         const target = element.current;
         // 실제 화면 요소가 없으면 효과 연결 종료

@@ -1,28 +1,20 @@
-# 인식 모듈 지연 읽기 도구 읽음
-import importlib
 # 격리 명령 실행 도구 읽음
 import subprocess
 # 원본 시간축의 정확한 분수 도구 읽음
 from fractions import Fraction
 # 가벼운 모의 객체 생성 도구 읽음
 from types import SimpleNamespace
+# 영상과 좌표의 수치 배열 도구 읽음
+import numpy as np
 # 예외 기대와 반복 사례 검증 도구 읽음
 import pytest
-
-# 영상 모듈 반환
-def media_module():
-    # 영상 모듈의 실패 가능 구간 처리
-    try:
-        # 검사할 인식 구현 모듈 반환
-        return importlib.import_module("replay_perception.media")
-    except ModuleNotFoundError:
-        # 영상 모듈의 금지 경로 실행 실패 처리
-        pytest.fail("The source PTS reader is not implemented")
+# 시험에 필요한 인식 구현과 자료 계약 읽음
+from replay_perception import media
 
 # 각 시간 값의 개별 시간 기준 사용 확인
 def test_timestamp_uses_each_values_own_time_base():
     # 원본 시간축의 시각 값이 200인지 확인
-    assert media_module().timestamp(45_000, Fraction(1, 90_000), 300, Fraction(1, 1_000)) == 200
+    assert media.timestamp(45_000, Fraction(1, 90_000), 300, Fraction(1, 1_000)) == 200
 
 # 잘못된 시각의 명목 프레임률 대체 방지 확인
 @pytest.mark.parametrize("pts,base,origin,origin_base,reason", [
@@ -38,7 +30,7 @@ def test_invalid_timestamps_are_never_replaced_with_nominal_fps(
     # 입력값 오류 발생 기대
     with pytest.raises(ValueError, match=reason):
         # 원본 시간축의 시각 실행
-        media_module().timestamp(pts, base, origin, origin_base)
+        media.timestamp(pts, base, origin, origin_base)
 
 # 첨부 이미지의 영상 선택 제외 확인
 def test_attached_picture_is_not_selected_as_the_video():
@@ -49,14 +41,14 @@ def test_attached_picture_is_not_selected_as_the_video():
     # 필요한 속성만 갖춘 모의 객체 생성
     video = SimpleNamespace(index=2, type="video", disposition=0)
     # 선택한 원본 영상 스트림의 기대 자료 일치 확인
-    assert media_module().videoStream((picture, audio, video)) is video
+    assert media.videoStream((picture, audio, video)) is video
 
 # 첨부 이미지만 있는 입력의 영상 거부 확인
 def test_attached_picture_alone_is_not_a_supported_video():
     # 입력값 오류 발생 기대
     with pytest.raises(ValueError, match="VIDEO_STREAM_ABSENT"):
         # 선택한 원본 영상 스트림 실행
-        media_module().videoStream((SimpleNamespace(type="video", disposition=1024),))
+        media.videoStream((SimpleNamespace(type="video", disposition=1024),))
 
 # 시험 영상 생성
 def make_video(path, *, offset=0):
@@ -92,7 +84,7 @@ def test_real_decoder_preserves_offset_pts_and_samples_video_relative_time(tmp_p
     # 디코더 검사용 합성 영상 실행
     make_video(path, offset=.3)
     # 원본 표시 시각을 보존할 영상 읽기 객체의 사용 구간 시작
-    with media_module().VideoReader(path) as reader:
+    with media.VideoReader(path) as reader:
         # 영상 읽기 객체의 비교 자료 생성
         samples = list(reader)
         # 저장 계약에 맞춘 직렬화 자료 생성
@@ -132,7 +124,7 @@ def test_requested_range_uses_original_video_time_and_excludes_end(
     # 디코더 검사용 합성 영상 실행
     make_video(path, offset=.3)
     # 원본 표시 시각을 보존할 영상 읽기 객체의 사용 구간 시작
-    with media_module().VideoReader(path, start_ms=200, end_ms=end) as reader:
+    with media.VideoReader(path, start_ms=200, end_ms=end) as reader:
         # 영상 읽기 객체의 비교 자료 생성
         samples = list(reader)
     # 밀리초 원본 시각 목록의 기대 자료 일치 확인
@@ -156,7 +148,7 @@ def test_invalid_scan_range_is_rejected(tmp_path, start, end, interval):
     # 입력값 오류 발생 기대
     with pytest.raises(ValueError, match="SCAN_RANGE_INVALID"):
         # 원본 표시 시각을 보존할 영상 읽기 객체 실행
-        media_module().VideoReader(
+        media.VideoReader(
             tmp_path / "video.mp4", start_ms=start, end_ms=end, interval_ms=interval
         )
 
@@ -173,7 +165,7 @@ def test_bad_input_is_an_explicit_error_and_original_is_unchanged(tmp_path):
     # 입력값 오류 발생 기대
     with pytest.raises(ValueError, match="VIDEO_OPEN_FAILED"):
         # 원본 표시 시각을 보존할 영상 읽기 객체의 사용 구간 시작
-        with media_module().VideoReader(path):
+        with media.VideoReader(path):
             # 추가 동작 없는 모의 구현 유지
             pass
     # 파일의 원래 바이트 자료의 기대 자료 일치 확인
@@ -190,7 +182,7 @@ def test_empty_requested_range_does_not_mean_no_people_or_ball(tmp_path):
     # 프레임 계약 오류 발생 기대
     with pytest.raises(ValueError, match="NO_VIDEO_FRAMES_IN_RANGE"):
         # 원본 표시 시각을 보존할 영상 읽기 객체의 사용 구간 시작
-        with media_module().VideoReader(path, start_ms=2000) as reader:
+        with media.VideoReader(path, start_ms=2000) as reader:
             # 영상 읽기 객체의 비교 자료 실행
             list(reader)
 
@@ -229,7 +221,7 @@ def test_variable_frame_timestamps_are_not_replaced_by_sampling_schedule(tmp_pat
     # 외부 명령 종료 코드 값이 0인지 확인
     assert result.returncode == 0, result.stderr
     # 원본 표시 시각을 보존할 영상 읽기 객체의 사용 구간 시작
-    with media_module().VideoReader(path) as reader:
+    with media.VideoReader(path) as reader:
         # 영상 읽기 객체의 비교 자료 생성
         samples = list(reader)
     # 밀리초 원본 시각 목록 값이 0 · 600 · 1000인지 확인
@@ -312,7 +304,7 @@ def test_real_attached_picture_is_skipped(tmp_path):
     # 부속 이미지 스트림의 조건 충족 확인
     assert attached
     # 원본 표시 시각을 보존할 영상 읽기 객체의 사용 구간 시작
-    with media_module().VideoReader(path) as reader:
+    with media.VideoReader(path) as reader:
         # 영상 읽기 객체의 비교 자료 생성
         samples = list(reader)
     # 부속 이미지 스트림에 영상 스트림 순번 미포함 확인
@@ -330,8 +322,6 @@ def test_real_attached_picture_is_skipped(tmp_path):
 def test_bad_decoder_timeline_fails_and_closes_container(tmp_path, monkeypatch, timestamps, reason):
     # 영상 디코더 의존성 준비
     av = pytest.importorskip("av")
-    # 영상과 좌표의 수치 배열 도구 읽음
-    import numpy as np
     # 파일 경로 준비
     path = tmp_path / "fake-decoder.media"
     # 파일 경로에 시험 바이트 기록
@@ -374,7 +364,7 @@ def test_bad_decoder_timeline_fails_and_closes_container(tmp_path, monkeypatch, 
     # 입력값 오류 발생 기대
     with pytest.raises(ValueError, match=reason):
         # 원본 표시 시각을 보존할 영상 읽기 객체의 사용 구간 시작
-        with media_module().VideoReader(path) as reader:
+        with media.VideoReader(path) as reader:
             # 영상 읽기 객체의 비교 자료 실행
             list(reader)
     # 자원 종료 여부 값이 참인지 확인
@@ -426,7 +416,7 @@ def test_failed_rgb_conversion_is_not_counted_as_a_delivered_sample(tmp_path, mo
     # 파일 또는 연결 자원의 시험 대역 주입
     monkeypatch.setattr(av, "open", lambda *_args, **_kwargs: container)
     # 원본 표시 시각을 보존할 영상 읽기 객체 생성
-    reader = media_module().VideoReader(path)
+    reader = media.VideoReader(path)
     # 실행 실패 발생 기대
     with pytest.raises(RuntimeError, match="conversion failed"):
         # 영상 읽기 객체의 사용 구간 시작

@@ -14,6 +14,8 @@ from pathlib import Path
 from urllib.request import Request
 # 예외 기대와 반복 사례 검증 도구 읽음
 import pytest
+# 승인 관측 모델 명세와 캐시 명령과 가중치 모듈 읽음
+from replay_perception import catalog, observercache, weights
 
 
 # 역할 모델 고정 판본 준비
@@ -59,9 +61,6 @@ class FakeResponse:
 # 제한된 자식을 제어된 전송으로 대체
 @pytest.fixture(autouse=True)
 def _replace_bounded_child_with_controlled_transport(monkeypatch):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import weights
-
     # 제한된 자식을 제어된 전송으로 대체 의존성의 시험 대역 주입
     monkeypatch.setattr(weights, "_urlopen", None, raising=False)
 
@@ -168,11 +167,8 @@ def _replace_bounded_child_with_controlled_transport(monkeypatch):
 
 # 승인된 두 관측 모델만 고정한 명세 확인
 def test_packaged_manifest_pins_only_the_two_approved_observer_models():
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception.weights import observerManifest
-
     # 승인된 관측 모델 전체 명세 읽음
-    manifest = observerManifest()
+    manifest = catalog.observerManifest()
 
     # 기록 형식 판본 값이 1인지 확인
     assert manifest["schema_version"] == 1
@@ -327,27 +323,21 @@ def test_packaged_manifest_pins_only_the_two_approved_observer_models():
 def test_default_observer_model_dir_uses_the_external_cache(
     monkeypatch, tmp_path, model_key, slug, revision
 ):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception.weights import directory
-
     # 기본 관측 모델 경로의 외부 캐시 사용 의존성의 시험 대역 주입
     monkeypatch.setattr(Path, "home", classmethod(lambda _cls: tmp_path))
 
     # 시험 모델 파일 폴더의 기대 자료 일치 확인
-    assert directory(model_key) == (
+    assert weights.directory(model_key) == (
         tmp_path / ".cache" / "replay-lab" / "models" / slug / revision
     )
 
 # 알 수 없는 관측 모델 키 거부 확인
 @pytest.mark.parametrize("model_key", ["", "roles", "ROLE", "rtdetr", None])
 def test_unknown_observer_model_key_is_rejected(model_key):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception.weights import directory
-
     # 모델 계약 오류 발생 기대
     with pytest.raises(ValueError, match="OBSERVER_MODEL_KEY_INVALID"):
         # 시험 모델 파일 폴더 실행
-        directory(model_key)
+        weights.directory(model_key)
 
 # 미승인 식별·어휘의 명세 검증 거부 확인
 @pytest.mark.parametrize(
@@ -366,33 +356,27 @@ def test_unknown_observer_model_key_is_rejected(model_key):
 def test_manifest_validation_rejects_unapproved_identity_or_vocabulary(
     model_key, field, replacement
 ):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import weights
-
     # 승인된 관측 모델 전체 명세 읽음
-    manifest = weights.observerManifest()
+    manifest = catalog.observerManifest()
     # 모델 목록의 선택 항목의 선택 항목 준비
     manifest["models"][model_key][field] = replacement
 
     # 모델 계약 오류 발생 기대
     with pytest.raises(ValueError, match="OBSERVER_MODEL_MANIFEST_INVALID"):
         # 고정 자산 명세 검증 결과 실행
-        weights.manifestValidation(manifest)
+        catalog.manifestValidation(manifest)
 
 # 추가 모델 키의 명세 검증 거부 확인
 def test_manifest_validation_rejects_an_added_model_key():
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import weights
-
     # 승인된 관측 모델 전체 명세 읽음
-    manifest = weights.observerManifest()
+    manifest = catalog.observerManifest()
     # 중첩 자료까지 분리한 복사본 생성
     manifest["models"]["extra"] = deepcopy(manifest["models"]["role"])
 
     # 모델 계약 오류 발생 기대
     with pytest.raises(ValueError, match="OBSERVER_MODEL_MANIFEST_INVALID"):
         # 고정 자산 명세 검증 결과 실행
-        weights.manifestValidation(manifest)
+        catalog.manifestValidation(manifest)
 
 # 시험용 모델 자산 명세 생성
 def _test_model(*files: tuple[str, bytes]) -> dict[str, object]:
@@ -432,9 +416,6 @@ def _test_model(*files: tuple[str, bytes]) -> dict[str, object]:
 
 # 모든 고정 관측 자산 파일 요구 확인
 def test_verify_observer_assets_requires_every_pinned_file(monkeypatch, tmp_path):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import weights
-
     # 고정 시험 모델 생성
     model = _test_model(("weights.pt", b"weights"), ("README.md", b"card"))
     # 승인 모델에 고정된 자산 명세의 시험 대역 주입
@@ -449,9 +430,6 @@ def test_verify_observer_assets_requires_every_pinned_file(monkeypatch, tmp_path
 
 # 변조 관측 자산 거부 확인
 def test_verify_observer_assets_rejects_tampering(monkeypatch, tmp_path):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import weights
-
     # 고정 시험 모델 생성
     model = _test_model(("weights.pt", b"expected"))
     # 승인 모델에 고정된 자산 명세의 시험 대역 주입
@@ -466,9 +444,6 @@ def test_verify_observer_assets_rejects_tampering(monkeypatch, tmp_path):
 
 # 해시 일치 시에도 잘못된 자산 크기 거부 확인
 def test_verify_observer_assets_rejects_wrong_size_even_if_hash_matches(monkeypatch, tmp_path):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import weights
-
     # 전송 본문 준비
     payload = b"verified"
     # 고정 시험 모델 생성
@@ -487,9 +462,6 @@ def test_verify_observer_assets_rejects_wrong_size_even_if_hash_matches(monkeypa
 
 # 관측 자산의 전체 출처 보고 확인
 def test_verify_observer_assets_reports_complete_provenance(monkeypatch, tmp_path):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import weights
-
     # 관측 자산의 전체 출처 보고 입력 준비
     payloadWeights = b"weights"
     # 관측 자산의 전체 출처 보고 입력 준비
@@ -532,9 +504,6 @@ def test_verify_observer_assets_reports_complete_provenance(monkeypatch, tmp_pat
 # 작업 트리 상위 경로의 검증 거부 확인
 @pytest.mark.parametrize("marker_kind", ["file", "directory"])
 def test_verification_rejects_any_git_worktree_ancestor(monkeypatch, tmp_path, marker_kind):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import weights
-
     # 가중치 저장 폴더 준비
     repository = tmp_path / "repository"
     # 모델 저장 폴더 준비
@@ -560,9 +529,6 @@ def test_verification_rejects_any_git_worktree_ancestor(monkeypatch, tmp_path, m
 
 # 저장소를 가리키는 외부 심볼릭 링크 검증 거부 확인
 def test_verification_rejects_an_outside_symlink_targeting_a_repository(monkeypatch, tmp_path):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import weights
-
     # 가중치 저장 폴더 준비
     repository = tmp_path / "repository"
     # 가중치 저장 폴더 생성
@@ -583,9 +549,6 @@ def test_verification_rejects_an_outside_symlink_targeting_a_repository(monkeypa
 
 # 외부로 나가는 저장소 심볼릭 링크 검증 거부 확인
 def test_verification_rejects_a_repository_symlink_that_escapes_outside(monkeypatch, tmp_path):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import weights
-
     # 가중치 저장 폴더 준비
     repository = tmp_path / "repository"
     # 가중치 저장 폴더 생성
@@ -610,9 +573,6 @@ def test_verification_rejects_a_repository_symlink_that_escapes_outside(monkeypa
 
 # 저장소를 가리키는 파일 심볼릭 링크 검증 거부 확인
 def test_verification_rejects_a_file_symlink_targeting_a_repository(monkeypatch, tmp_path):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import weights
-
     # 가중치 저장 폴더 준비
     repository = tmp_path / "repository"
     # 가중치 저장 폴더 생성
@@ -643,9 +603,6 @@ def test_verification_rejects_a_file_symlink_targeting_a_repository(monkeypatch,
 
 # 네트워크 없이 검증된 기존 파일 재사용 확인
 def test_download_reuses_verified_existing_files_without_network(monkeypatch, tmp_path):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import weights
-
     # 전송 본문 준비
     payload = b"already verified"
     # 고정 시험 모델 생성
@@ -677,9 +634,6 @@ def test_download_reuses_verified_existing_files_without_network(monkeypatch, tm
 
 # 부모 다운로드의 제한된 자식과 임시 파일 사용 확인
 def test_parent_download_uses_bounded_child_for_the_temporary_file(monkeypatch, tmp_path):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import weights
-
     # 전송 본문 준비
     payload = b"downloaded in bounded child"
     # 고정 시험 모델 생성
@@ -731,9 +685,6 @@ def test_parent_download_uses_bounded_child_for_the_temporary_file(monkeypatch, 
 
 # 종료된 자식의 부분 바이트 정리와 공개 방지 확인
 def test_killed_child_bytes_are_cleaned_and_never_published(monkeypatch, tmp_path):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import weights
-
     # 전송 본문 준비
     payload = b"complete bytes received after deadline"
     # 고정 시험 모델 생성
@@ -777,9 +728,6 @@ def test_killed_child_bytes_are_cleaned_and_never_published(monkeypatch, tmp_pat
 
 # 잘못된 기존 파일의 교체 없는 거부 확인
 def test_download_rejects_invalid_existing_file_without_replacing_it(monkeypatch, tmp_path):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import weights
-
     # 고정 시험 모델 생성
     model = _test_model(("weights.pt", b"approved bytes"))
     # 승인 모델에 고정된 자산 명세의 시험 대역 주입
@@ -812,9 +760,6 @@ def test_download_rejects_invalid_existing_file_without_replacing_it(monkeypatch
 def test_download_rejects_git_ancestor_before_directory_creation_or_network(
     monkeypatch, tmp_path, marker_kind
 ):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import weights
-
     # 가중치 저장 폴더 준비
     repository = tmp_path / "repository"
     # 가중치 저장 폴더 생성
@@ -857,9 +802,6 @@ def test_download_rejects_git_ancestor_before_directory_creation_or_network(
 
 # 쓰기·통신 전 저장소 내부 심볼릭 링크 거부 확인
 def test_download_rejects_symlink_into_repository_before_writes_or_network(monkeypatch, tmp_path):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import weights
-
     # 가중치 저장 폴더 준비
     repository = tmp_path / "repository"
     # 가중치 저장 폴더 생성
@@ -899,9 +841,6 @@ def test_download_rejects_symlink_into_repository_before_writes_or_network(monke
 
 # 고정 보안 주소·검증된 연결·제한 시간 사용 확인
 def test_download_uses_fixed_https_url_verified_tls_and_bounded_timeout(monkeypatch, tmp_path):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import weights
-
     # 전송 본문 준비
     payload = b"downloaded bytes"
     # 고정 시험 모델 생성
@@ -946,9 +885,6 @@ def test_download_uses_fixed_https_url_verified_tls_and_bounded_timeout(monkeypa
 def test_download_rejects_invalid_content_length_and_cleans_temporary_file(
     monkeypatch, tmp_path, declared_size
 ):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import weights
-
     # 전송 본문 준비
     payload = b"short"
     # 고정 시험 모델 생성
@@ -975,9 +911,6 @@ def test_download_rejects_invalid_content_length_and_cleans_temporary_file(
 # 스트림 크기 불일치 거부와 공개 방지 확인
 @pytest.mark.parametrize("received", [b"shor", b"short-plus-extra"])
 def test_download_rejects_stream_size_mismatch_and_never_publishes(monkeypatch, tmp_path, received):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import weights
-
     # 기대 자료 준비
     expected = b"short"
     # 고정 시험 모델 생성
@@ -1003,9 +936,6 @@ def test_download_rejects_stream_size_mismatch_and_never_publishes(monkeypatch, 
 
 # 동일 크기 해시 불일치 거부와 공개 방지 확인
 def test_download_rejects_same_size_hash_mismatch_and_never_publishes(monkeypatch, tmp_path):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import weights
-
     # 기대 자료 준비
     expected = b"expected"
     # 실제로 수신한 바이트 수 준비
@@ -1033,9 +963,6 @@ def test_download_rejects_same_size_hash_mismatch_and_never_publishes(monkeypatc
 
 # 다운로드 시간 초과의 부분 바이트 정리와 고정 오류 확인
 def test_download_timeout_cleans_partial_bytes_and_has_stable_error(monkeypatch, tmp_path):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import weights
-
     # 전송 본문 준비
     payload = b"expected"
     # 고정 시험 모델 생성
@@ -1070,9 +997,6 @@ def test_download_timeout_cleans_partial_bytes_and_has_stable_error(monkeypatch,
 
 # 다운로드 중단의 부분 바이트 정리와 공개 방지 확인
 def test_download_interruption_cleans_partial_bytes_and_does_not_publish(monkeypatch, tmp_path):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import weights
-
     # 전송 본문 준비
     payload = b"expected"
     # 고정 시험 모델 생성
@@ -1107,9 +1031,6 @@ def test_download_interruption_cleans_partial_bytes_and_does_not_publish(monkeyp
 
 # 공개 전 늦은 파일 끝 도달 거부 확인
 def test_download_rejects_late_eof_before_publishing(monkeypatch, tmp_path):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import weights
-
     # 전송 본문 준비
     payload = b"expected"
     # 고정 시험 모델 생성
@@ -1156,9 +1077,6 @@ def test_download_rejects_late_eof_before_publishing(monkeypatch, tmp_path):
 
 # 청크 충전 대기 없는 가용 바이트 읽기 확인
 def test_download_reads_available_bytes_without_waiting_to_fill_chunk(monkeypatch, tmp_path):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import weights
-
     # 전송 본문 준비
     payload = b"expected"
     # 고정 시험 모델 생성
@@ -1199,9 +1117,6 @@ def test_download_reads_available_bytes_without_waiting_to_fill_chunk(monkeypatc
 def test_exclusive_publish_never_clobbers_a_concurrent_cache_writer(
     monkeypatch, tmp_path, competing
 ):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import weights
-
     # 다운로드한 바이트 자료 준비
     downloaded = b"downloaded"
     # 고정 시험 모델 생성
@@ -1247,9 +1162,6 @@ def test_exclusive_publish_never_clobbers_a_concurrent_cache_writer(
 # 선택한 모델만 준비하는 가져오기 명령 확인
 @pytest.mark.parametrize("model_key", ["role", "pose"])
 def test_fetch_cli_prepares_only_the_selected_model(monkeypatch, tmp_path, capsys, model_key):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import observercache
-
     # 호출 이력의 빈 누적 공간 생성
     calls = []
     # 작업 폴더의 시험 대역 주입
@@ -1285,9 +1197,6 @@ def test_fetch_cli_prepares_only_the_selected_model(monkeypatch, tmp_path, capsy
 
 # 승인된 두 모델을 기본 준비하는 가져오기 명령 확인
 def test_fetch_cli_defaults_to_preparing_both_approved_models(monkeypatch, tmp_path, capsys):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import observercache
-
     # 호출 이력의 빈 누적 공간 생성
     calls = []
     # 작업 폴더의 시험 대역 주입
@@ -1324,9 +1233,6 @@ def test_fetch_cli_defaults_to_preparing_both_approved_models(monkeypatch, tmp_p
 
 # 미승인 모델 선택의 가져오기 명령 거부 확인
 def test_fetch_cli_rejects_unapproved_model_selector():
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import observercache
-
     # 지정한 예외 발생 기대
     with pytest.raises(SystemExit) as failure:
         # 명령줄 진입점 실행 결과 실행

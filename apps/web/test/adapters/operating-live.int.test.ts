@@ -9,14 +9,12 @@ import { describe, expect, it } from "vitest";
 import { JobStore, S3Storage, Sha256, StatusStore } from "@replay/adapters";
 import { client } from "@replay/database";
 import { evidence, report, result, status, type AnalysisPayload } from "@replay/application";
-import { perceptionRunData } from "@replay/shared-types";
+import { knownVideoSource, perceptionRunData, type AutomaticReviewBatch } from "@replay/shared-types";
 import {
     evidence as evidenceRoute,
     result as resultRoute,
     type JobApiDependencies
 } from "../../src/apis/job";
-import { knownVideoSource } from "../../src/adapters/sources";
-import type { AutomaticReviewBatch } from "@replay/shared-types";
 
 // 시험자료 시험용 실행환경 환경설정 재생 로컬자료 저장공간 비교 조건 준비
 const enabled = process.env.REPLAY_LOCAL_STORAGE_TEST === "1";

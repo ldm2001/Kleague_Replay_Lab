@@ -1,6 +1,5 @@
 // 밀기 판정 테스트
-import type { PushFacts } from "@replay/shared-types";
-import { observation } from "@replay/shared-types";
+import { observation, type PushFacts } from "@replay/shared-types";
 import { ruleSet } from "@replay/rule-data";
 import { describe, expect, it } from "vitest";
 import { pushResult } from "@replay/rule-engine";

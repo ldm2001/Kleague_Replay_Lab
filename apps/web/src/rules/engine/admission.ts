@@ -164,6 +164,12 @@ const sameModel = (
     actual.revision === expected.revision &&
     actual.weightsSha256 === expected.weightsSha256;
 
+// 승인된 모든 고정 모델의 판본과 가중치 제출 확인
+export const pinnedModels = (models: readonly PerceptionModelProvenance[]): boolean =>
+    Object.values(perceptionModelPins).every((pin) =>
+        models.some((model) => sameModel(model, pin))
+    );
+
 // 증거와 사건의 시간 중첩 확인
 const relevant = (
     startMs: number,

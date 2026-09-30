@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(date && ls -lh ~/Library/Logs/replay-lab/*.log)",
+      "Read(//Users/ldongmin/Library/Logs/replay-lab/**)",
+      "Bash(env -u DATABASE_URL npm run typecheck)",
+      "Bash(echo \"typecheck=$?\")",
+      "Bash(env -u DATABASE_URL npm test)",
+      "Bash(echo \"test=$?\")",
+      "Bash(env -u DATABASE_URL npm run test:video)",
+      "Bash(/private/tmp/claude-501/-Users-ldongmin-Projects-Replay-Lab/79cde3f6-b48d-41ae-8258-3ada87352327/scratchpad/monitor.sh)",
+      "Bash(echo \"=== CHECKING FOR ERRORS IN LOGS ===\" && \\\\ *)",
+      "Bash(awk '{print $5, $9}')",
+      "Bash(awk 'NR>3{print $6,$7,$8,$9}')",
+      "Bash(kill 54766 55482)",
+      "Bash(pkill -P 54766)",
+      "Bash(pkill -P 55482)",
+      "Bash(rg -n \"object_key\" apps/web/src/database/migrations/*.sql)",
+      "Bash(sort -t: -k2 -nr)",
+      "Bash(rg -n \"evidence\" apps/web/src/bootstrap/*.ts)",
+      "Bash(rg -n \"idempotency_records|expires_at\" apps/web/src/adapters/*.ts)",
+      "Bash(rg -n \"complete|transfer|fetch\\\\\\(|setPhase\\\\\\(\\\\\"error|upload-complete-failed|const upload|async function|=> \\\\{$|catch|retry|sleep|setTimeout\" apps/web/src/components/UploadPanel/index.tsx)",
+      "Bash(rg -n \"\\\\\"test\\\\\"|vitest|environment|jsdom|happy-dom|include\" apps/web/package.json apps/web/vitest.config.* vitest.config.* package.json)"
+    ]
+  }
+}

@@ -14,6 +14,8 @@ import {
     broadcastCueData,
     VAR_SCOPE_NOT_ASSESSED
 } from "@replay/shared-types";
+// 조회 원자료의 내부 화면 모델 구성 기능 가져옴
+import { mediaView } from "./view";
 
 // 외부 식별자의 고유 식별자 형식 검사 패턴 생성
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -258,7 +260,7 @@ export const report =
         // 분석 기록의 식별자의 대소문자 차이 제거
         const analysisId = input.analysisId.toLowerCase();
         // 결과 저장소 호출
-        const result = await repository.analysis({
+        const snapshot = await repository.analysis({
             // 업로드 소유자를 구별하는 익명 세션 식별자
             anonymousSessionId,
             // 분석 기록의 식별자
@@ -266,6 +268,8 @@ export const report =
             // 유효 기한 판단에 사용하는 현재 시각
             now: clock.now().toISOString(),
         });
+        // 한 스냅숏의 원자료를 규정 필터와 자동 평가 재검증에 대조한 분석 자료
+        const result = snapshot ? mediaView(snapshot).analysis : null;
         // 과거 수동 평가 이력의 조회 계약은 유지
         return result ? publicAnalysis(result) : null;
     };

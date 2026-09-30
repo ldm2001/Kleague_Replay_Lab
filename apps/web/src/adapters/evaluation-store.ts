@@ -12,6 +12,10 @@ import type {
 } from "@replay/application";
 // 데이터베이스 연결과 저장 구조 가져옴
 import type { DatabaseClient } from "@replay/database";
+// 저장된 평가 사실의 공유 자료 계약 가져옴
+import type { EvaluationFacts } from "@replay/shared-types";
+// 조회 시점과 보존 규칙이 정한 행 가시성 조건 가져옴
+import { activeSession, liveAnalysis, liveSource } from "./visibility";
 
 // 저장소 구현에 필요한 데이터베이스 연결 부분 정의
 type DatabaseHandle = Pick<DatabaseClient, "db">;
@@ -53,6 +57,14 @@ export class EvaluationStore implements EvaluationStorePort {
             await transaction.execute(
                 sql`select pg_advisory_xact_lock(hashtextextended(${scope}, 0))`
             );
+            // 보존 기한이 지난 같은 키 멱등 기록 정리
+            await transaction.execute(sql`
+        delete from idempotency_records
+        where anonymous_session_id = ${command.anonymousSessionId}
+          and operation = 'PATCH_FACTS'
+          and key_hash = ${Buffer.from(command.keyHash)}
+          and expires_at <= ${command.now}
+      `);
             // 기존 멱등 기록 조회
             const existingRows = await transaction.execute(sql`
         select request_hash, fact_revision_id
@@ -78,16 +90,22 @@ export class EvaluationStore implements EvaluationStorePort {
                 }
                 // 기존 멱등 기록에 사실 판본 연결이 없는 경우 처리 중단
                 if (!existing.fact_revision_id) return { kind: "NOT_FOUND" };
-                // 기존 사실 이력 조회
+                // 기존 사실 판본과 그 분석이 다른 조회와 같은 가시성 규칙을 지금도 통과하는지 함께 조회
                 const revisions = await transaction.execute(sql`
-          select revision
-          from fact_revisions
-          where id = ${existing.fact_revision_id}
+          select fact.revision
+          from fact_revisions as fact
+          join analyses as analysis on analysis.id = fact.analysis_id
+          join anonymous_sessions as session on session.id = analysis.anonymous_session_id
+          where fact.id = ${existing.fact_revision_id}
+            and analysis.anonymous_session_id = ${command.anonymousSessionId}
+            and ${activeSession(command.now)}
+            and ${liveAnalysis(command.now)}
+            and ${liveSource(command.now)}
           limit 1
         `);
                 // 기존 사실 이력 반환
                 const [revision] = revisions as unknown as Array<{ revision: number }>;
-                // 보존된 사실 판본이 있으면 재사용 결과를 반환하고 없으면 부재 반환
+                // 가시성 규칙을 통과한 사실 판본이 있으면 재사용 결과를 반환하고 없으면 부재 반환
                 return revision
                     ? {
                           // 처리 분기 또는 자료 종류를 구별하는 값
@@ -109,9 +127,9 @@ export class EvaluationStore implements EvaluationStorePort {
         where candidate.id = ${command.candidateId}
           and candidate.analysis_id = ${command.analysisId}
           and analysis.anonymous_session_id = ${command.anonymousSessionId}
-          and session.revoked_at is null
-          and session.expires_at > ${command.now}
-          and analysis.expires_at > ${command.now}
+          and ${activeSession(command.now)}
+          and ${liveAnalysis(command.now)}
+          and ${liveSource(command.now)}
         for update
       `);
             // 후보 행 선택
@@ -261,9 +279,9 @@ export class EvaluationStore implements EvaluationStorePort {
       where analysis.id = ${command.analysisId}
         and candidate.id = ${command.candidateId}
         and analysis.anonymous_session_id = ${command.anonymousSessionId}
-        and session.revoked_at is null
-        and session.expires_at > ${command.now}
-        and analysis.expires_at > ${command.now}
+        and ${activeSession(command.now)}
+        and ${liveAnalysis(command.now)}
+        and ${liveSource(command.now)}
       limit 1
     `);
         // 평가 문맥 행 선택
@@ -291,7 +309,7 @@ export class EvaluationStore implements EvaluationStorePort {
                 // 평가에 사용한 사실 판본 식별자
                 factRevisionId: row.fact_revision_id,
                 // 확인된 출처와 판본을 보존하는 규정 사실 자료
-                facts: row.facts as import("@replay/shared-types").EvaluationFacts,
+                facts: row.facts as EvaluationFacts,
                 // 대회 규정 판본 식별자
                 ruleVersionId: `ifab-${row.ifab_edition}`,
                 // 저장소에서 규정 판본을 찾는 식별자
@@ -323,9 +341,9 @@ export class EvaluationStore implements EvaluationStorePort {
           and candidate.analysis_id = ${command.analysisId}
           and analysis.anonymous_session_id = ${command.anonymousSessionId}
           and analysis.applied_rule_version_id = ${command.ruleVersionId}
-          and session.revoked_at is null
-          and session.expires_at > ${command.now}
-          and analysis.expires_at > ${command.now}
+          and ${activeSession(command.now)}
+          and ${liveAnalysis(command.now)}
+          and ${liveSource(command.now)}
         limit 1
         for update
       `);

@@ -2,7 +2,6 @@
 
 // 화면 구성에 필요한 기능과 공유 자료 형식 읽음
 import * as React from "react";
-import { useEffect, useState } from "react";
 import type { AnalysisView } from "@replay/application";
 import { Footer } from "../../components/Footer";
 import { Header } from "../../components/Header";
@@ -18,13 +17,13 @@ type State =
 export function ResultView({ analysisId }: Readonly<{ analysisId: string }>) {
     // 결과 화면은 서버가 계산한 후보와 규정 필터 상태를 재계산하지 않고 표시
     // 결과 조회 상태 관리
-    const [state, setState] = useState<State>({ kind: "LOADING" });
+    const [state, setState] = React.useState<State>({ kind: "LOADING" });
     // 서버 결과가 완료된 평가만 공개하는 정책인지 확인
     const completedOnly =
         state.kind === "READY" && state.analysis.resultPolicy === "COMPLETED_ONLY";
 
     // 분석 식별자가 바뀔 때 결과 조회와 요청 취소 효과 연결
-    useEffect(() => {
+    React.useEffect(() => {
         // 분석 식별자에 귀속된 결과만 조회하며 브라우저 상태로 판정 조건을 만들지 않음
         // 결과 요청 취소 제어
         const controller = new AbortController();

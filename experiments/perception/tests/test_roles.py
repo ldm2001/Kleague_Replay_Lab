@@ -1,3 +1,5 @@
+# 내장 가져오기 함수 대역 주입 대상 읽음
+import builtins
 # 중첩 시험 자료 복사 도구 읽음
 from copy import deepcopy
 # 병렬 호출 시험 도구 읽음
@@ -8,6 +10,8 @@ import hashlib
 import os
 # 시험 파일 경로 도구 읽음
 from pathlib import Path
+# 외부 연결 차단 대상 통신 도구 읽음
+import socket
 # 격리 명령 실행 도구 읽음
 import subprocess
 # 현재 실행기와 모듈 경로 정보 읽음
@@ -18,12 +22,26 @@ import threading
 from types import SimpleNamespace
 # 시험 가중치 압축 파일 도구 읽음
 from zipfile import ZIP_DEFLATED, ZipFile
+# 영상 변환과 그림 표시 도구 읽음
+import cv2
 # 영상과 좌표의 수치 배열 도구 읽음
 import numpy as np
 # 예외 기대와 반복 사례 검증 도구 읽음
 import pytest
 # 시험 텐서와 추론 상태 점검 도구 읽음
 import torch
+# 주변 등록 전역 객체인 컴파일러 차원 범위 형식 읽음
+from torch._dynamo.decorators import _DimRange
+# 주변 등록 전역 객체인 분산 장치 배치 형식 읽음
+from torch.distributed.device_mesh import DeviceMesh
+# 주변 등록 전역 객체인 분산 텐서 형식 읽음
+from torch.distributed.tensor import DTensor
+# 주변 등록 전역 객체인 분산 텐서 명세 형식 읽음
+from torch.distributed.tensor._dtensor_spec import DTensorSpec, TensorMeta
+# 주변 등록 전역 객체인 분산 배치 방식 형식 읽음
+from torch.distributed.tensor.placement_types import Partial, Replicate, Shard
+# 시험에 필요한 인식 구현과 자료 계약 읽음
+from replay_perception import pose, roles
 
 
 # 실제 외부 실행을 대신할 시험 객체 정의
@@ -65,9 +83,6 @@ class LocalModel(torch.nn.Module):
 
 # 시험 실행 환경 생성
 def runtime(monkeypatch, tmp_path, predictions=None):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import roles
-
     # 고정 예측을 반환할 로컬 모의 모델 생성
     model = LocalModel(predictions)
     # 모델 메타데이터의 시험 항목 구성
@@ -95,7 +110,6 @@ def runtime(monkeypatch, tmp_path, predictions=None):
     monkeypatch.setattr(roles, 'verification', lambda key, directory: deepcopy(metadata))
     # 무거운 파일·의존성 입출력만 시험 경계로 격리
     # 영상·텐서·출력 검증과 중복 억제·좌표 처리의 실제 실행 유지
-    import cv2
     # 필요한 속성만 갖춘 모의 객체 생성
     fake_runtime = SimpleNamespace(
         torch=torch,
@@ -117,8 +131,8 @@ def runtime(monkeypatch, tmp_path, predictions=None):
     monkeypatch.setattr(
         roles, 'architectureMetadata', lambda candidate, runtime: {"name": "YOLO11m", "scale": "m"}
     )
-    # 역할 관측과 모의 모델 반환
-    return roles, model, tmp_path, metadata
+    # 모의 모델과 모델 폴더 및 메타데이터 반환
+    return model, tmp_path, metadata
 
 # 예측 자료 생성
 def predictions(rows):
@@ -128,18 +142,14 @@ def predictions(rows):
 
 # 역할 검출기 인터페이스 제공 확인
 def test_role_detector_api_is_available():
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception.roles import YoloRoleDetector
     # 호출 가능한 인터페이스 여부의 조건 충족 확인
-    assert callable(YoloRoleDetector)
+    assert callable(roles.YoloRoleDetector)
 
 # 자산 접근 전 미지원 장치 거부 확인
 @pytest.mark.parametrize(
     "device", ["cuda", "cuda:0", "auto", "", None, 0, np.array(["cpu", "mps"])]
 )
 def test_rejects_unsupported_device_before_assets(monkeypatch, tmp_path, device):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import roles
     # 고정 해시와 대조한 자산 정보의 금지된 호출 감시
     monkeypatch.setattr(roles, 'verification', lambda *_: pytest.fail("read invalid-device assets"))
     # 추론 장치 오류 발생 기대
@@ -150,7 +160,7 @@ def test_rejects_unsupported_device_before_assets(monkeypatch, tmp_path, device)
 # 가속 장치 미지원 시 대체 방지 확인
 def test_unavailable_mps_does_not_fall_back(monkeypatch, tmp_path):
     # 시험용 모델과 검증 기록을 갖춘 실행 환경 생성
-    roles, _, directory, _ = runtime(monkeypatch, tmp_path)
+    _, directory, _ = runtime(monkeypatch, tmp_path)
     # 추론 장치 사용 가능 여부의 시험 대역 주입
     monkeypatch.setattr(torch.backends.mps, "is_available", lambda: False)
     # 허용 목록 검사를 거친 가중치 자료의 금지된 호출 감시
@@ -165,7 +175,7 @@ def test_unavailable_mps_does_not_fall_back(monkeypatch, tmp_path):
 # 실행 환경·가중치 로드 전 해시 실패 확인
 def test_hash_failure_precedes_runtime_and_checkpoint_load(monkeypatch, tmp_path):
     # 시험용 모델과 검증 기록을 갖춘 실행 환경 생성
-    roles, _, directory, _ = runtime(monkeypatch, tmp_path)
+    _, directory, _ = runtime(monkeypatch, tmp_path)
 
     # 손상된 입력 모사
     def corrupt(*args):
@@ -185,7 +195,7 @@ def test_hash_failure_precedes_runtime_and_checkpoint_load(monkeypatch, tmp_path
 # 가중치 링크 해석 전 문자열 경로 검증 확인
 def test_verifies_lexical_path_before_resolving_symlink_for_checkpoint(monkeypatch, tmp_path):
     # 시험용 모델과 검증 기록을 갖춘 실행 환경 생성
-    roles, model, directory, metadata = runtime(monkeypatch, tmp_path)
+    model, directory, metadata = runtime(monkeypatch, tmp_path)
     # 호출 순서 기록의 빈 누적 공간 생성
     events = []
     # 심볼릭 링크 경로 준비
@@ -216,8 +226,6 @@ def test_verifies_lexical_path_before_resolving_symlink_for_checkpoint(monkeypat
 
 # 미승인 직렬화 객체의 로드 없는 안전 거부 확인
 def test_safe_loader_rejects_real_unapproved_pickle_without_loading(monkeypatch, tmp_path):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import roles
     # 시험 가중치 파일 준비
     checkpoint = tmp_path / "untrusted.pt"
     # 텐서 연산 의존성의 모의 가중치 기록
@@ -233,8 +241,6 @@ def test_safe_loader_rejects_real_unapproved_pickle_without_loading(monkeypatch,
 
 # 가중치 전용 안전 로드와 허용 목록 복원 확인
 def test_safe_loader_passes_weights_only_true_and_restores_allowlist(monkeypatch, tmp_path):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import roles
     # 시험 가중치 파일 준비
     checkpoint = tmp_path / "tensor.pt"
     # 텐서 연산 의존성의 모의 가중치 기록
@@ -271,8 +277,6 @@ def test_safe_loader_passes_weights_only_true_and_restores_allowlist(monkeypatch
 
 # 기존 허용 목록의 미확인 전역 객체도 거부 확인
 def test_safe_loader_rejects_even_previously_allowlisted_unknown_global(tmp_path):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import roles
     # 시험 가중치 파일 준비
     checkpoint = tmp_path / "globally-allowed.pt"
     # 텐서 연산 의존성의 모의 가중치 기록
@@ -286,8 +290,6 @@ def test_safe_loader_rejects_even_previously_allowlisted_unknown_global(tmp_path
 
 # 역직렬화 전 불변 내용 해시 검사 확인
 def test_safe_loader_checks_immutable_payload_digest_before_deserialization(monkeypatch, tmp_path):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import roles
     # 파일 경로 준비
     path = tmp_path / "changed.pt"
     # 텐서 연산 의존성의 모의 가중치 기록
@@ -307,8 +309,6 @@ def test_safe_loader_checks_immutable_payload_digest_before_deserialization(monk
 
 # 감사 중 경로 변경 시 해시 검증 내용 보존 확인
 def test_safe_loader_retains_hashed_payload_if_path_changes_during_audit(monkeypatch, tmp_path):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import roles
     # 파일 경로 준비
     path = tmp_path / "changed.pt"
     # 텐서 연산 의존성의 모의 가중치 기록
@@ -336,7 +336,7 @@ def test_safe_loader_retains_hashed_payload_if_path_changes_during_audit(monkeyp
 # 생성자의 실제 로더 명세 해시 전달 확인
 def test_constructor_passes_manifest_hash_to_the_actual_loader(monkeypatch, tmp_path):
     # 시험용 모델과 검증 기록을 갖춘 실행 환경 생성
-    roles, model, directory, metadata = runtime(monkeypatch, tmp_path)
+    model, directory, metadata = runtime(monkeypatch, tmp_path)
     # 관측한 호출 기록의 빈 누적 공간 생성
     seen = []
 
@@ -355,8 +355,6 @@ def test_constructor_passes_manifest_hash_to_the_actual_loader(monkeypatch, tmp_
 
 # 신뢰된 이름을 사칭한 주변 객체 거부 확인
 def test_ambient_impostor_with_a_trusted_name_is_rejected(monkeypatch, tmp_path):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import roles
     # 검사 대상의 자료형 생성
     impostor = type("HarmlessUnapproved", (), {})
     # 객체가 속한 모듈 준비
@@ -377,8 +375,6 @@ def test_ambient_impostor_with_a_trusted_name_is_rejected(monkeypatch, tmp_path)
 
 # 병렬 안전 로드의 프로세스 전역 허용 목록 중첩 방지 확인
 def test_parallel_safe_loads_cannot_overlap_process_global_allowlists(monkeypatch, tmp_path):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import roles
     # 파일 경로 준비
     path = tmp_path / "parallel.pt"
     # 텐서 연산 의존성의 모의 가중치 기록
@@ -440,10 +436,6 @@ def test_parallel_safe_loads_cannot_overlap_process_global_allowlists(monkeypatc
 
 # 병렬 실행 환경 로드의 원본 설정 경로 복원 확인
 def test_parallel_runtime_import_restores_original_settings_path(monkeypatch, tmp_path):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import roles
-    # 시험에 필요한 검증 도구와 의존성 읽음
-    import builtins
     # 문자열로 변환한 값 생성
     original = str(tmp_path / "original-settings-parent")
     # 병렬 실행 환경 로드의 원본 설정 경로 복원의 시험 환경변수 설정
@@ -517,8 +509,6 @@ def test_parallel_runtime_import_restores_original_settings_path(monkeypatch, tm
 
 # 주변 전역 변경 없는 자세 실행 환경 등록 공존 확인
 def test_pose_runtime_registration_coexists_without_mutating_ambient_globals(tmp_path):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import pose, roles
     # 모델 실행 의존성 묶음 실행
     pose.runtimeBundle()
     # 변경 전 자료의 조건별 항목 수집
@@ -553,21 +543,9 @@ def test_pose_runtime_registration_coexists_without_mutating_ambient_globals(tmp
 def test_pose_runtime_global_is_still_forbidden_inside_role_checkpoint(
     monkeypatch, tmp_path, type_name
 ):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import pose, roles
     # 모델 실행 의존성 묶음 실행
     pose.runtimeBundle()
-    # 시험 텐서와 추론 상태 점검 도구 읽음
-    from torch.distributed.device_mesh import DeviceMesh
-    # 시험 텐서와 추론 상태 점검 도구 읽음
-    from torch.distributed.tensor._dtensor_spec import DTensorSpec, TensorMeta
-    # 시험 텐서와 추론 상태 점검 도구 읽음
-    from torch.distributed.tensor import DTensor
-    # 시험 텐서와 추론 상태 점검 도구 읽음
-    from torch.distributed.tensor.placement_types import Partial, Replicate, Shard
-    # 시험 텐서와 추론 상태 점검 도구 읽음
-    from torch._dynamo.decorators import _DimRange
-    # 손 주변 물체 관측의 조건별 항목 수집
+    # 형식 이름별 주변 등록 전역 객체 수집
     objects = {
         value.__name__: value
         for value in (
@@ -603,8 +581,6 @@ def test_pose_runtime_global_is_still_forbidden_inside_role_checkpoint(
 
 # 등록 해제 없는 기존 신뢰 전역 객체 감사 확인
 def test_preexisting_trusted_global_is_audited_without_removing_registration(tmp_path):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import roles
     # 파일 경로 준비
     path = tmp_path / "preexisting-trusted.pt"
     # 텐서 연산 의존성의 모의 가중치 기록
@@ -626,8 +602,6 @@ def test_preexisting_trusted_global_is_audited_without_removing_registration(tmp
 
 # 공개 감사 전 압축된 과대 직렬화 객체 거부 확인
 def test_compressed_oversized_pickle_is_rejected_before_public_audit(monkeypatch, tmp_path):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import roles
     # 파일 경로 준비
     path = tmp_path / "compressed-oversized.pt"
     # 공개 감사 전 압축된 과대 직렬화 객체 거부 처리 자원의 사용 구간 시작
@@ -674,7 +648,7 @@ def test_offline_runtime_import_does_not_touch_network_or_user_settings(tmp_path
 # 대체 활성화 가속 장치의 명시적 거부 확인
 def test_mps_with_fallback_enabled_is_explicitly_rejected(monkeypatch, tmp_path):
     # 시험용 모델과 검증 기록을 갖춘 실행 환경 생성
-    roles, _, directory, _ = runtime(monkeypatch, tmp_path)
+    _, directory, _ = runtime(monkeypatch, tmp_path)
     # 추론 장치 사용 가능 여부의 시험 대역 주입
     monkeypatch.setattr(torch.backends.mps, "is_available", lambda: True)
     # 대체 활성화 가속 장치의 명시적 거부의 시험 환경변수 설정
@@ -691,7 +665,7 @@ def test_mps_with_fallback_enabled_is_explicitly_rejected(monkeypatch, tmp_path)
                                    ["ball", "goalkeeper", "player", "referee"]])
 def test_actual_model_label_mapping_must_be_exact(monkeypatch, tmp_path, names):
     # 시험용 모델과 검증 기록을 갖춘 실행 환경 생성
-    roles, model, directory, _ = runtime(monkeypatch, tmp_path)
+    model, directory, _ = runtime(monkeypatch, tmp_path)
     # 모델 분류명 목록 준비
     model.names = names
     # 분류명 오류 발생 기대
@@ -702,7 +676,7 @@ def test_actual_model_label_mapping_must_be_exact(monkeypatch, tmp_path, names):
 # 모델 가중치 누락 거부 확인
 def test_missing_model_checkpoint_is_rejected(monkeypatch, tmp_path):
     # 시험용 모델과 검증 기록을 갖춘 실행 환경 생성
-    roles, _, directory, _ = runtime(monkeypatch, tmp_path)
+    _, directory, _ = runtime(monkeypatch, tmp_path)
     # 허용 목록 검사를 거친 가중치 자료의 시험 대역 주입
     monkeypatch.setattr(roles, 'checkpointData', lambda *_, **kwargs: ({"ema": None}, []))
     # 모델 계약 오류 발생 기대
@@ -724,7 +698,7 @@ def test_missing_model_checkpoint_is_rejected(monkeypatch, tmp_path):
 )
 def test_invalid_rgb_is_rejected_without_inference(monkeypatch, tmp_path, rgb):
     # 시험용 모델과 검증 기록을 갖춘 실행 환경 생성
-    roles, model, directory, _ = runtime(monkeypatch, tmp_path)
+    model, directory, _ = runtime(monkeypatch, tmp_path)
     # 검증된 가중치를 읽는 역할 검출기 생성
     detector = roles.YoloRoleDetector(directory)
     # 역할 관측 오류 발생 기대
@@ -737,7 +711,7 @@ def test_invalid_rgb_is_rejected_without_inference(monkeypatch, tmp_path, rgb):
 # 빈 예측의 튜플 반환과 32비트 실수 평가 추론 확인
 def test_empty_prediction_returns_tuple_and_runs_fp32_eval_inference(monkeypatch, tmp_path):
     # 시험용 모델과 검증 기록을 갖춘 실행 환경 생성
-    roles, model, directory, metadata = runtime(monkeypatch, tmp_path)
+    model, directory, metadata = runtime(monkeypatch, tmp_path)
     # 검증된 가중치를 읽는 역할 검출기 생성
     detector = roles.YoloRoleDetector(directory)
     # 시험 영상에 대한 모델 관측 결과 값이 빈 목록인지 확인
@@ -764,7 +738,7 @@ def test_empty_prediction_returns_tuple_and_runs_fp32_eval_inference(monkeypatch
 # 주변 자동 형변환 중 모델 순전파의 32비트 실수 유지 확인
 def test_model_forward_stays_fp32_inside_ambient_cpu_autocast(monkeypatch, tmp_path):
     # 시험용 모델과 검증 기록을 갖춘 실행 환경 생성
-    roles, model, directory, _ = runtime(monkeypatch, tmp_path)
+    model, directory, _ = runtime(monkeypatch, tmp_path)
     # 첫 합성곱 계층 준비
     model.first_conv = torch.nn.Conv2d(3, 4, 1)
     # 관측 결과의 빈 누적 공간 생성
@@ -817,7 +791,7 @@ def test_four_roles_and_source_coordinate_backtransform(monkeypatch, tmp_path):
         ]
     )
     # 시험용 모델과 검증 기록을 갖춘 실행 환경 생성
-    roles, model, directory, _ = runtime(monkeypatch, tmp_path, output)
+    model, directory, _ = runtime(monkeypatch, tmp_path, output)
     # 검증된 가중치를 읽는 역할 검출기 생성
     detector = roles.YoloRoleDetector(directory)
     # 일정한 값으로 채운 시험 배열 생성
@@ -848,7 +822,7 @@ def test_four_roles_and_source_coordinate_backtransform(monkeypatch, tmp_path):
 # 성공 프레임별 변환 읽기 전용과 실패 시 초기화 확인
 def test_transform_is_read_only_per_successful_frame_and_cleared_on_failure(monkeypatch, tmp_path):
     # 시험용 모델과 검증 기록을 갖춘 실행 환경 생성
-    roles, _, directory, _ = runtime(monkeypatch, tmp_path)
+    _, directory, _ = runtime(monkeypatch, tmp_path)
     # 검증된 가중치를 읽는 역할 검출기 생성
     detector = roles.YoloRoleDetector(directory)
     # 중첩 자료까지 분리한 복사본 생성
@@ -881,7 +855,7 @@ def test_transform_is_read_only_per_successful_frame_and_cleared_on_failure(monk
 # 순전파 실패 시 이전 변환 초기화와 자동 형변환 복원 확인
 def test_forward_failure_clears_previous_transform_and_restores_autocast(monkeypatch, tmp_path):
     # 시험용 모델과 검증 기록을 갖춘 실행 환경 생성
-    roles, model, directory, _ = runtime(monkeypatch, tmp_path)
+    model, directory, _ = runtime(monkeypatch, tmp_path)
     # 검증된 가중치를 읽는 역할 검출기 생성
     detector = roles.YoloRoleDetector(directory)
     # 관측 조건을 주입할 영 배열 생성
@@ -915,7 +889,7 @@ def test_odd_letterbox_padding_is_reversible(monkeypatch, tmp_path):
     # 331×100을 640×193으로 조정 후 위 223화소 아래 224화소 여백 적용
     output = predictions([[320, 319.5, 320, 96.5, 0, 0, 0, .9]])
     # 시험용 모델과 검증 기록을 갖춘 실행 환경 생성
-    roles, _, directory, _ = runtime(monkeypatch, tmp_path, output)
+    _, directory, _ = runtime(monkeypatch, tmp_path, output)
     # 검증된 가중치를 읽는 역할 검출기 생성
     detector = roles.YoloRoleDetector(directory)
     # 시험 영상에 대한 모델 관측 결과 생성
@@ -939,7 +913,7 @@ def test_class_aware_nms_and_confidence_filter_are_real(monkeypatch, tmp_path):
         ]
     )
     # 시험용 모델과 검증 기록을 갖춘 실행 환경 생성
-    roles, _, directory, _ = runtime(monkeypatch, tmp_path, output)
+    _, directory, _ = runtime(monkeypatch, tmp_path, output)
     # 시험 영상에 대한 모델 관측 결과 생성
     result = roles.YoloRoleDetector(directory).predict(np.zeros((640, 640, 3), dtype=np.uint8))
     # 역할 가설 목록 값이 선수 · 심판인지 확인
@@ -954,7 +928,7 @@ def test_confidence_boundary_is_inclusive_without_rounding_up(monkeypatch, tmp_p
     # 중심 좌표와 분류 점수의 모의 예측 생성
     output = predictions([[100, 100, 40, 80, 0, 0, .50, 0], [200, 100, 40, 80, 0, 0, below, 0]])
     # 시험용 모델과 검증 기록을 갖춘 실행 환경 생성
-    roles, _, directory, _ = runtime(monkeypatch, tmp_path, output)
+    _, directory, _ = runtime(monkeypatch, tmp_path, output)
     # 시험 영상에 대한 모델 관측 결과 생성
     result = roles.YoloRoleDetector(directory).predict(np.zeros((640, 640, 3), dtype=np.uint8))
     # 점수 경계 0점5의 검출 하나가 보존됐는지 확인
@@ -972,7 +946,7 @@ def test_nms_suppresses_only_above_exact_iou_boundary(
     # 가로 중심 11과 2분의 1에서 교집합 140 대 합집합 200의 겹침 비율 70퍼센트
     output = predictions([[8.5, 5, 17, 10, 0, 0, .9, 0], [center_x, 5, 17, 10, 0, 0, .8, 0]])
     # 시험용 모델과 검증 기록을 갖춘 실행 환경 생성
-    roles, _, directory, _ = runtime(monkeypatch, tmp_path, output)
+    _, directory, _ = runtime(monkeypatch, tmp_path, output)
     # 시험 영상에 대한 모델 관측 결과 생성
     result = roles.YoloRoleDetector(directory).predict(np.zeros((640, 640, 3), dtype=np.uint8))
     # 처리 결과의 개수의 기대 자료 일치 확인
@@ -983,7 +957,7 @@ def test_detection_count_is_bounded(monkeypatch, tmp_path):
     # 기록 행 목록의 조건별 항목 수집
     rows = [[10 + i % 30 * 20, 10 + i // 30 * 20, 2, 2, .9, 0, 0, 0] for i in range(400)]
     # 시험용 모델과 검증 기록을 갖춘 실행 환경 생성
-    roles, _, directory, _ = runtime(monkeypatch, tmp_path, predictions(rows))
+    _, directory, _ = runtime(monkeypatch, tmp_path, predictions(rows))
     # 시험 영상에 대한 모델 관측 결과 생성
     result = roles.YoloRoleDetector(directory).predict(np.zeros((640, 640, 3), dtype=np.uint8))
     # 처리 결과의 개수 값이 300인지 확인
@@ -992,7 +966,7 @@ def test_detection_count_is_bounded(monkeypatch, tmp_path):
 # 원본 프레임 상자 자르기와 여백 전용 상자 거부 확인
 def test_boxes_clip_to_original_frame_and_padding_only_boxes_are_rejected(monkeypatch, tmp_path):
     # 시험용 모델과 검증 기록을 갖춘 실행 환경 생성
-    roles, _, directory, _ = runtime(
+    _, directory, _ = runtime(
         monkeypatch, tmp_path, predictions([[20, 170, 80, 80, 0.9, 0, 0, 0]])
     )
     # 시험 영상에 대한 모델 관측 결과 생성
@@ -1000,7 +974,7 @@ def test_boxes_clip_to_original_frame_and_padding_only_boxes_are_rejected(monkey
     # 검출 상자 좌표의 기대 자료 일치 확인
     assert result[0].box == pytest.approx((0, 0, 18.75, 15.625))
     # 시험용 모델과 검증 기록을 갖춘 실행 환경 생성
-    roles, _, directory, _ = runtime(
+    _, directory, _ = runtime(
         monkeypatch, tmp_path, predictions([[20, 20, 10, 10, 0.9, 0, 0, 0]])
     )
     # 시험 영상에 대한 모델 관측 결과 값이 빈 목록인지 확인
@@ -1011,7 +985,7 @@ def test_padding_only_box_cannot_suppress_a_box_with_source_support(monkeypatch,
     # 중심 좌표와 분류 점수의 모의 예측 생성
     output = predictions([[100, 80, 40, 160, .9, 0, 0, 0], [100, 90, 40, 160, .8, 0, 0, 0]])
     # 시험용 모델과 검증 기록을 갖춘 실행 환경 생성
-    roles, _, directory, _ = runtime(monkeypatch, tmp_path, output)
+    _, directory, _ = runtime(monkeypatch, tmp_path, output)
     # 시험 영상에 대한 모델 관측 결과 생성
     result = roles.YoloRoleDetector(directory).predict(np.zeros((100, 200, 3), dtype=np.uint8))
     # 검출 하나의 점수가 실수 오차 범위 안에서 0점8인지 확인
@@ -1026,7 +1000,7 @@ def test_padding_only_boxes_do_not_exhaust_the_source_detection_cap(monkeypatch,
     # 기록 행 목록에 현재 관측 추가
     rows.append([320, 320, 64, 64, 0, 0, 0, .8])
     # 시험용 모델과 검증 기록을 갖춘 실행 환경 생성
-    roles, _, directory, _ = runtime(monkeypatch, tmp_path, predictions(rows))
+    _, directory, _ = runtime(monkeypatch, tmp_path, predictions(rows))
     # 시험 영상에 대한 모델 관측 결과 생성
     result = roles.YoloRoleDetector(directory).predict(np.zeros((100, 200, 3), dtype=np.uint8))
     # 중복 억제 뒤 심판 역할 검출 하나만 남았는지 확인
@@ -1035,8 +1009,6 @@ def test_padding_only_boxes_do_not_exhaust_the_source_detection_cap(monkeypatch,
 # 네트워크 없는 승인 가중치 로컬 실행 확인
 @pytest.mark.parametrize("device", ["cpu", "mps"])
 def test_approved_checkpoint_runs_locally_without_network(monkeypatch, device):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import pose, roles
     # 선택한 항목의 값 생성
     model_dir = os.environ.get("REPLAY_ROLE_MODEL_DIR")
     # 모델 저장 폴더의 조건에 따른 분기
@@ -1045,8 +1017,6 @@ def test_approved_checkpoint_runs_locally_without_network(monkeypatch, device):
         pytest.skip(
             "Set REPLAY_ROLE_MODEL_DIR to the approved external cache for real-model readiness"
         )
-    # 시험에 필요한 검증 도구와 의존성 읽음
-    import socket
     # 호출 이력의 빈 누적 공간 생성
     calls = []
 
@@ -1160,7 +1130,7 @@ def test_approved_checkpoint_runs_locally_without_network(monkeypatch, device):
 )
 def test_malformed_raw_outputs_fail_closed(monkeypatch, tmp_path, output):
     # 시험용 모델과 검증 기록을 갖춘 실행 환경 생성
-    roles, _, directory, _ = runtime(monkeypatch, tmp_path, output)
+    _, directory, _ = runtime(monkeypatch, tmp_path, output)
     # 검증된 가중치를 읽는 역할 검출기 생성
     detector = roles.YoloRoleDetector(directory)
     # 출력 계약 오류 발생 기대
@@ -1170,8 +1140,6 @@ def test_malformed_raw_outputs_fail_closed(monkeypatch, tmp_path, output):
 
 # 잘못된 규모·비검출 모델 구조 거부 확인
 def test_architecture_rejects_wrong_scale_or_non_detection_model(monkeypatch, tmp_path):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import roles
     # 자료형 거부 시험용 일반 객체과 필요한 속성만 갖춘 모의 객체의 항목별 순회
     for candidate in (
         object(),

@@ -21,7 +21,7 @@ SCORE_THRESHOLD = 0.30
 # 출력 레이블 목록에 사람·지정 문자열의 변경 불가 집합 변환 결과 저장
 _OUTPUT_LABELS = frozenset({"person", "sports ball"})
 
-# 실행 환경 읽음
+# 추론 시점에만 필요한 대형 실행 환경을 모듈 적재와 분리해 지연 읽음
 def runtimeBundle():
     # 검증된 모델의 텐서 추론 도구 읽음
     import torch

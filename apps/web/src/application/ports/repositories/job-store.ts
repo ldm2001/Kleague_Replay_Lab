@@ -1,4 +1,16 @@
 // 작업 저장 명령과 결과
+// 관측과 인식 및 자동 평가의 공유 자료 계약 가져옴
+import type {
+    AutomaticReviewBatch,
+    BroadcastCue,
+    PerceptionRun,
+    PrivateIndex,
+    SceneEvent,
+    SceneObservation,
+    TrackingSummary
+} from "@replay/shared-types";
+
+// 작업 종류
 export type JobType =
     | "VALIDATE_VIDEO"
     | "ANALYZE_VIDEO"
@@ -27,10 +39,12 @@ export type JobClaimCommand = Readonly<{
     now: string;
     // 현재 작업 임대의 유효 기한
     leaseUntil: string;
+    // 원문 대신 저장하는 작업 임대 토큰 해시
+    leaseTokenHash: Uint8Array;
 }>;
 
-// 작업 선점 결과
-export type JobClaim = Readonly<{
+// 저장소가 발급한 원문 토큰 없는 작업 임대
+export type JobLease = Readonly<{
     // 처리 작업의 식별자
     jobId: string;
     // 영상 검증과 분석의 작업 구분
@@ -45,8 +59,6 @@ export type JobClaim = Readonly<{
     stage: JobStage;
     // 작업 진행률의 백분율
     progressPercent: number;
-    // 현재 작업 임대를 증명하는 비밀 토큰
-    leaseToken: string;
     // 현재 작업 임대의 유효 기한
     leaseUntil: string;
     // 분석 기록의 식별자
@@ -55,14 +67,20 @@ export type JobClaim = Readonly<{
     videoAssetId: string | null;
     // 객체 저장소에서 파일을 찾는 경로
     objectKey: string | null;
+}>;
+
+// 작업 선점 결과
+export type JobClaim = Readonly<JobLease & {
+    // 현재 작업 임대를 증명하는 비밀 토큰
+    leaseToken: string;
     // 원본 영상의 출처 주소
     sourceUrl?: string;
 }>;
 
 // 작업 선점 저장 포트
 export type JobStore = Readonly<{
-    // 작업 선점과 원본 접근 권한 발급
-    claim: (command: JobClaimCommand) => Promise<JobClaim | null>;
+    // 해시로 받은 작업 임대 저장과 선점
+    claim: (command: JobClaimCommand) => Promise<JobLease | null>;
 }>;
 
 // 작업 진행 입력
@@ -150,11 +168,11 @@ export type AnalysisShot = Readonly<{
 // 분석 후보 결과
 export type AnalysisCandidate = Readonly<{
     // 동일 물체의 연속 이동 관측
-    tracking?: import("@replay/shared-types").TrackingSummary | null;
+    tracking?: TrackingSummary | null;
     // 장면에서 인식한 사건과 근거
-    sceneEvent?: import("@replay/shared-types").SceneEvent | null;
+    sceneEvent?: SceneEvent | null;
     // 규정 사실과 구분하여 보존하는 방송 단서
-    broadcastCue?: import("@replay/shared-types").BroadcastCue | null;
+    broadcastCue?: BroadcastCue | null;
     // 목록 안에서 해당 항목을 식별하는 순번
     index: number;
     // 후보 사건의 분류
@@ -174,7 +192,7 @@ export type AnalysisCandidate = Readonly<{
     // 후보에 연결한 화면 구간 순번 목록
     shotIndices: readonly number[];
     // 판정 전 검증이 필요한 영상 관찰 후보
-    observation?: import("@replay/shared-types").SceneObservation | null;
+    observation?: SceneObservation | null;
 }>;
 
 // 분석 증거 결과
@@ -197,6 +215,10 @@ export type AnalysisEvidence = Readonly<{
     height: number | null;
 }>;
 
+// 제출 증거와 저장된 증거 식별자의 연결 정의
+export type AutomaticEvidenceBinding = AnalysisEvidence &
+    Readonly<{ evidenceIndex: number; evidenceId: string }>;
+
 // 분석 결과 입력
 export type AnalysisPayload = Readonly<{
     // 처리 분기 또는 자료 종류를 구별하는 값
@@ -212,7 +234,7 @@ export type AnalysisPayload = Readonly<{
     // 원본에 연결한 증거 자료 또는 접근 기능
     evidence?: readonly AnalysisEvidence[];
     // 사실 채택과 구분한 모델 관측 처리 자료
-    perception?: import("@replay/shared-types").PerceptionRun;
+    perception?: PerceptionRun;
 }>;
 
 // 작업자 결과 전송 자료
@@ -221,9 +243,9 @@ export type JobResultPayload = ValidationPayload | AnalysisPayload | JobFailureP
 // 작업 결과 저장 입력
 export type JobResultCommand = Readonly<{
     // Worker 승인 정보와 분리된 서버 검증 비공개 색인 또는 색인 생략 사유
-    privateIndex?: import("../../../shared/private-incidents").PrivateIndex;
+    privateIndex?: PrivateIndex;
     // 후보별 자동 규정 평가의 내부 결과 묶음
-    automaticReview?: import("@replay/shared-types").AutomaticReviewBatch;
+    automaticReview?: AutomaticReviewBatch;
     // 처리 작업의 식별자
     jobId: string;
     // 작업을 수행하는 실행자의 식별자
@@ -299,7 +321,8 @@ export type JobResultPreflight =
                 matchDate?: string;
             }> | null;
         }>
-    | Readonly<{ kind: "NOT_FOUND" | "STALE_LEASE" | "ALREADY_FINISHED" }>;
+    | Readonly<{ kind: "NOT_FOUND" | "STALE_LEASE" | "ALREADY_FINISHED" }>
+    | Readonly<{ kind: "INVALID_RESULT"; reason: "SOURCE" }>;
 
 // 작업 결과 저장 포트
 export type JobResultStore = Readonly<{

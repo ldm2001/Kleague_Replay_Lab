@@ -1,4 +1,4 @@
-# 인식 모듈 지연 읽기 도구 읽음
+# 인식 모듈 설치 정보 확인 도구 읽음
 from importlib.util import find_spec
 # 기록 직렬화와 읽기 도구 읽음
 import json
@@ -10,10 +10,26 @@ from types import SimpleNamespace
 import numpy as np
 # 예외 기대와 반복 사례 검증 도구 읽음
 import pytest
+# 기록 행렬의 처리기 화소 재현 비교용 기하 변환 도구 읽음
+from scipy.ndimage import affine_transform
+# 시험 텐서와 추론 상태 점검 도구 읽음
+import torch
+# 모델 전처리 인터페이스 읽음
+import transformers
+# 처리기 설정 파일 읽기 감시 대상 모듈 읽음
+from transformers import image_processing_base
+# 손상된 전처리 결과 구성 자료형 읽음
+from transformers.image_processing_utils import BatchFeature
+# 원본 변환 행렬 대역 주입 대상 모듈 읽음
+from transformers.models.vitpose import image_processing_pil_vitpose
+# 시험에 필요한 인식 구현과 자료 계약 읽음
+from replay_perception import pose
 # 시험에 필요한 인식 구현과 자료 계약 읽음
 from replay_perception.models import Detection
 # 시험에 필요한 인식 구현과 자료 계약 읽음
 from replay_perception.observations import KEYPOINT_NAMES
+# 시험에 필요한 인식 구현과 자료 계약 읽음
+from replay_perception.weights import verification
 
 # 자세 어댑터 제공 확인
 def test_pose_adapter_is_available():
@@ -23,13 +39,6 @@ def test_pose_adapter_is_available():
 # 시험 실행 환경 생성
 @pytest.fixture
 def runtime(monkeypatch, tmp_path):
-    # 시험 텐서와 추론 상태 점검 도구 읽음
-    import torch
-    # 모델 전처리 인터페이스 읽음
-    import transformers
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import pose
-
     # 영상 전처리기 준비
     processor = pose.runtimeBundle()[2]()
     # 모델 로드 이력의 빈 누적 공간 생성
@@ -146,8 +155,6 @@ def runtime(monkeypatch, tmp_path):
     )
     # 필요한 속성만 갖춘 모의 객체 반환
     return SimpleNamespace(
-        module=pose,
-        torch=torch,
         # 영상 전처리기의 호출 조건 지정
         processor=processor,
         # 모의 모델의 호출 조건 지정
@@ -165,7 +172,7 @@ def runtime(monkeypatch, tmp_path):
 # 자세 추정기 생성
 def make_estimator(runtime, **kwargs):
     # 사람 영역의 관절 좌표를 추정할 객체 반환
-    return runtime.module.VitPoseEstimator(runtime.directory, **kwargs)
+    return pose.VitPoseEstimator(runtime.directory, **kwargs)
 
 # 검증된 로컬 안전 가중치와 명시적 전처리 확인
 def test_verified_local_safetensors_and_explicit_preprocessing(runtime):
@@ -203,7 +210,7 @@ def test_verified_local_safetensors_and_explicit_preprocessing(runtime):
         "image_std": [0.229, 0.224, 0.225],
     })
     # 장치 이동 인자의 기대 자료 일치 확인
-    assert runtime.model.to_args == (("cpu",), {"dtype": runtime.torch.float32})
+    assert runtime.model.to_args == (("cpu",), {"dtype": torch.float32})
     # 학습 모드 여부 값이 거짓인지 확인
     assert runtime.model.training is False
     # 자산 파일 명세의 기대 자료 일치 확인
@@ -225,9 +232,6 @@ def test_verified_local_safetensors_and_explicit_preprocessing(runtime):
 
 # 실제 처리기의 미검증 인접 설정 읽기 방지 확인
 def test_real_processor_loader_never_reads_unverified_sibling_configuration(runtime, monkeypatch):
-    # 모델 전처리 인터페이스 읽음
-    from transformers import image_processing_base
-
     # 검증된 설정 파일 준비
     verified_file = runtime.directory / "preprocessor_config.json"
     # 검증된 설정 파일에 시험 문자열 기록
@@ -237,11 +241,11 @@ def test_real_processor_loader_never_reads_unverified_sibling_configuration(runt
         json.dumps({"image_processor": {"do_convert_rgb": True}}),
         encoding="utf-8",
     )
-    # 모델 실행 의존성 묶음 생성
-    torch, transformers, _, model_loader = runtime.module.runtimeBundle()
+    # 실행 의존성 묶음의 모의 모델 적재기 준비
+    _, _, _, model_loader = pose.runtimeBundle()
     # 모델 실행 의존성 묶음의 시험 대역 주입
     monkeypatch.setattr(
-        runtime.module,
+        pose,
         'runtimeBundle',
         lambda: (torch, transformers, type(runtime.processor), model_loader),
     )
@@ -279,7 +283,7 @@ def test_unsupported_device_rejected_before_loading(runtime, device):
 # 가속 장치 미지원 시 대체 방지 확인
 def test_unavailable_mps_does_not_fall_back(runtime, monkeypatch):
     # 추론 장치 사용 가능 여부의 시험 대역 주입
-    monkeypatch.setattr(runtime.torch.backends.mps, "is_available", lambda: False)
+    monkeypatch.setattr(torch.backends.mps, "is_available", lambda: False)
     # 추론 장치 오류 발생 기대
     with pytest.raises(RuntimeError, match="DEVICE_UNAVAILABLE"):
         # 모의 실행 환경을 주입한 자세 추정기 실행
@@ -295,7 +299,7 @@ def test_asset_verification_failure_prevents_load(runtime, monkeypatch):
         # 금지 조건 차단의 예외 상황 재현
         raise ValueError("MODEL_HASH_MISMATCH")
     # 고정 해시와 대조한 자산 정보의 시험 대역 주입
-    monkeypatch.setattr(runtime.module, 'verification', reject)
+    monkeypatch.setattr(pose, 'verification', reject)
     # 파일 해시 불일치 발생 기대
     with pytest.raises(ValueError, match="MODEL_HASH_MISMATCH"):
         # 모의 실행 환경을 주입한 자세 추정기 실행
@@ -307,9 +311,6 @@ def test_asset_verification_failure_prevents_load(runtime, monkeypatch):
 def test_model_path_keeps_lexical_repository_guard_before_resolution(
     runtime, monkeypatch, tmp_path
 ):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception.weights import verification
-
     # 가중치 저장 폴더 준비
     repository = tmp_path / "repo"
     # 가중치 저장 폴더 생성
@@ -325,11 +326,11 @@ def test_model_path_keeps_lexical_repository_guard_before_resolution(
     # 주입한 시험 입력의 링크 경로 생성
     supplied.symlink_to(external, target_is_directory=True)
     # 고정 해시와 대조한 자산 정보의 시험 대역 주입
-    monkeypatch.setattr(runtime.module, 'verification', verification)
+    monkeypatch.setattr(pose, 'verification', verification)
     # 파일 경로 오류 발생 기대
     with pytest.raises(ValueError, match="OBSERVER_MODEL_PATH_IN_REPOSITORY"):
         # 사람 영역의 관절 좌표를 추정할 객체 실행
-        runtime.module.VitPoseEstimator(supplied)
+        pose.VitPoseEstimator(supplied)
     # 모델 로드 이력 값이 빈 목록인지 확인
     assert runtime.loads == []
 
@@ -423,11 +424,11 @@ def test_real_processor_batching_preserves_detection_order_and_source_geometry(r
     # 호출 이력의 항목별 순회
     for pixels, indices in runtime.model.calls:
         # 배열 숫자 형식의 기대 자료 일치 확인
-        assert pixels.dtype == runtime.torch.float32
+        assert pixels.dtype == torch.float32
         # 배열 차원의 선택 항목의 비교 자료 값이 3 · 256 · 192인지 확인
         assert tuple(pixels.shape[1:]) == (3, 256, 192)
         # 배열 숫자 형식의 기대 자료 일치 확인
-        assert indices.dtype == runtime.torch.long
+        assert indices.dtype == torch.long
         # 배열을 순서대로 변환한 목록의 기대 자료 일치 확인
         assert indices.tolist() == [0] * len(indices)
     # 순번을 붙인 시험 자료의 항목별 순회
@@ -456,9 +457,6 @@ def test_real_processor_batching_preserves_detection_order_and_source_geometry(r
 # 기록된 행렬의 실제 처리기 화소 재현 확인
 @pytest.mark.parametrize("box", [(30, 50, 190, 90), (30, 10, 50, 150), (0, 0, 40, 80)])
 def test_recorded_matrix_reproduces_actual_processor_pixels(runtime, box):
-    # 시험에 필요한 검증 도구와 의존성 읽음
-    from scipy.ndimage import affine_transform
-
     # 세로 좌표 격자과 가로 좌표 격자 준비
     yy, xx = np.mgrid[:180, :220]
     # 지정 형식으로 변환한 배열 생성
@@ -498,7 +496,7 @@ def test_recorded_matrix_reproduces_actual_processor_pixels(runtime, box):
     np.testing.assert_allclose(runtime.model.calls[0][0][0].numpy(), expected, atol=1e-6)
 
 # 후처리 자세 생성
-def processed_pose(torch):
+def processed_pose():
     # 후처리 자세 결과 반환
     return {
         # 관절 좌표와 점수의 시험값 지정
@@ -521,7 +519,7 @@ def test_raw_scores_and_outside_coordinates_are_preserved(runtime, monkeypatch):
         # 호출 이력에 현재 관측 추가
         calls.append(kwargs)
         # 전처리 결과를 반영한 자세 관측 반환
-        return [[processed_pose(runtime.torch)]]
+        return [[processed_pose()]]
     # 원시 점수와 화면 밖 좌표 보존 의존성의 시험 대역 주입
     monkeypatch.setattr(runtime.processor, "post_process_pose_estimation", postprocess)
     # 시험 영상에 대한 모델 관측 결과 생성
@@ -543,7 +541,7 @@ def test_raw_scores_and_outside_coordinates_are_preserved(runtime, monkeypatch):
 @pytest.mark.parametrize("score", [0.0, -0.2])
 def test_nonpositive_scores_keep_all_real_backend_decoded_joints(runtime, monkeypatch, score):
     # 일정한 값으로 채운 시험 배열 생성
-    heatmaps = runtime.torch.full((1, 17, 64, 48), score - 1)
+    heatmaps = torch.full((1, 17, 64, 48), score - 1)
     # 관절 확률 지도의 선택 항목 준비
     heatmaps[:, :, 28, 20] = score
     # 필요한 속성만 갖춘 모의 객체 생성
@@ -574,7 +572,7 @@ def test_nonpositive_scores_keep_all_real_backend_decoded_joints(runtime, monkey
 )
 def test_corrupt_postprocess_output_fails(runtime, monkeypatch, fault):
     # 전처리 결과를 반영한 자세 관측 생성
-    entry = processed_pose(runtime.torch)
+    entry = processed_pose()
     # 출력 자료의 시험 항목 구성
     output = [[entry]]
     # 손상된 후처리 출력 실패 입력의 비교 결과별 분기
@@ -626,7 +624,7 @@ def test_wrong_heatmap_shape_fails_before_postprocessing(runtime, monkeypatch, s
     monkeypatch.setattr(
         type(runtime.model),
         "__call__",
-        lambda *args, **kwargs: SimpleNamespace(heatmaps=runtime.torch.zeros(shape)),
+        lambda *args, **kwargs: SimpleNamespace(heatmaps=torch.zeros(shape)),
     )
     # 출력 계약 오류 발생 기대
     with pytest.raises(ValueError, match="POSE_OUTPUT_INVALID"):
@@ -639,7 +637,7 @@ def test_wrong_heatmap_shape_fails_before_postprocessing(runtime, monkeypatch, s
 @pytest.mark.parametrize("value", [float("nan"), float("inf")])
 def test_nonfinite_heatmaps_are_not_cleaned_by_postprocessing(runtime, monkeypatch, value):
     # 관측 조건을 주입할 영 배열 생성
-    heatmaps = runtime.torch.zeros((1, 17, 64, 48))
+    heatmaps = torch.zeros((1, 17, 64, 48))
     # 관절 확률 지도의 선택 항목 준비
     heatmaps[0, 0, 0, 0] = value
     # 관측한 호출의 시험 대역 주입
@@ -657,9 +655,9 @@ def test_nonfinite_heatmaps_are_not_cleaned_by_postprocessing(runtime, monkeypat
 @pytest.mark.parametrize("field", ["keypoints", "scores"])
 def test_nonfloating_postprocess_output_is_rejected(runtime, monkeypatch, field):
     # 전처리 결과를 반영한 자세 관측 생성
-    entry = processed_pose(runtime.torch)
+    entry = processed_pose()
     # 지정한 장치와 형식으로 옮긴 텐서 생성
-    entry[field] = entry[field].to(dtype=runtime.torch.int64)
+    entry[field] = entry[field].to(dtype=torch.int64)
     # 비실수 후처리 출력 거부 의존성의 시험 대역 주입
     monkeypatch.setattr(
         runtime.processor, "post_process_pose_estimation", lambda *args, **kwargs: [[entry]]
@@ -674,7 +672,7 @@ def test_nonfloating_postprocess_output_is_rejected(runtime, monkeypatch, field)
 # 비실수 열지도 출력 거부 확인
 def test_nonfloating_heatmap_output_is_rejected(runtime, monkeypatch):
     # 같은 값으로 채운 시험 배열 생성
-    heatmaps = runtime.torch.ones((1, 17, 64, 48), dtype=runtime.torch.int64)
+    heatmaps = torch.ones((1, 17, 64, 48), dtype=torch.int64)
     # 관측한 호출의 시험 대역 주입
     monkeypatch.setattr(
         type(runtime.model), "__call__", lambda *args, **kwargs: SimpleNamespace(heatmaps=heatmaps)
@@ -683,7 +681,7 @@ def test_nonfloating_heatmap_output_is_rejected(runtime, monkeypatch):
     monkeypatch.setattr(
         runtime.processor,
         "post_process_pose_estimation",
-        lambda *args, **kwargs: [[processed_pose(runtime.torch)]],
+        lambda *args, **kwargs: [[processed_pose()]],
     )
     # 출력 계약 오류 발생 기대
     with pytest.raises(ValueError, match="POSE_OUTPUT_INVALID"):
@@ -695,9 +693,6 @@ def test_nonfloating_heatmap_output_is_rejected(runtime, monkeypatch):
 # 추론 전 손상된 원본 변환 거부 확인
 @pytest.mark.parametrize("matrix", [np.zeros((2, 3)), np.full((2, 3), np.nan), np.zeros((3, 3))])
 def test_corrupt_source_transform_rejected_before_inference(runtime, monkeypatch, matrix):
-    # 모델 전처리 인터페이스 읽음
-    from transformers.models.vitpose import image_processing_pil_vitpose
-
     # 추론 전 손상된 원본 변환 거부 의존성의 시험 대역 주입
     monkeypatch.setattr(image_processing_pil_vitpose, "get_warp_matrix", lambda *args: matrix)
     # 자세 관측 오류 발생 기대
@@ -712,9 +707,6 @@ def test_corrupt_source_transform_rejected_before_inference(runtime, monkeypatch
 # 손상된 전처리 거부 확인
 @pytest.mark.parametrize("pixels", [np.zeros((1, 3, 256, 192)), None])
 def test_corrupt_preprocessing_rejected(runtime, monkeypatch, pixels):
-    # 모델 전처리 인터페이스 읽음
-    from transformers.image_processing_utils import BatchFeature
-
     # 손상된 전처리 거부 의존성의 시험 대역 주입
     monkeypatch.setattr(
         runtime.processor,
