@@ -3,33 +3,19 @@ import {
     claim,
     evidence as evidenceCase,
     progress as progressCase,
-    result as resultCase,
-    type Clock
+    result as resultCase
 } from "@replay/application";
 // 저장소와 외부 기능 구현 가져옴
-import { hash, jobStore } from "@replay/adapters";
-// 데이터베이스 연결과 저장 구조 가져옴
-import { client } from "@replay/database";
+import { hash, jobStore, secret } from "@replay/adapters";
 // 영상 작업의 임대와 결과 처리 계약 가져옴
 import type { JobApiDependencies } from "../apis/job";
 // 원본과 증거 파일 저장 기능 가져옴
 import { storage } from "./storage";
-
-// 유효 기한 계산에 실제 현재 시각을 제공하는 시계 생성
-const clock: Clock = { now: () => new Date() };
+// 프로세스 공용 설정과 시계 및 데이터베이스 연결 가져옴
+import { clock, env, pool } from "./runtime";
 
 // 요청마다 재생성하지 않을 의존 객체 보관 위치 마련
 let cached: JobApiDependencies | undefined;
-
-// 환경 변수 조회
-const env = (name: string): string => {
-    // 필수 실행 환경의 설정값 읽음
-    const value = process.env[name];
-    // 필수 환경 설정 누락 시 의존 객체 생성 중단
-    if (!value) throw new Error(`${name} is required`);
-    // 확인된 환경 설정값 반환
-    return value;
-};
 
 // 작업 임대 시간 조회
 const lease = (): number => {
@@ -48,8 +34,8 @@ const lease = (): number => {
 export const jobs = (): JobApiDependencies => {
     // 기존 의존성 조회
     if (cached) return cached;
-    // 데이터베이스 연결 생성
-    const database = client(env("DATABASE_URL"));
+    // 프로세스 공용 데이터베이스 연결 조회
+    const database = pool();
     // 작업 저장소 생성
     const repository = jobStore(database);
     // 객체 저장소 생성
@@ -57,7 +43,14 @@ export const jobs = (): JobApiDependencies => {
     // 해시 어댑터 생성
     const hasher = hash();
     // 작업 선점 유스케이스 생성
-    const operation = claim({ clock, repository, source, leaseMs: lease() });
+    const operation = claim({
+        clock,
+        hasher,
+        repository,
+        secret: secret(),
+        source,
+        leaseMs: lease()
+    });
     // 진행 유스케이스 생성
     const state = progressCase({ clock, hasher, repository, leaseMs: lease() });
     // 작업 결과 유스케이스 생성

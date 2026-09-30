@@ -1,5 +1,4 @@
-import type { PushFacts } from "@replay/shared-types";
-import { observation } from "@replay/shared-types";
+import { observation, type PushFacts } from "@replay/shared-types";
 import { ruleSet } from "@replay/rule-data";
 import { describe, expect, it } from "vitest";
 import { pushAccounts } from "@replay/rule-engine";

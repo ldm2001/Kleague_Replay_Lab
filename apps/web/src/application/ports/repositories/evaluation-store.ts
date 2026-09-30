@@ -1,7 +1,6 @@
 // 평가 저장 명령
-import type { EvaluationFacts } from "@replay/shared-types";
-// 공유 자료 계약과 검증 기능 가져옴
-import type { EvaluationResult } from "@replay/shared-types";
+// 평가 사실과 결과의 공유 자료 계약 가져옴
+import type { EvaluationFacts, EvaluationResult } from "@replay/shared-types";
 
 // 사실 수정 입력
 export type FactPatchCommand = Readonly<{

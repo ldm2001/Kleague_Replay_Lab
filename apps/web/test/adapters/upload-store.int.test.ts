@@ -278,6 +278,97 @@ describeDatabase("PostgreSQL upload repository", () => {
         ).resolves.toBeNull();
     });
 
+    it("replays the completed asset for the owner and hides it from another session", async () => {
+        // 소유 세션 준비
+        const owner = await seedSession();
+        // 다른 익명 세션 준비
+        const other = await seedSession();
+        // 저장소 의도 결과를 생성결과에 저장
+        const created = await repository.intent(request(owner));
+        // 생성결과 종류의 기대값 생성완료 일치 확인
+        expect(created.kind).toBe("CREATED");
+        // 생성결과 종류 비교 조건에 따른 처리 경로 분기
+        if (created.kind !== "CREATED") return;
+        // 시험자료 추가 결과 처리 수행
+        intents.push(created.uploadIntentId);
+        // 업로드 예약 조회
+        const [intent] = await database.sql<
+            { object_key: string }[]
+        >`select object_key from upload_intents where id = ${created.uploadIntentId}`;
+        // 소유 세션의 재응답 조회 입력 구성
+        const owned = { anonymousSessionId: owner, uploadIntentId: created.uploadIntentId };
+        // 완료 전 재응답 조회가 빈 값인지 확인
+        await expect(repository.replay(owned)).resolves.toBeNull();
+        // 같은 의도의 완료 명령 구성
+        const command = completion(owner, created.uploadIntentId, intent!.object_key);
+
+        // 첫 완료 결과 저장
+        const first = await repository.complete(command);
+        // 첫 완료 종류의 기대값 완료 일치 확인
+        expect(first.kind).toBe("COMPLETED");
+        // 첫 완료 종류 비교 조건에 따른 처리 경로 분기
+        if (first.kind !== "COMPLETED") return;
+
+        // 같은 명령 재실행이 같은 영상 자산을 재응답하는지 확인
+        await expect(repository.complete(command)).resolves.toEqual({
+            kind: "REPLAYED",
+            videoAssetId: first.videoAssetId
+        });
+        // 다른 세션의 같은 의도 완료가 기록 부재로 숨겨지는지 확인
+        await expect(
+            repository.complete(completion(other, created.uploadIntentId, intent!.object_key))
+        ).resolves.toEqual({ kind: "UPLOAD_NOT_FOUND" });
+        // 소유 세션의 재응답 조회가 같은 영상 식별자를 반환하는지 확인
+        await expect(repository.replay(owned)).resolves.toBe(first.videoAssetId);
+        // 다른 세션의 재응답 조회가 빈 값인지 확인
+        await expect(
+            repository.replay({ anonymousSessionId: other, uploadIntentId: created.uploadIntentId })
+        ).resolves.toBeNull();
+        // 영상 처리 작업 개수 조회
+        const [jobs] = await database.sql<
+            { count: string }[]
+        >`select count(*)::text as count from processing_jobs where video_asset_id = ${first.videoAssetId}`;
+        // 재응답 뒤에도 검증 작업이 한 건인지 확인
+        expect(jobs?.count).toBe("1");
+    });
+
+    it("answers concurrent completions of one intent with a single asset", async () => {
+        // 기초자료 세션 결과를 세션 식별자에 저장
+        const sessionId = await seedSession();
+        // 저장소 의도 결과를 생성결과에 저장
+        const created = await repository.intent(request(sessionId));
+        // 생성결과 종류의 기대값 생성완료 일치 확인
+        expect(created.kind).toBe("CREATED");
+        // 생성결과 종류 비교 조건에 따른 처리 경로 분기
+        if (created.kind !== "CREATED") return;
+        // 시험자료 추가 결과 처리 수행
+        intents.push(created.uploadIntentId);
+        // 업로드 예약 조회
+        const [intent] = await database.sql<
+            { object_key: string }[]
+        >`select object_key from upload_intents where id = ${created.uploadIntentId}`;
+        // 같은 의도의 완료 명령 구성
+        const command = completion(sessionId, created.uploadIntentId, intent!.object_key);
+
+        // 같은 명령의 동시 완료 실행
+        const results = await Promise.all([
+            repository.complete(command),
+            repository.complete(command)
+        ]);
+        // 완료와 재응답이 한 번씩인지 확인
+        expect(results.map((result) => result.kind).sort()).toEqual(["COMPLETED", "REPLAYED"]);
+        // 두 응답의 영상 식별자 수집
+        const ids = results.map((result) => ("videoAssetId" in result ? result.videoAssetId : null));
+        // 두 응답이 같은 영상 식별자를 가리키는지 확인
+        expect(new Set(ids).size).toBe(1);
+        // 영상 자산 개수 조회
+        const [assets] = await database.sql<
+            { count: string }[]
+        >`select count(*)::text as count from video_assets where object_key = ${intent!.object_key}`;
+        // 영상 자산이 한 건만 생겼는지 확인
+        expect(assets?.count).toBe("1");
+    });
+
     it("rejects a completion command with a stale policy or size", async () => {
         // 기초자료 세션 결과를 세션 식별자에 저장
         const sessionId = await seedSession();

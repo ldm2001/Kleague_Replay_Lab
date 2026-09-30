@@ -1,7 +1,7 @@
 // 저장소 질의와 자료 구조 정의 기능 가져옴
 import { sql, type SQL } from "drizzle-orm";
 // 원본 해시에 대응하는 검증된 경기 문맥 가져옴
-import { knownVideoSource } from "./sources";
+import { knownVideoSource } from "@replay/shared-types";
 
 // 인증된 작업·분석·원본 행 잠금 상태에서 조회하며 메타데이터 추정 생성 제외
 export async function automaticContext(

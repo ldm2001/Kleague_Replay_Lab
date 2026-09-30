@@ -8,6 +8,7 @@ import { automaticReview } from "../../src/application/use-cases/evaluation/auto
 import { perceptionPayload } from "../fixtures/perception";
 import { context as pushContext } from "../fixtures/push-context";
 import { judgment } from "../fixtures/result";
+import { analysisView } from "../fixtures/status";
 
 // 데이터베이스 주소 시험용 실행환경 환경설정 데이터베이스 주소 준비
 const databaseUrl = process.env.DATABASE_URL;
@@ -231,7 +232,7 @@ describe.skipIf(!databaseUrl)("automatic source context", () => {
         ${randomBytes(32)}, 'legacy-test', 1, '{}'::jsonb, ${JSON.stringify(judgment.citations)}::jsonb)`;
             // 결과가 파울 아님 상태로 유지됨 확인
             expect(
-                (await reader.analysis({ analysisId, anonymousSessionId: sessionId, now }))
+                (await analysisView(reader, { analysisId, anonymousSessionId: sessionId, now }))
                     ?.candidates[0]?.judgment?.decision
             ).toBe("NO_FOUL");
             // 읽기 결과의 평가완료 개수 1 및 후보목록 자료의 필드 일치 확인

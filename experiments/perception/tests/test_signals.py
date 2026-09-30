@@ -1,7 +1,5 @@
 # 원본 시간축의 정확한 분수 도구 읽음
 from fractions import Fraction
-# 인식 모듈 지연 읽기 도구 읽음
-import importlib
 # 기록 직렬화와 읽기 도구 읽음
 import json
 # 각도와 비유한 수치 시험 도구 읽음
@@ -18,11 +16,8 @@ from replay_perception.models import Detection
 from replay_perception.observations import KEYPOINT_NAMES, Keypoint, PoseObservation, RoleHypothesis
 # 시험에 필요한 인식 구현과 자료 계약 읽음
 from replay_perception.frames import RecordedFrame
-
-# 인터페이스 반환
-def api():
-    # 검사할 인식 구현 모듈 반환
-    return importlib.import_module("replay_perception.signals")
+# 시험에 필요한 인식 구현과 자료 계약 읽음
+from replay_perception.signals import ArmSignalTracker, armObservations
 
 # 자세 관측 생성
 def pose_observation(
@@ -143,7 +138,7 @@ def recorded_frame(
 # 원본 영상 좌표에서 왼팔·오른팔 순서 분류 확인
 def test_arm_observations_classifies_left_then_right_in_original_image_coordinates():
     # 관절 좌표로 계산한 팔 동작 관측 생성
-    left, right = api().armObservations(pose_observation(), 160, 240)
+    left, right = armObservations(pose_observation(), 160, 240)
 
     # 관측한 팔 방향 값이 왼쪽 · 오른쪽인지 확인
     assert (left["side"], right["side"]) == ("LEFT", "RIGHT")
@@ -190,7 +185,7 @@ def test_arm_observations_classifies_left_then_right_in_original_image_coordinat
 # 오른팔 독립 양성 관측과 판정·반칙 기록 부재 확인
 def test_right_arm_can_be_positive_independently_and_records_no_decision_or_foul():
     # 관절 좌표로 계산한 팔 동작 관측 생성
-    left, right = api().armObservations(
+    left, right = armObservations(
         # 시험 관절 좌표와 신뢰 점수 지정
         pose_observation(left="not_raised", right="raised"),
         160,
@@ -209,7 +204,7 @@ def test_arm_observations_rejects_nonpositive_or_noninteger_image_dimensions(wid
     # 프레임 계약 오류 발생 기대
     with pytest.raises(ValueError, match="FRAME_DIMENSIONS_INVALID"):
         # 관절 좌표로 계산한 팔 동작 관측 실행
-        api().armObservations(pose_observation(), width, height)
+        armObservations(pose_observation(), width, height)
 
 # 원시 관절점 점수 경계 포함과 확률 보정 해석 방지 확인
 def test_raw_keypoint_score_boundary_is_inclusive_and_not_treated_as_probability_calibration():
@@ -223,9 +218,9 @@ def test_raw_keypoint_score_boundary_is_inclusive_and_not_treated_as_probability
     )
 
     # 관측 상태 값이 팔을 든 상태인지 확인
-    assert api().armObservations(at_boundary, 160, 240)[0]["state"] == "ARM_RAISED"
+    assert armObservations(at_boundary, 160, 240)[0]["state"] == "ARM_RAISED"
     # 경계 바로 아래 입력 준비
-    below = api().armObservations(below_boundary, 160, 240)[0]
+    below = armObservations(below_boundary, 160, 240)[0]
     # 관측 상태 값이 관측할 수 없는 상태인지 확인
     assert below["state"] == "UNOBSERVABLE"
     # 보류 이유 코드의 기대 자료 일치 확인
@@ -233,7 +228,7 @@ def test_raw_keypoint_score_boundary_is_inclusive_and_not_treated_as_probability
     # 관절 원시 최소 점수 값이 0점499999인지 확인
     assert below["rawMinimumKeypointScore"] == .499999
     # 관절 원시 최소 점수 값이 1점1인지 확인
-    assert api().armObservations(raw_over_one, 160, 240)[0]["rawMinimumKeypointScore"] == 1.1
+    assert armObservations(raw_over_one, 160, 240)[0]["rawMinimumKeypointScore"] == 1.1
 
 # 원본 밖 관절점의 자르기 없는 관측 불가 확인
 @pytest.mark.parametrize("index,change", [
@@ -241,7 +236,7 @@ def test_raw_keypoint_score_boundary_is_inclusive_and_not_treated_as_probability
 ])
 def test_out_of_original_image_keypoint_is_unobservable_and_never_clipped(index, change):
     # 직렬화 기록 준비
-    record = api().armObservations(pose_observation(changes={index: change}), 160, 240)[0]
+    record = armObservations(pose_observation(changes={index: change}), 160, 240)[0]
     # 관측 상태 값이 관측할 수 없는 상태인지 확인
     assert record["state"] == "UNOBSERVABLE"
     # 보류 이유 코드의 기대 자료 일치 확인
@@ -257,7 +252,7 @@ def test_out_of_original_image_keypoint_is_unobservable_and_never_clipped(index,
 ])
 def test_source_box_minimum_width_and_height_boundaries(source_box, expected):
     # 직렬화 기록 준비
-    record = api().armObservations(pose_observation(source_box=source_box), 160, 240)[0]
+    record = armObservations(pose_observation(source_box=source_box), 160, 240)[0]
     # 관측 상태의 기대 자료 일치 확인
     assert record["state"] == expected
     # 기대 자료의 비교 결과별 분기
@@ -268,21 +263,21 @@ def test_source_box_minimum_width_and_height_boundaries(source_box, expected):
 # 짧은 몸통·길이 없는 팔의 음성 대신 관측 불가 확인
 def test_short_torso_and_zero_arm_segments_are_unobservable_not_negative_observations():
     # 짧은 몸통 관측 준비
-    short_torso = api().armObservations(
+    short_torso = armObservations(
         # 시험 관절 좌표와 신뢰 점수 지정
         pose_observation(changes={11: {"x": 50, "y": 107.999}}),
         160,
         240,
     )[0]
     # 길이가 영인 위팔 관측 준비
-    zero_upper_arm = api().armObservations(
+    zero_upper_arm = armObservations(
         # 시험 관절 좌표와 신뢰 점수 지정
         pose_observation(changes={7: {"x": 50, "y": 100}}),
         160,
         240,
     )[0]
     # 어깨와 손목이 겹친 관측 준비
-    zero_shoulder_wrist = api().armObservations(
+    zero_shoulder_wrist = armObservations(
         # 시험 관절 좌표와 신뢰 점수 지정
         pose_observation(changes={9: {"x": 50, "y": 100}}),
         160,
@@ -309,7 +304,7 @@ def test_overflowing_geometry_is_unobservable_and_never_serializes_nonfinite_mea
     # 극단적으로 큰 시험 입력의 1점7의 지수 +308 설정
     huge = 1.7e308
     # 직렬화 기록 준비
-    record = api().armObservations(
+    record = armObservations(
         # 시험 관절 좌표와 신뢰 점수 지정
         pose_observation(
             changes={
@@ -334,7 +329,7 @@ def test_overflowing_geometry_is_unobservable_and_never_serializes_nonfinite_mea
 # 극소 양수 팔 길이의 각도 분모 언더플로 방지 확인
 def test_tiny_nonzero_arm_lengths_do_not_underflow_angle_denominator():
     # 직렬화 기록 준비
-    record = api().armObservations(
+    record = armObservations(
         # 시험 관절 좌표와 신뢰 점수 지정
         pose_observation(
             changes={
@@ -359,7 +354,7 @@ def test_tiny_nonzero_arm_lengths_do_not_underflow_angle_denominator():
 # 정확한 최소 몸통 길이의 관측 가능과 유한 측정 확인
 def test_exact_minimum_torso_length_is_observable_and_geometry_measures_are_finite():
     # 직렬화 기록 준비
-    record = api().armObservations(
+    record = armObservations(
         # 시험 관절 좌표와 신뢰 점수 지정
         pose_observation(changes={11: {"x": 50, "y": 108}}),
         160,
@@ -375,14 +370,14 @@ def test_exact_minimum_torso_length_is_observable_and_geometry_measures_are_fini
 # 손목 높이 비율 경계 포함 확인
 def test_wrist_height_ratio_boundary_is_inclusive():
     # 경계와 정확히 같은 값 준비
-    exact = api().armObservations(
+    exact = armObservations(
         # 시험 관절 좌표와 신뢰 점수 지정
         pose_observation(changes={7: {"y": 90}, 9: {"y": 80}}),
         160,
         240,
     )[0]
     # 경계 바로 아래 입력 준비
-    below = api().armObservations(
+    below = armObservations(
         # 시험 관절 좌표와 신뢰 점수 지정
         pose_observation(changes={7: {"y": 90}, 9: {"y": 80.001}}),
         160,
@@ -403,7 +398,7 @@ def test_elbow_interior_angle_boundary_is_inclusive(angle, expected):
     # 손목 관절의 시험 항목 구성
     wrist = {"x": 50 + 40 * math.cos(direction), "y": 60 + 40 * math.sin(direction)}
     # 직렬화 기록 준비
-    record = api().armObservations(pose_observation(changes={9: wrist}), 160, 240)[0]
+    record = armObservations(pose_observation(changes={9: wrist}), 160, 240)[0]
     # 팔꿈치 안쪽 각도의 기대 자료 일치 확인
     assert record["elbowInteriorAngleDegrees"] == pytest.approx(angle)
     # 관측 상태의 기대 자료 일치 확인
@@ -422,7 +417,7 @@ def test_vertical_up_angle_boundary_is_inclusive(angle, expected):
         9: {"x": wrist_x, "y": wrist_y},
     }
     # 직렬화 기록 준비
-    record = api().armObservations(pose_observation(changes=changes), 160, 240)[0]
+    record = armObservations(pose_observation(changes=changes), 160, 240)[0]
     # 어깨와 손목의 수직 각도의 기대 자료 일치 확인
     assert record["shoulderWristVerticalUpAngleDegrees"] == pytest.approx(angle)
     # 관측 상태의 기대 자료 일치 확인
@@ -431,7 +426,7 @@ def test_vertical_up_angle_boundary_is_inclusive(angle, expected):
 # 적격 구간 종료 시 마지막 관측 근거까지만 추적 출력 확인
 def test_tracker_emits_only_when_qualified_run_closes_at_last_observed_support():
     # 여러 프레임의 팔 동작 지속 추적기 생성
-    tracker = api().ArmSignalTracker()
+    tracker = ArmSignalTracker()
     # 시험 관절 좌표와 신뢰 점수 생성
     raised = pose_observation()
     # 시험 조건의 역할 가설 생성
@@ -497,7 +492,7 @@ def test_tracker_emits_only_when_qualified_run_closes_at_last_observed_support()
 ])
 def test_player_goalkeeper_unknown_and_low_confidence_roles_never_emit(role, status, score):
     # 여러 프레임의 팔 동작 지속 추적기 생성
-    tracker = api().ArmSignalTracker()
+    tracker = ArmSignalTracker()
     # 시험 조건의 역할 가설 생성
     hypothesis = role_hypothesis(role=role, status=status, score=score)
     # 선수·골키퍼·미확정·저신뢰 역할의 사건 출력 방지 입력 목록의 항목별 순회
@@ -510,7 +505,7 @@ def test_player_goalkeeper_unknown_and_low_confidence_roles_never_emit(role, sta
 # 심판 역할 점수 경계 포함과 미지정 추적 조작 방지 확인
 def test_referee_role_score_boundary_is_inclusive_but_untyped_track_is_never_invented():
     # 여러 프레임의 팔 동작 지속 추적기 생성
-    admitted = api().ArmSignalTracker()
+    admitted = ArmSignalTracker()
     # 시험 조건의 역할 가설 생성
     referee = role_hypothesis(score=.50)
     # 심판 역할 점수 경계 포함과 미지정 추적 조작 방지 입력 목록의 항목별 순회
@@ -521,7 +516,7 @@ def test_referee_role_score_boundary_is_inclusive_but_untyped_track_is_never_inv
     assert len(admitted.finish()) == 1
 
     # 여러 프레임의 팔 동작 지속 추적기 생성
-    untracked = api().ArmSignalTracker()
+    untracked = ArmSignalTracker()
     # 식별자 없는 입력의 시험 항목 구성
     no_id = (source_detection(track_id=None),)
     # 심판 역할 점수 경계 포함과 미지정 추적 조작 방지 입력 목록의 항목별 순회
@@ -547,7 +542,7 @@ def test_duration_frame_count_and_each_gap_use_exact_boundaries(
     expected_confirmation,
 ):
     # 여러 프레임의 팔 동작 지속 추적기 생성
-    tracker = api().ArmSignalTracker()
+    tracker = ArmSignalTracker()
     # 지속 시간·프레임 수·개별 간격의 정확한 경계 입력 목록의 항목별 순회
     for timestamp in timestamps:
         # 현재 입력을 반영한 누적 관측 값이 빈 목록인지 확인
@@ -568,7 +563,7 @@ def test_duration_frame_count_and_each_gap_use_exact_boundaries(
 # 반올림된 200밀리초의 실제 미달 지지 구간 인정 방지 확인
 def test_rounded_200ms_timestamp_does_not_qualify_only_199_point_6ms_of_pts_support():
     # 여러 프레임의 팔 동작 지속 추적기 생성
-    tracker = api().ArmSignalTracker()
+    tracker = ArmSignalTracker()
     # 순번을 붙인 시험 자료의 항목별 순회
     for index, (pts, rounded_ms) in enumerate(((0, 0), (1000, 100), (1996, 200))):
         # 시간축 추적기에 현재 입력 반영
@@ -592,7 +587,7 @@ def test_rounded_200ms_timestamp_does_not_qualify_only_199_point_6ms_of_pts_supp
 # 반올림된 250밀리초의 실제 초과 간격 연결 방지 확인
 def test_rounded_250ms_gap_does_not_bridge_an_actual_250_point_4ms_gap():
     # 여러 프레임의 팔 동작 지속 추적기 생성
-    tracker = api().ArmSignalTracker()
+    tracker = ArmSignalTracker()
     # 순번을 붙인 시험 자료의 항목별 순회
     for index, (pts, rounded_ms) in enumerate(((0, 0), (1000, 100), (3504, 350))):
         # 시간축 추적기에 현재 입력 반영
@@ -617,7 +612,7 @@ def test_rounded_250ms_gap_does_not_bridge_an_actual_250_point_4ms_gap():
 @pytest.mark.parametrize("break_kind", ["role", "pose", "unobservable"])
 def test_missing_or_unobservable_evidence_breaks_instead_of_bridging_occlusion(break_kind):
     # 여러 프레임의 팔 동작 지속 추적기 생성
-    tracker = api().ArmSignalTracker()
+    tracker = ArmSignalTracker()
     # 시험 조건의 역할 가설 생성
     referee = role_hypothesis()
     # 시험 관절 좌표와 신뢰 점수 생성
@@ -658,7 +653,7 @@ def test_missing_or_unobservable_evidence_breaks_instead_of_bridging_occlusion(b
 @pytest.mark.parametrize("break_kind", ["cut", "track", "role", "missing_detection", "not_raised"])
 def test_cut_track_role_detection_or_pose_change_closes_at_prior_support(break_kind):
     # 여러 프레임의 팔 동작 지속 추적기 생성
-    tracker = api().ArmSignalTracker()
+    tracker = ArmSignalTracker()
     # 시험 조건의 역할 가설 생성
     referee = role_hypothesis()
     # 시험 관절 좌표와 신뢰 점수 생성
@@ -759,7 +754,7 @@ def test_tracker_rejects_ambiguous_or_foreign_frame_local_mappings(case, reason)
     # 입력값 오류 발생 기대
     with pytest.raises(ValueError, match=reason):
         # 여러 프레임의 팔 동작 지속 추적기에 현재 입력 반영
-        api().ArmSignalTracker().update(recorded_frame(0, detections=detections), roles, poses)
+        ArmSignalTracker().update(recorded_frame(0, detections=detections), roles, poses)
 
 # 동일 역할 검출의 두 원본 사람 연결 방지 확인
 def test_same_role_detection_cannot_be_matched_to_two_source_people():
@@ -775,7 +770,7 @@ def test_same_role_detection_cannot_be_matched_to_two_source_people():
     # 역할 관측 오류 발생 기대
     with pytest.raises(ValueError, match="DUPLICATE_ROLE_DETECTION_ID"):
         # 여러 프레임의 팔 동작 지속 추적기에 현재 입력 반영
-        api().ArmSignalTracker().update(recorded_frame(0, detections=detections), roles, ())
+        ArmSignalTracker().update(recorded_frame(0, detections=detections), roles, ())
 
 # 중복 사람 추적 식별자의 이중 집계 대신 거부 확인
 def test_duplicate_person_track_ids_are_rejected_instead_of_counted_twice():
@@ -784,12 +779,12 @@ def test_duplicate_person_track_ids_are_rejected_instead_of_counted_twice():
     # 추적 식별 오류 발생 기대
     with pytest.raises(ValueError, match="DUPLICATE_TRACK_ID"):
         # 여러 프레임의 팔 동작 지속 추적기에 현재 입력 반영
-        api().ArmSignalTracker().update(recorded_frame(0, detections=detections), (), ())
+        ArmSignalTracker().update(recorded_frame(0, detections=detections), (), ())
 
 # 동일 추적 조각 지속 중 프레임별 검출 식별자 변경 허용 확인
 def test_frame_local_detection_id_can_change_while_same_track_fragment_continues():
     # 여러 프레임의 팔 동작 지속 추적기 생성
-    tracker = api().ArmSignalTracker()
+    tracker = ArmSignalTracker()
     # 동일 추적 조각 지속 중 프레임별 검출 식별자 변경 허용 입력 목록의 항목별 순회
     for timestamp, detection_id in ((0, 0), (100, 1), (200, 2)):
         # 원본 프레임의 검출 관측 생성
@@ -810,7 +805,7 @@ def test_frame_local_detection_id_can_change_while_same_track_fragment_continues
 # 상한 초과 간격의 현재 관측 전 적격 구간 종료 확인
 def test_gap_over_limit_closes_qualified_run_before_current_observation():
     # 여러 프레임의 팔 동작 지속 추적기 생성
-    tracker = api().ArmSignalTracker()
+    tracker = ArmSignalTracker()
     # 상한 초과 간격의 현재 관측 전 적격 구간 종료 입력 목록의 항목별 순회
     for timestamp in (0, 100, 200):
         # 시간축 추적기에 현재 입력 반영
@@ -830,7 +825,7 @@ def test_gap_over_limit_closes_qualified_run_before_current_observation():
 @pytest.mark.parametrize("second_timestamp", [100, 99])
 def test_duplicate_or_backward_timestamps_fail_instead_of_extending_a_run(second_timestamp):
     # 여러 프레임의 팔 동작 지속 추적기 생성
-    tracker = api().ArmSignalTracker()
+    tracker = ArmSignalTracker()
     # 시간축 추적기에 현재 입력 반영
     tracker.update(recorded_frame(100), (role_hypothesis(),), (pose_observation(),))
     # 원본 시간축 순서 오류 발생 기대
@@ -847,7 +842,7 @@ def test_timestamp_must_match_exact_pts_timebase_and_origin_relation():
     # 프레임 계약 오류 발생 기대
     with pytest.raises(ValueError, match="FRAME_TIMESTAMP_PTS_MISMATCH"):
         # 여러 프레임의 팔 동작 지속 추적기에 현재 입력 반영
-        api().ArmSignalTracker().update(
+        ArmSignalTracker().update(
             recorded_frame(100, pts=10_099),
             (role_hypothesis(),),
             (pose_observation(),),
@@ -857,7 +852,7 @@ def test_timestamp_must_match_exact_pts_timebase_and_origin_relation():
 @pytest.mark.parametrize("change", ["stream", "origin"])
 def test_tracker_rejects_a_source_scope_change(change):
     # 여러 프레임의 팔 동작 지속 추적기 생성
-    tracker = api().ArmSignalTracker()
+    tracker = ArmSignalTracker()
     # 시간축 추적기에 현재 입력 반영
     tracker.update(recorded_frame(0), (role_hypothesis(),), (pose_observation(),))
     # 전달된 선택 인자의 시험 조건별 값 선택
@@ -874,7 +869,7 @@ def test_tracker_rejects_a_source_scope_change(change):
 # 적격 구간 단일 마감과 마감 후 갱신 거부 확인
 def test_finish_flushes_qualified_runs_once_and_update_after_finish_is_rejected():
     # 여러 프레임의 팔 동작 지속 추적기 생성
-    tracker = api().ArmSignalTracker()
+    tracker = ArmSignalTracker()
     # 적격 구간 단일 마감과 마감 후 갱신 거부 입력 목록의 항목별 순회
     for timestamp in (0, 100, 200):
         # 시간축 추적기에 현재 입력 반영
@@ -898,7 +893,7 @@ def test_episode_ids_are_stable_for_the_same_scoped_source_and_distinct_per_side
     # 단일 실행 결과 반환
     def run_once():
         # 여러 프레임의 팔 동작 지속 추적기 생성
-        tracker = api().ArmSignalTracker()
+        tracker = ArmSignalTracker()
         # 시험 관절 좌표와 신뢰 점수 생성
         both = pose_observation(right="raised")
         # 단일 실행 결과 입력 목록의 항목별 순회
@@ -920,7 +915,7 @@ def test_episode_ids_are_stable_for_the_same_scoped_source_and_distinct_per_side
 # 현재 활성 추적 조각으로 추적기 상태 제한 확인
 def test_tracker_state_stays_bounded_to_current_active_track_fragments():
     # 여러 프레임의 팔 동작 지속 추적기 생성
-    tracker = api().ArmSignalTracker()
+    tracker = ArmSignalTracker()
     # 반복할 순번 범위의 항목별 순회
     for index in range(500):
         # 원본 프레임의 검출 관측 생성

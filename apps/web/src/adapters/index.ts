@@ -18,9 +18,13 @@ export {
 export { S3Storage, s3, type S3ObjectClient, type StorageOptions } from "./storage";
 // 해시 어댑터 공개
 export { Sha256, hash } from "./hashing/sha256";
+// 비밀 토큰 어댑터 공개
+export { secret } from "./hashing/secret";
 // 작업 저장소 공개
 export { JobStore, jobStore } from "./job-store";
 // 상태 저장소 공개
 export { StatusStore, statusStore } from "./status-store";
 // 평가 저장소 공개
 export { EvaluationStore, evaluationStore } from "./evaluation-store";
+// 비공개 사건 조회 공개
+export { incidentQuery } from "./incidents";

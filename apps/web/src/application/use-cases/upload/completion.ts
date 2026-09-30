@@ -21,6 +21,7 @@ export type CompletionInput = Readonly<{
 // 업로드 완료 결과 정의
 export type CompletionResult =
     | Readonly<{ kind: "COMPLETED"; videoAssetId: string }>
+    | Readonly<{ kind: "REPLAYED"; videoAssetId: string }>
     | Readonly<{ kind: "UPLOAD_NOT_FOUND" }>
     | Readonly<{ kind: "UPLOAD_NOT_READY" }>
     | Readonly<{ kind: "UPLOAD_INVALID" }>
@@ -61,8 +62,12 @@ export const completion =
         const intent = await repository.owned({ anonymousSessionId, uploadIntentId });
         // 의도 존재 확인
         if (!intent) {
-            // 소유한 업로드 허가 기록 부재 반환
-            return { kind: "UPLOAD_NOT_FOUND" };
+            // 이미 완료된 같은 업로드의 영상 식별자 조회
+            const videoAssetId = await repository.replay({ anonymousSessionId, uploadIntentId });
+            // 완료 이력이 있으면 기존 결과 재응답 아니면 기록 부재 반환
+            return videoAssetId
+                ? { kind: "REPLAYED", videoAssetId }
+                : { kind: "UPLOAD_NOT_FOUND" };
         }
         // 의도 만료 확인
         if (new Date(intent.expiresAt).getTime() <= now.getTime()) {

@@ -3,6 +3,7 @@ import { StatusStore } from "@replay/adapters";
 import { PgDialect } from "drizzle-orm/pg-core";
 import type { SQL } from "drizzle-orm";
 import { judgment } from "../fixtures/result";
+import { analysisView, readDatabase, statusView } from "../fixtures/status";
 
 // 행목록 시험용 3개 항목 목록 준비
 const rows = [
@@ -45,7 +46,6 @@ const statusCommand = {
     anonymousSessionId: "33333333-3333-4333-8333-333333333333",
     videoAssetId: "11111111-1111-4111-8111-111111111111", now: "2026-08-30T00:00:00.000Z",
 };
-
 // 상태 저장소 테스트
 describe("StatusStore", () => {
     it("returns only two recognized events from 41 stored proposals and preserves raw diagnostics", async () => {
@@ -65,11 +65,11 @@ describe("StatusStore", () => {
         const queue = [rows[0], candidates, evidence];
         // 저장소 시험용 상태 저장소 준비
         const repository = new StatusStore({
-            db: { execute: async () => queue.shift() ?? [] }
+            db: readDatabase(async () => queue.shift() ?? [])
         } as never);
 
         // 저장소 상태 결과를 결과에 저장
-        const result = await repository.status(statusCommand);
+        const result = await statusView(repository, statusCommand);
 
         // 결과 분석 후보목록 항목변환 결과의 2개 항목 목록 기준 구조 일치 확인
         expect(result?.analysis?.candidates.map((candidate) => candidate.index)).toEqual([1, 2]);
@@ -114,11 +114,11 @@ describe("StatusStore", () => {
         ];
         // 저장소 시험용 상태 저장소 준비
         const repository = new StatusStore({
-            db: { execute: async () => queue.shift() ?? [] }
+            db: readDatabase(async () => queue.shift() ?? [])
         } as never);
 
         // 저장소 상태 결과를 결과에 저장
-        const result = await repository.status(statusCommand);
+        const result = await statusView(repository, statusCommand);
 
         // 결과 분석 후보목록의 항목 수 1 확인
         expect(result?.analysis?.candidates).toHaveLength(1);
@@ -153,11 +153,11 @@ describe("StatusStore", () => {
             const queue = [rows[0], rawCount === 0 ? [] : rows[1], rows[2]];
             // 저장소 시험용 상태 저장소 준비
             const repository = new StatusStore({
-                db: { execute: async () => queue.shift() ?? [] }
+                db: readDatabase(async () => queue.shift() ?? [])
             } as never);
 
             // 저장소 상태 결과를 결과에 저장
-            const result = await repository.status(statusCommand);
+            const result = await statusView(repository, statusCommand);
 
             // 결과 분석 후보목록의 0개 항목 목록 기준 구조 일치 확인
             expect(result?.analysis?.candidates).toEqual([]);
@@ -199,11 +199,11 @@ describe("StatusStore", () => {
             const queue = [rows[0], candidates, rows[2]];
             // 저장소 시험용 상태 저장소 준비
             const repository = new StatusStore({
-                db: { execute: async () => queue.shift() ?? [] }
+                db: readDatabase(async () => queue.shift() ?? [])
             } as never);
 
             // 저장소 상태 결과를 결과에 저장
-            const result = await repository.status(statusCommand);
+            const result = await statusView(repository, statusCommand);
 
             // 결과 분석 후보목록 항목변환 결과의 1개 항목 목록 기준 구조 일치 확인
             expect(result?.analysis?.candidates.map((candidate) => candidate.index)).toEqual([1]);
@@ -260,11 +260,11 @@ describe("StatusStore", () => {
         ];
         // 저장소 시험용 상태 저장소 준비
         const repository = new StatusStore({
-            db: { execute: async () => queue.shift() ?? [] }
+            db: readDatabase(async () => queue.shift() ?? [])
         } as never);
 
         // 저장소 상태 결과를 결과에 저장
-        const result = await repository.status(statusCommand);
+        const result = await statusView(repository, statusCommand);
 
         // 미평가 조건을 포함한 기대 결과 일치 확인
         expect(result?.analysis).toMatchObject({
@@ -318,11 +318,11 @@ describe("StatusStore", () => {
             ];
             // 저장소 시험용 상태 저장소 준비
             const repository = new StatusStore({
-                db: { execute: async () => queue.shift() ?? [] }
+                db: readDatabase(async () => queue.shift() ?? [])
             } as never);
 
             // 저장소 상태 결과를 결과에 저장
-            const result = await repository.status(statusCommand);
+            const result = await statusView(repository, statusCommand);
 
             // 결과 분석의 평가완료 개수 1 및 모드 지정 문자열 및 판정 상태 평가완료 및 후보목록 자료의 필드 일치 확인
             expect(result?.analysis).toMatchObject({
@@ -356,10 +356,10 @@ describe("StatusStore", () => {
         const queue = [rows[0], [{ ...rows[1]![0], scene_event: sceneEvent }], rows[2]];
         // 저장소 시험용 상태 저장소 준비
         const repository = new StatusStore({
-            db: { execute: async () => queue.shift() ?? [] }
+            db: readDatabase(async () => queue.shift() ?? [])
         } as never);
         // 저장소 상태 결과를 결과에 저장
-        const result = await repository.status({
+        const result = await statusView(repository, {
             anonymousSessionId: "33333333-3333-4333-8333-333333333333",
             videoAssetId: "11111111-1111-4111-8111-111111111111",
             now: "2026-08-30T00:00:00.000Z"
@@ -392,10 +392,10 @@ describe("StatusStore", () => {
         const queue = [rows[0], [{ ...rows[1]![0], start_ms: -1 }], rows[2]];
         // 저장소 시험용 상태 저장소 준비
         const repository = new StatusStore({
-            db: { execute: async () => queue.shift() ?? [] }
+            db: readDatabase(async () => queue.shift() ?? [])
         } as never);
         // 저장소 상태 결과를 결과에 저장
-        const result = await repository.status({
+        const result = await statusView(repository, {
             anonymousSessionId: "33333333-3333-4333-8333-333333333333",
             videoAssetId: "11111111-1111-4111-8111-111111111111",
             now: "2026-08-30T00:00:00.000Z"
@@ -418,14 +418,12 @@ describe("StatusStore", () => {
         const queue = [...rows];
         // 저장소 시험용 상태 저장소 준비
         const repository = new StatusStore({
-            db: {
-                execute: async (statement: SQL) => {
-                    // 질의목록 추가 결과 처리 수행
-                    queries.push(new PgDialect().sqlToQuery(statement).sql);
-                    // 대기열 선두꺼내기 결과 비교 조건 반환
-                    return queue.shift() ?? [];
-                }
-            }
+            db: readDatabase(async (statement: SQL) => {
+                // 질의목록 추가 결과 처리 수행
+                queries.push(new PgDialect().sqlToQuery(statement).sql);
+                // 대기열 선두꺼내기 결과 비교 조건 반환
+                return queue.shift() ?? [];
+            })
         } as never);
         // 저장소 상태 결과 처리 수행
         await repository.status({
@@ -443,10 +441,10 @@ describe("StatusStore", () => {
         const queue = [[{ ...rows[0]![0], analysis_status: "COMPLETED" }], ...rows.slice(1)];
         // 저장소 시험용 상태 저장소 준비
         const repository = new StatusStore({
-            db: { execute: async () => queue.shift() ?? [] }
+            db: readDatabase(async () => queue.shift() ?? [])
         } as never);
         // 저장소 상태 결과를 결과에 저장
-        const result = await repository.status({
+        const result = await statusView(repository, {
             anonymousSessionId: "33333333-3333-4333-8333-333333333333",
             videoAssetId: "11111111-1111-4111-8111-111111111111",
             now: "2026-08-30T00:00:00.000Z"
@@ -461,12 +459,12 @@ describe("StatusStore", () => {
         const queue = [rows[0], [{ ...rows[1]![0], scene_event: sceneEvent }], rows[2]];
         // 저장소 시험용 상태 저장소 준비
         const repository = new StatusStore({
-            db: { execute: async () => queue.shift() ?? [] }
+            db: readDatabase(async () => queue.shift() ?? [])
         } as never);
 
         // 규정 맥락 미검증 조건을 포함한 기대 결과 일치 확인
         await expect(
-            repository.status({
+            statusView(repository, {
                 anonymousSessionId: "33333333-3333-4333-8333-333333333333",
                 videoAssetId: "11111111-1111-4111-8111-111111111111",
                 now: "2026-08-30T00:00:00.000Z"
@@ -545,12 +543,12 @@ describe("StatusStore", () => {
         ];
         // 저장소 시험용 상태 저장소 준비
         const repository = new StatusStore({
-            db: { execute: async () => queue.shift() ?? [] }
+            db: readDatabase(async () => queue.shift() ?? [])
         } as never);
 
         // 저장소 분석 결과의 분석 식별자 22222222 2222 4222 8222 222222222222 및 후보목록 자료의 필드 일치 확인
         await expect(
-            repository.analysis({
+            analysisView(repository, {
                 anonymousSessionId: "33333333-3333-4333-8333-333333333333",
                 analysisId: "22222222-2222-4222-8222-222222222222",
                 now: "2026-09-03T00:00:00.000Z"
@@ -558,6 +556,232 @@ describe("StatusStore", () => {
         ).resolves.toMatchObject({
             analysisId: "22222222-2222-4222-8222-222222222222",
             candidates: [{ index: 1 }]
+        });
+    });
+
+    it("reads media candidates evidence and automatic rows from one read-only snapshot", async () => {
+        // 트랜잭션 설정 기록용 0개 항목 목록 준비
+        const configs: unknown[] = [];
+        // 질의 횟수 시험용 0 준비
+        let reads = 0;
+        // 대기열 시험용 3개 항목 목록 준비
+        const queue = [...rows];
+        // 저장소 시험용 상태 저장소 준비
+        const repository = new StatusStore({
+            db: readDatabase(async () => {
+                // 트랜잭션 연결의 질의 횟수 증가
+                reads += 1;
+                // 대기열 선두꺼내기 결과 반환
+                return queue.shift() ?? [];
+            }, configs)
+        } as never);
+
+        // 저장소 상태 결과 처리 수행
+        await repository.status(statusCommand);
+
+        // 반복 읽기 격리와 읽기 전용 접근의 단일 트랜잭션 확인
+        expect(configs).toEqual([{ isolationLevel: "repeatable read", accessMode: "read only" }]);
+        // 영상 후보 근거 자동 평가 질의 4회 확인
+        expect(reads).toBe(4);
+    });
+
+    it("checks analysis ownership and reads the owned media inside the same snapshot", async () => {
+        // 트랜잭션 설정 기록용 0개 항목 목록 준비
+        const configs: unknown[] = [];
+        // 질의목록 시험용 0개 항목 목록 준비
+        const queries: ReturnType<PgDialect["sqlToQuery"]>[] = [];
+        // 대기열 시험용 4개 항목 목록 준비
+        const queue = [[{ video_asset_id: "11111111-1111-4111-8111-111111111111" }], ...rows];
+        // 저장소 시험용 상태 저장소 준비
+        const repository = new StatusStore({
+            db: readDatabase(async (statement: SQL) => {
+                // 질의목록 추가 결과 처리 수행
+                queries.push(new PgDialect().sqlToQuery(statement));
+                // 대기열 선두꺼내기 결과 반환
+                return queue.shift() ?? [];
+            }, configs)
+        } as never);
+
+        // 저장소 분석 결과를 원자료에 저장
+        const snapshot = await repository.analysis({
+            anonymousSessionId: "33333333-3333-4333-8333-333333333333",
+            analysisId: "22222222-2222-4222-8222-222222222222",
+            now: "2026-09-03T00:00:00.000Z"
+        });
+
+        // 소유 확인과 원자료 조회의 단일 트랜잭션 확인
+        expect(configs).toHaveLength(1);
+        // 소유 영상 후보 근거 자동 평가 질의 5회 확인
+        expect(queries).toHaveLength(5);
+        // 첫 질의의 분석 소유 조건 확인
+        expect(queries[0]?.params).toContain("22222222-2222-4222-8222-222222222222");
+        // 둘째 질의의 소유 확인 영상 식별자 사용 확인
+        expect(queries[1]?.params).toContain("11111111-1111-4111-8111-111111111111");
+        // 원자료 분석 식별자의 기대값 일치 확인
+        expect(snapshot?.analysis?.analysisId).toBe("22222222-2222-4222-8222-222222222222");
+    });
+
+    it("skips the automatic review query for a historical analysis without pipeline version", async () => {
+        // 질의 횟수 시험용 0 준비
+        let reads = 0;
+        // 대기열 시험용 3개 항목 목록 준비
+        const queue = [[{ ...rows[0]![0], pipeline_version: null }], rows[1], rows[2]];
+        // 저장소 시험용 상태 저장소 준비
+        const repository = new StatusStore({
+            db: readDatabase(async () => {
+                // 트랜잭션 연결의 질의 횟수 증가
+                reads += 1;
+                // 대기열 선두꺼내기 결과 반환
+                return queue.shift() ?? [];
+            })
+        } as never);
+
+        // 저장소 상태 결과를 원자료에 저장
+        const snapshot = await repository.status(statusCommand);
+
+        // 영상 후보 근거 질의 3회 확인
+        expect(reads).toBe(3);
+        // 자동 평가 원자료 없음 확인
+        expect(snapshot?.analysis?.automatic).toBeNull();
+    });
+
+    it("stops after the media query when the video is not owned or has no analysis", async () => {
+        // 질의 횟수 시험용 0 준비
+        let reads = 0;
+        // 대기열 시험용 2개 항목 목록 준비
+        const queue: unknown[][] = [
+            [],
+            [{ ...rows[0]![0], source_sha256: null, analysis_id: null, analysis_status: null }]
+        ];
+        // 저장소 시험용 상태 저장소 준비
+        const repository = new StatusStore({
+            db: readDatabase(async () => {
+                // 트랜잭션 연결의 질의 횟수 증가
+                reads += 1;
+                // 대기열 선두꺼내기 결과 반환
+                return queue.shift() ?? [];
+            })
+        } as never);
+
+        // 소유하지 않거나 만료된 영상의 빈 결과 확인
+        await expect(repository.status(statusCommand)).resolves.toBeNull();
+        // 분석이 없는 영상의 분석 원자료 부재 확인
+        await expect(repository.status(statusCommand)).resolves.toStrictEqual({
+            videoAssetId: "11111111-1111-4111-8111-111111111111",
+            sourceSha256: null,
+            videoStatus: "VALID",
+            validationErrorCode: null,
+            analysis: null
+        });
+        // 두 조회가 각각 영상 질의 1회에서 멈춤 확인
+        expect(reads).toBe(2);
+    });
+
+    it("returns every selected column under its snapshot name without view policy", async () => {
+        // 영상 행 열과 원자료 속성 및 고유 값 대응표 준비
+        const mediaColumns = [
+            ["video_asset_id", "videoAssetId", "11111111-1111-4111-8111-111111111111"],
+            ["source_sha256", "sourceSha256", "ab".repeat(32)],
+            ["video_status", "videoStatus", "INVALID"],
+            ["validation_error_code", "validationErrorCode", "validation-error"]
+        ] as const;
+        // 분석 행 열과 원자료 속성 및 고유 값 대응표 준비
+        const analysisColumns = [
+            ["analysis_id", "analysisId", "22222222-2222-4222-8222-222222222222"],
+            ["analysis_status", "status", "analysis-status"],
+            ["pipeline_version", "pipelineVersion", "pipeline-version"],
+            ["stage", "stage", "stage"],
+            ["progress_percent", "progressPercent", 37],
+            ["failure_code", "failureCode", "failure-code"],
+            ["limitations", "limitations", ["limitation"]],
+            ["match_id", "matchId", "match-id"],
+            ["rule_version_id", "ruleVersionId", "rule-version-id"],
+            ["competition", "competition", "competition"],
+            ["season", "season", "season"],
+            ["ifab_edition", "ifabEdition", "ifab-edition"],
+            ["verification_status", "verificationStatus", "verification-status"],
+            ["source_document", "sourceDocument", "source-document"]
+        ] as const;
+        // 후보 행 열과 원자료 속성 및 고유 값 대응표 준비
+        const candidateColumns = [
+            ["id", "id", "candidate-id"],
+            ["candidate_index", "index", 7],
+            ["category", "category", "category"],
+            ["start_ms", "startMs", 11],
+            ["end_ms", "endMs", 12],
+            ["anchor_ms", "anchorMs", 13],
+            ["signal_score", "signalScore", 0.14],
+            ["camera_sufficiency", "cameraSufficiency", "HIGH"],
+            ["reasons", "reasons", ["reason"]],
+            ["observation", "observation", { observation: true }],
+            ["tracking", "tracking", { tracking: true }],
+            ["scene_event", "sceneEvent", { sceneEvent: true }],
+            ["broadcast_cue", "broadcastCue", { broadcastCue: true }],
+            ["linked_shots", "shots", [{ shot: true }]],
+            ["fact_revision_id", "factRevisionId", "fact-revision-id"],
+            ["fact_source", "factSource", "CURATOR"],
+            ["fact_snapshot", "facts", { facts: true }],
+            ["foul_decision", "foulDecision", "foul-decision"],
+            ["severity", "severity", "severity"],
+            ["restart_type", "restartType", "restart-type"],
+            ["disciplinary_action", "disciplinaryAction", "disciplinary-action"],
+            ["decision_match", "decisionMatch", "decision-match"],
+            ["judgment_confidence_level", "confidenceLevel", "confidence-level"],
+            ["inconclusive_reason", "inconclusiveReason", "inconclusive-reason"],
+            ["var_reviewable", "varReviewable", true],
+            ["var_category", "varCategory", "var-category"],
+            ["var_within_time_window", "varWithinTimeWindow", false],
+            ["var_threshold_met", "varThresholdMet", "var-threshold-met"],
+            ["var_intervention", "varIntervention", "var-intervention"],
+            ["var_no_intervention_reason", "varNoInterventionReason", "var-no-intervention"],
+            ["var_not_reviewable_reason", "varNotReviewableReason", "var-not-reviewable"],
+            ["var_window_closed_reason", "varWindowClosedReason", "var-window-closed"],
+            ["var_window_exception", "varWindowException", "var-window-exception"],
+            ["var_review_procedure", "varReviewProcedure", "var-review-procedure"],
+            ["var_explanation", "varExplanation", "var-explanation"],
+            ["decision_citations", "citations", [{ citation: true }]]
+        ] as const;
+        // 증거 행 열과 원자료 속성 및 고유 값 대응표 준비
+        const evidenceColumns = [
+            ["id", "evidenceId", "evidence-id"],
+            ["candidate_index", "candidateIndex", 8],
+            ["kind", "kind", "CLIP"],
+            ["start_ms", "startMs", 21],
+            ["end_ms", "endMs", 22],
+            ["object_key", "objectKey", "object-key"],
+            ["content_sha256", "contentSha256", "cd".repeat(32)]
+        ] as const;
+        // 자동 평가 행 열과 원자료 속성 및 고유 값 대응표 준비
+        const automaticColumns = [
+            ["summary", "summary", { summary: true }],
+            ["evidence_bindings", "evidenceBindings", [{ binding: true }]],
+            ["match_context_valid", "matchContextValid", true],
+            ["model_provenance", "modelProvenance", { models: true }]
+        ] as const;
+        // 대응표의 열 이름 또는 속성 이름 기준 객체 생성
+        const pick = (table: ReadonlyArray<readonly [string, string, unknown]>, side: 0 | 1) =>
+            Object.fromEntries(table.map((entry) => [entry[side], entry[2]]));
+        // 대기열 시험용 4개 항목 목록 준비
+        const queue = [
+            [{ ...pick(mediaColumns, 0), ...pick(analysisColumns, 0) }],
+            [pick(candidateColumns, 0)],
+            [pick(evidenceColumns, 0)],
+            [pick(automaticColumns, 0)]
+        ];
+        // 저장소 시험용 상태 저장소 준비
+        const repository = new StatusStore({
+            db: readDatabase(async () => queue.shift() ?? [])
+        } as never);
+
+        // 모든 열이 규정 필터나 공개 정책 없이 원자료 속성 이름으로만 전달됨 확인
+        await expect(repository.status(statusCommand)).resolves.toStrictEqual({
+            ...pick(mediaColumns, 1),
+            analysis: {
+                ...pick(analysisColumns, 1),
+                candidates: [pick(candidateColumns, 1)],
+                evidence: [pick(evidenceColumns, 1)],
+                automatic: pick(automaticColumns, 1)
+            }
         });
     });
 });

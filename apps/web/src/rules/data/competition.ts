@@ -1,13 +1,15 @@
 // 식별자와 해시 생성 도구 가져오기
 import { createHash as digest } from "node:crypto";
-// 공통 관측과 판정 자료형 가져오기
-import type { ConceptKey, RuleCitation, RuleSet, VarCategory } from "@replay/shared-types";
-// 대회요강 자료형 가져오기
+// 공통 관측과 판정 및 대회요강 자료형 가져오기
 import type {
+    ConceptKey,
+    RuleCitation,
+    RuleSet,
+    VarCategory,
     CompetitionRuleBook,
     CompetitionRuleSelection,
     CompetitionScopeCategory
-} from "../../shared/competition-rules";
+} from "@replay/shared-types";
 // 해당 판본의 규정 자료 가져오기
 import kleague12025 from "./kleague/2025/kleague1.json" with { type: "json" };
 // 해당 판본의 규정 자료 가져오기

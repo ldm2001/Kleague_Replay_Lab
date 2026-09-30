@@ -6,7 +6,8 @@ import json
 from pathlib import Path
 from urllib.error import HTTPError
 import pytest
-from replay_video.http import Api, HttpError, Rejection
+from replay_video.http import Api, HttpError, Rejection, Transient
+from replay_video.runner import artifacts
 
 
 # 웹 통신 응답 모형
@@ -237,6 +238,156 @@ def test_error() -> None:
         # 선점 실패가 호출자에게 전달되는 경로 실행
         api.claim("VALIDATE_VIDEO")
 
+# 시험 작업 식별자와 임대 자료
+JOB = {"jobId": "job-1", "jobRevision": 2, "leaseToken": "lease"}
+
+# 진행 보고 일시 장애의 같은 본문 재전송 확인
+def test_progress_retries_transient_status_with_same_body() -> None:
+    # 일시 장애 뒤 성공하는 전송 대역 생성
+    opener = Open([HTTPError("http://web.test", 503, "busy", {}, None), Reply(204)])
+    # 재시도 대기 기록 목록 준비
+    sleeps: list[float] = []
+    # 흔들림 값을 고정한 작업자 통신 객체 생성
+    api = Api(
+        "http://web.test", "secret", "worker-1",
+        opener=opener, sleep=sleeps.append, jitter=lambda: 0.5,
+    )
+
+    # 두 번째 시도의 빈 성공 응답 반환 확인
+    assert api.progress(JOB, "SEGMENTING", 40) is None
+    # 같은 요청을 두 번 보냈는지 확인
+    assert len(opener.requests) == 2
+    # 두 시도의 요청 본문이 같은지 확인
+    assert opener.bodies[0] == opener.bodies[1]
+    # 첫 재시도 대기가 기준 0.5초의 흔들림 값인지 확인
+    assert sleeps == [0.25]
+
+# 결과 응답 유실 뒤 이미 완료 응답 수락 확인
+def test_result_retries_lost_response_until_already_finished() -> None:
+    # 이미 완료된 작업을 나타내는 충돌 응답 본문 생성
+    finished = io.BytesIO(b'{"kind":"ALREADY_FINISHED"}')
+    # 응답 수신 시간 초과 뒤 이미 완료 응답을 내줄 전송 대역 생성
+    opener = Open([
+        TimeoutError("timed out"),
+        HTTPError("http://web.test", 409, "done", {}, finished),
+    ])
+    # 재시도 대기 기록 목록 준비
+    sleeps: list[float] = []
+    # 첫 시도가 30초 걸린 시계를 쓰는 작업자 통신 객체 생성
+    api = Api(
+        "http://web.test", "secret", "worker-1",
+        opener=opener, sleep=sleeps.append, jitter=lambda: 0.0, clock=iter([0.0, 30.0]).__next__,
+    )
+
+    # 먼저 처리된 결과를 이미 완료 상태로 수락하는지 확인
+    assert api.result(JOB, {"kind": "VALIDATED"}) == {"kind": "ALREADY_FINISHED"}
+    # 같은 결과를 두 번 보냈는지 확인
+    assert opener.bodies[0] == opener.bodies[1]
+    # 흔들림 0의 재시도 대기 확인
+    assert sleeps == [0.0]
+
+# 임대 갱신 시간 상한을 넘긴 진행 보고의 재시도 중단 확인
+def test_progress_stops_retrying_after_lease_window() -> None:
+    # 시간 초과 뒤 성공 응답이 남은 전송 대역 생성
+    opener = Open([TimeoutError("timed out"), Reply(204)])
+    # 재시도 대기 기록 목록 준비
+    sleeps: list[float] = []
+    # 첫 시도가 25초 걸린 시계를 쓰는 작업자 통신 객체 생성
+    api = Api(
+        "http://web.test", "secret", "worker-1",
+        opener=opener, sleep=sleeps.append, jitter=lambda: 0.0, clock=iter([0.0, 25.0]).__next__,
+    )
+
+    # 임대 기한을 넘긴 재시도 대신 연결 불가 오류 전달 확인
+    with pytest.raises(Transient, match="http-unavailable"):
+        # 진행 보고 실행
+        api.progress(JOB, "SEGMENTING", 40)
+    # 한 번만 보냈고 대기하지 않았는지 확인
+    assert (len(opener.requests), sleeps) == (1, [])
+
+# 시도 횟수 상한 뒤 마지막 일시 장애 전달 확인
+def test_retry_gives_up_after_attempt_limit() -> None:
+    # 계속 일시 장애를 내는 전송 대역 생성
+    opener = Open([HTTPError("http://web.test", 503, "busy", {}, None) for _ in range(3)])
+    # 재시도 대기 기록 목록 준비
+    sleeps: list[float] = []
+    # 최대 흔들림 값을 쓰는 작업자 통신 객체 생성
+    api = Api(
+        "http://web.test", "secret", "worker-1",
+        opener=opener, sleep=sleeps.append, jitter=lambda: 1.0,
+    )
+
+    # 세 번째 실패의 상태 오류 전달 확인
+    with pytest.raises(Transient, match="http-503"):
+        # 증거 업로드 권한 요청 실행
+        api.evidence(JOB, [])
+    # 세 번 보내고 지수 증가 대기를 두 번 했는지 확인
+    assert (len(opener.requests), sleeps) == (3, [0.5, 1.0])
+
+# 서버 재시도 대기 요구의 상한 안 수용과 상한 밖 중단 확인
+def test_retry_honours_short_retry_after_only() -> None:
+    # 2초 대기를 요구한 뒤 성공하는 전송 대역 생성
+    short = Open([
+        HTTPError("http://web.test", 429, "slow", {"retry-after": "2"}, None),
+        Reply(204),
+    ])
+    # 30초 대기를 요구하는 전송 대역 생성
+    long = Open([HTTPError("http://web.test", 503, "busy", {"retry-after": "30"}, None)])
+    # 재시도 대기 기록 목록 준비
+    sleeps: list[float] = []
+
+    # 짧은 서버 대기 요구를 따른 재시도 성공 확인
+    assert Api("http://web.test", "secret", "worker-1", opener=short, sleep=sleeps.append).progress(
+        JOB, "SEGMENTING", 40
+    ) is None
+    # 긴 서버 대기 요구의 즉시 오류 전달 확인
+    with pytest.raises(Transient, match="http-503"):
+        # 진행 보고 실행
+        Api("http://web.test", "secret", "worker-1", opener=long, sleep=sleeps.append).progress(
+            JOB, "SEGMENTING", 40
+        )
+    # 서버가 요구한 2초만 기다렸는지 확인
+    assert sleeps == [2.0]
+
+# 멱등 보장이 없는 작업 선점의 재시도 금지 확인
+def test_claim_is_not_retried() -> None:
+    # 일시 장애 뒤 성공 응답이 남은 전송 대역 생성
+    opener = Open([HTTPError("http://web.test", 503, "busy", {}, None), Reply(204)])
+    # 선점 요청을 기록할 작업자 통신 객체 생성
+    api = Api("http://web.test", "secret", "worker-1", opener=opener, sleep=lambda _: None)
+
+    # 선점 일시 장애의 즉시 전달 확인
+    with pytest.raises(HttpError, match="http-503"):
+        # 작업 선점 실행
+        api.claim("VALIDATE_VIDEO")
+    # 한 번만 보냈는지 확인
+    assert len(opener.requests) == 1
+
+# 응답 수신 중 시간 초과의 연결 불가 오류 변환 확인
+def test_raw_timeout_is_reported_as_unavailable() -> None:
+    # 응답 수신 시간 초과를 내는 전송 대역 생성
+    api = Api("http://web.test", "secret", "worker-1", opener=Open([TimeoutError("timed out")]))
+
+    # 원시 시간 초과 대신 기존 연결 불가 오류 문자열 전달 확인
+    with pytest.raises(HttpError, match="http-unavailable"):
+        # 작업 선점 실행
+        api.claim("VALIDATE_VIDEO")
+
+# 원본 다운로드 일시 장애의 처음부터 재수신 확인
+def test_media_retries_transient_download_failure(tmp_path: Path) -> None:
+    # 저장소 일시 장애 뒤 원본을 내주는 전송 대역 생성
+    opener = Open([HTTPError("http://storage/video", 503, "busy", {}, None), Reply(200, b"video")])
+    # 대기 없이 재시도하는 작업자 통신 객체 생성
+    api = Api("http://web.test", "secret", "worker-1", opener=opener, sleep=lambda _: None)
+    # 내려받은 원본을 저장할 임시 파일 경로 구성
+    target = tmp_path / "source.mp4"
+
+    # 원본 영상 저장
+    api.media("http://storage/video", target)
+
+    # 두 번째 시도의 원본 바이트 저장 확인
+    assert (len(opener.requests), target.read_bytes()) == (2, b"video")
+
 # 증거 업로드 요청 확인
 @pytest.mark.parametrize("content_type", ["image/jpeg", "video/mp4"])
 def test_immutable_media_put_forwards_checksum_and_first_write_headers(
@@ -267,7 +418,6 @@ def test_immutable_media_put_forwards_checksum_and_first_write_headers(
 
 # 실제 웹 통신 클라이언트의 불변 미디어 전송 확인
 def test_artifacts_use_the_real_http_client_for_immutable_media(tmp_path: Path) -> None:
-    from replay_video.runner import artifacts
     # 입력 영상을 시험용 기준 경로에서 구성
     source = tmp_path / "frame.jpg"
     # 입력 영상에 시험 내용을 기록

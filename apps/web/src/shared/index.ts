@@ -22,12 +22,16 @@ export * from "./rule-set";
 export * from "./competition-rules";
 // 비디오 판독 범위 자료형를 공통 진입점에 공개
 export * from "./var-scope";
+// 원본 해시로 검증된 경기 문맥을 공통 진입점에 공개
+export * from "./sources";
 // 영상 후보 필터 계약를 공통 진입점에 공개
 export * from "./pipeline-filter";
 // 공 후보 추적 자료형를 공통 진입점에 공개
 export * from "./tracking";
 // 작업자 통신 계약를 공통 진입점에 공개
 export * from "./worker-protocol";
+// 비공개 사건 색인 저장 계약을 공통 진입점에 공개
+export * from "./private-incidents";
 // 인식 실행 자료형를 공통 진입점에 공개
 export * from "./perception";
 // 음향 관측 계약를 공통 진입점에 공개

@@ -3,9 +3,12 @@ import pytest
 from replay_video.application.pipeline import pipeline
 from replay_video.application.ports import PipelinePorts
 from replay_video.domain.models import Candidate, Evidence
+from replay_video.infrastructure.perception import PerceptionAdapter, adaptation
+from replay_video.infrastructure.ports import operating
 from replay_video.infrastructure.sounds import observations
+from replay_video.runner import report
 from test_sounds import scan
-from test_perception import api, local_report, setup
+from test_perception import local_report, setup
 
 # 시험용 영상·음향 보고서 반환
 def av_report(source, root):
@@ -43,7 +46,7 @@ def test_adapter_observes_whole_source_audio_before_visual_observers(tmp_path):
         # 원본 지문에 결합한 영상·음향 보고서 대역 반환
         return av_report(source, root)
     # 모델 관측을 규정 입력 계약으로 옮기는 어댑터 생성
-    adapter = api().PerceptionAdapter(observe=visual, audio_enabled=True, observe_audio=audio)
+    adapter = PerceptionAdapter(observe=visual, audio_enabled=True, observe_audio=audio)
     # 음향과 영상 관측을 결합하는 인식 어댑터 실행
     result = adapter(source, root, metadata, (), shots)
     # 영상 관측보다 음향 관측이 먼저 실행되는지 확인
@@ -69,7 +72,7 @@ def test_av_pipeline_preserves_candidates_and_binds_audio_after_evidence(tmp_pat
     # 인식 모형
     def perception(source, output, meta, candidates, shots):
         # 모델 관측을 미검증 상태의 규정 입력 계약으로 변환 결과 반환
-        return api().adaptation(av_report(source, root), root, meta, candidates, shots)
+        return adaptation(av_report(source, root), root, meta, candidates, shots)
     # 시험에 필요한 파이프라인 단계별 대역 묶음 생성
     ports = PipelinePorts(
         probe=lambda _: metadata,
@@ -109,7 +112,7 @@ def test_av_pipeline_cannot_silently_accept_legacy_observations(tmp_path):
         shots=lambda *a: shots,
         candidates=lambda *a: (),
         evidence=lambda *a: (),
-        perception=lambda *a: api().adaptation(
+        perception=lambda *a: adaptation(
             local_report(source, root), root, metadata, (), shots
         ),
     )
@@ -131,19 +134,17 @@ def test_av_adapter_rejects_different_source_audio_from_observer(tmp_path):
     # 다른 원본의 음향 관측 거부를 위한 예상 예외 확인
     with pytest.raises(ValueError, match="PERCEPTION_AUDIO_SOURCE_MISMATCH"):
         # 모델 관측을 미검증 상태의 규정 입력 계약으로 변환
-        api().adaptation(raw, root, metadata, (), shots)
+        adaptation(raw, root, metadata, (), shots)
 
 # 운영 조립기의 영상·음향 선택과 구형 진단 버전 보존 확인
 def test_operating_factory_selects_av_but_legacy_diagnostic_adapter_stays_v1():
-    from replay_video.infrastructure.ports import operating
     # 파이프라인 판본이 예상 계약과 일치하는지 확인
     assert operating().perception.pipeline_version == "video-local-observers-av-v1"
     # 파이프라인 판본이 예상 계약과 일치하는지 확인
-    assert api().PerceptionAdapter().pipeline_version == "video-local-observers-v1"
+    assert PerceptionAdapter().pipeline_version == "video-local-observers-v1"
 
 # 업로드 전 영상·음향 관측 누락 거부 확인
 def test_runner_rejects_missing_av_observations_before_upload(tmp_path):
-    from replay_video.runner import report
     # 파일 경로를 시험용 기준 경로에서 구성
     path = tmp_path / "report.json"
     # 파일 경로에 시험 내용을 기록

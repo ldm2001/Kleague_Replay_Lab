@@ -94,7 +94,7 @@ def runtimeBundle() -> SimpleNamespace:
         # 잠금 내부 실행 환경 처리 결과 반환
         return lockedRuntime()
 
-# 잠금 내 실행 환경 읽음
+# 환경 변수 고정 뒤 잠금 안에서만 역할 모델 실행 환경 지연 읽음
 def lockedRuntime() -> SimpleNamespace:
     # 직접 추론에서 외부 라이브러리의 경로 읽기·예측기·콜백 사용 금지
     # 설정 동기화·의존성 설치·사전학습 예열 사용 금지
@@ -256,6 +256,7 @@ def lockedCheckpoint(
     torch = runtime.torch
     # 신뢰 목록에 실행 환경의 신뢰 목록 클래스 목록의 항목별 변환 결과 저장
     trusted = {globalName(value): value for value in runtime.trusted_classes}
+    # 모듈 적재와 분리한 텐서 실행 환경의 내부 객체를 검사 시점에 지연 읽음
     # 실행 환경 공존을 위해 알려진 프레임워크 객체의 정확한 동일성만 허용
     # 실행 환경 공존과 가중치 역직렬화 권한 분리
     # 역할 가중치가 해당 클래스를 참조하면 계속 거부

@@ -1,6 +1,8 @@
 // 애플리케이션 공개 요청 경로
 // 해시 포트 공개
 export type { Hasher } from "./ports/hashing/hasher";
+// 비밀 토큰 생성 포트 공개
+export type { Secret } from "./ports/hashing/secret";
 // 분석 저장 포트 공개
 export type {
     AnalysisCommand,
@@ -45,6 +47,7 @@ export type {
     AnalysisShot,
     JobClaim,
     JobClaimCommand,
+    JobLease,
     JobProgress,
     JobProgressCommand,
     JobProgressStore,
@@ -58,8 +61,21 @@ export type {
     JobResultStore,
     JobStage,
     JobType,
-    ValidationPayload
+    ValidationPayload,
+    AutomaticEvidenceBinding
 } from "./ports/repositories/job-store";
+// 자동 평가 묶음의 원본 작업 후보 근거 결합 검사 공개
+export { validAutomaticBatch } from "./use-cases/evaluation/binding";
+// 비공개 사건 저장 경계의 검증과 서버 평가 계획 공개
+export { incidentPlan } from "./use-cases/incidents/plan";
+// 비공개 사건 저장 계획 계약 공개
+export type {
+    IncidentMatchRead,
+    IncidentPlanContext,
+    IncidentPlanRecord,
+    IncidentPlanRow,
+    VerifiedMatch
+} from "./use-cases/incidents/plan";
 // 업로드 저장소 포트 공개
 export type {
     CompletionStorage,
@@ -137,7 +153,12 @@ export type {
     MediaStatusStore,
     MediaView,
     RuleView,
-    JudgmentView
+    JudgmentView,
+    MediaSnapshot,
+    AnalysisSnapshot,
+    CandidateSnapshot,
+    EvidenceSnapshot,
+    AutomaticSnapshot
 } from "./ports/repositories/status-store";
 // 결과 조회 유스케이스 공개
 export { report } from "./use-cases/status/report";

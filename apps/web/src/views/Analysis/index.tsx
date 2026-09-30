@@ -2,7 +2,6 @@
 
 // 화면 구성에 필요한 기능과 공유 자료 형식 읽음
 import * as React from "react";
-import { useCallback } from "react";
 import { useRouter } from "next/navigation";
 import type { MediaView } from "@replay/application";
 import { Footer } from "../../components/Footer";
@@ -15,7 +14,7 @@ export function AnalysisView() {
     // 결과 이동 라우터
     const router = useRouter();
     // 분석 완료 결과 이동
-    const result = useCallback(
+    const result = React.useCallback(
         (view: MediaView | null) => {
             // 업로드 결과 분석 읽기
             const analysis = view?.analysis;

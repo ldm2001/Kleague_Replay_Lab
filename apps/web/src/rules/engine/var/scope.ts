@@ -1,12 +1,12 @@
-// 공통 관측과 판정 자료형 가져오기
-import type {
-    CompetitionRuleBook,
-    ScopeEvidence,
-    ScopeSourceContext,
-    VarScopeEvaluation
+// 공통 관측과 판정 자료형과 구조 검증 기능 가져오기
+import {
+    broadcastCueData,
+    VAR_SCOPE_NOT_ASSESSED,
+    type CompetitionRuleBook,
+    type ScopeEvidence,
+    type ScopeSourceContext,
+    type VarScopeEvaluation
 } from "@replay/shared-types";
-// 공통 관측과 판정 자료형 가져오기
-import { broadcastCueData, VAR_SCOPE_NOT_ASSESSED } from "@replay/shared-types";
 
 // 비디오 판독 범위 평가 입력의 자료 구조 정의
 export type VarScopeInput = Readonly<{

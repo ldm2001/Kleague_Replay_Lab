@@ -6,7 +6,13 @@ import { incidentDigest } from "../../src/rules/engine/incidents/evidence";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { JobStore, Sha256, StatusStore } from "@replay/adapters";
 import { client } from "@replay/database";
-import { report, result as submitResult, status, type AnalysisPayload } from "@replay/application";
+import {
+    report,
+    result as submitResult,
+    status,
+    type AnalysisPayload,
+    type JobResultCommand
+} from "@replay/application";
 import { perceptionAdmission } from "@replay/rule-engine";
 import { perceptionRunData } from "@replay/shared-types";
 import {
@@ -14,6 +20,7 @@ import {
     PERCEPTION_ANALYSIS_ID,
     PERCEPTION_JOB_ID
 } from "../fixtures/perception";
+import { analysisView } from "../fixtures/status";
 
 // 데이터베이스 주소 시험용 실행환경 환경설정 데이터베이스 주소 준비
 const databaseUrl = process.env.DATABASE_URL;
@@ -228,7 +235,7 @@ describe.skipIf(!databaseUrl)("private perception result flow", () => {
     };
 
     // 저장 명령에서 서버가 만든 색인 묶음 읽음
-    const indexed = (command: import("../../src/application/ports/repositories/job-store").JobResultCommand) => {
+    const indexed = (command: JobResultCommand) => {
         if (command.privateIndex?.status !== "INDEXED") throw new Error("PRIVATE_INDEX_EXPECTED");
         return command.privateIndex.batch;
     };
@@ -267,11 +274,27 @@ describe.skipIf(!databaseUrl)("private perception result flow", () => {
             anonymousSessionId: setup.sessionId, after: null, limit: 100 }, NOW))?.rows).toEqual([]);
     });
 
+    it.each([
+        ["revoked owner session", "anonymous_sessions", "revoked_at"],
+        ["deleted source object", "video_assets", "object_deleted_at"]
+    ] as const)("hides private incidents after a %s", async (_, table, column) => {
+        // 유형별 사건까지 저장하는 비공개 색인 시험 문맥 준비
+        const setup = await privateFixture(true);
+        // 비공개 관측과 사건 저장 성공 확인
+        expect(await submitResult(setup)(setup.input)).toEqual({ kind: "ACCEPTED" });
+        // 세션 폐기 또는 원본 객체 삭제를 보존 기한 안의 시각으로 기록
+        const target = table === "anonymous_sessions" ? setup.sessionId : setup.videoId;
+        await database.sql`update ${database.sql(table)} set ${database.sql(column)} = ${NOW} where id = ${target}`;
+        // 보존 기한이 남아도 공개 조회와 같은 가시성 규칙으로 비공개 조회 차단
+        expect(await incidentQuery(database, { analysisId: setup.analysisId,
+            anonymousSessionId: setup.sessionId, after: null, limit: 100 }, NOW)).toBeNull();
+    });
+
     it("rejects a record evidence hash changed independently of its verified observation", async () => {
         const setup = await privateFixture(true);
         const repository = {
             preflight: setup.repository.preflight.bind(setup.repository),
-            result: (command: import("../../src/application/ports/repositories/job-store").JobResultCommand) => {
+            result: (command: JobResultCommand) => {
                 const batch = structuredClone(indexed(command));
                 const row = batch.rows[0]!;
                 const record = { ...row.record!, evidence: row.record!.evidence.map((item) => ({ ...item, contentSha256: "e".repeat(64) })) };
@@ -303,7 +326,7 @@ describe.skipIf(!databaseUrl)("private perception result flow", () => {
         const setup = await privateFixture();
         const repository = {
             preflight: setup.repository.preflight.bind(setup.repository),
-            result: (command: import("../../src/application/ports/repositories/job-store").JobResultCommand) => {
+            result: (command: JobResultCommand) => {
                 const batch = indexed(command);
                 return setup.repository.result({ ...command, privateIndex: { status: "INDEXED", batch: { ...batch,
                     rows: [...batch.rows, { ...batch.rows[0]!, observationSha256: "0".repeat(64) }] } } });
@@ -324,7 +347,7 @@ describe.skipIf(!databaseUrl)("private perception result flow", () => {
         const setup = await privateFixture(true);
         const repository = {
             preflight: setup.repository.preflight.bind(setup.repository),
-            result: (command: import("../../src/application/ports/repositories/job-store").JobResultCommand) => {
+            result: (command: JobResultCommand) => {
                 const batch = indexed(command);
                 const forged = { ...batch.rows[0]!, admittedFactIds: ["forged"] };
                 return setup.repository.result({ ...command, privateIndex: { status: "INDEXED", batch: { ...batch, rows: [forged] } } });
@@ -338,7 +361,7 @@ describe.skipIf(!databaseUrl)("private perception result flow", () => {
         const setup = await privateFixture(true);
         const repository = {
             preflight: setup.repository.preflight.bind(setup.repository),
-            result: (command: import("../../src/application/ports/repositories/job-store").JobResultCommand) =>
+            result: (command: JobResultCommand) =>
                 setup.repository.result({ ...command, privateIndex: { status: "SKIPPED", reason: "PRIVATE_INDEX_CAPACITY" } })
         };
         expect(await submitResult({ ...setup, repository })(setup.input)).toEqual({ kind: "ACCEPTED" });
@@ -799,8 +822,8 @@ describe.skipIf(!databaseUrl)("private perception result flow", () => {
 
         // 어댑터 시험용 상태 저장소 준비
         const adapter = new StatusStore(database);
-        // 어댑터 분석 결과를 내부에 저장
-        const internal = await adapter.analysis({
+        // 어댑터 원자료의 내부 분석 화면 모델을 내부에 저장
+        const internal = await analysisView(adapter, {
             anonymousSessionId: sessionId,
             analysisId,
             now: NOW

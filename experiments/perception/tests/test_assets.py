@@ -8,6 +8,8 @@ import ssl
 from pathlib import Path
 # 예외 기대와 반복 사례 검증 도구 읽음
 import pytest
+# 시험에 필요한 인식 구현과 자료 계약 읽음
+from replay_perception import assets
 
 
 # 고정 모델 판본 준비
@@ -96,11 +98,8 @@ class FakeResponse:
 
 # 승인된 모델 자산만 고정한 명세 확인
 def test_packaged_manifest_pins_only_the_approved_model_assets():
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception.assets import assetManifest
-
     # 고정 모델 명세 준비
-    manifest = assetManifest()
+    manifest = assets.assetManifest()
     # 승인 모델 식별자의 기대 자료 일치 확인
     assert manifest["model_id"] == "PekingU/rtdetr_r18vd"
     # 고정 모델 판본의 기대 자료 일치 확인
@@ -181,31 +180,22 @@ def test_packaged_manifest_pins_only_the_approved_model_assets():
 
 # 저장소 외부의 기본 모델 경로 확인
 def test_default_model_dir_is_outside_the_repository(monkeypatch, tmp_path):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception.assets import directory
-
     # 저장소 외부의 기본 모델 경로 의존성의 시험 대역 주입
     monkeypatch.setattr(Path, "home", classmethod(lambda _cls: tmp_path))
     # 시험 모델 파일 폴더의 기대 자료 일치 확인
-    assert directory() == (
+    assert assets.directory() == (
         tmp_path / ".cache" / "replay-lab" / "models" / "rtdetr_r18vd" / REVISION
     )
 
 # 모델 파일 누락의 고정 실패 코드 확인
 def test_missing_model_file_has_a_stable_failure_code(tmp_path):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception.assets import verification
-
     # 모델 계약 오류 발생 기대
     with pytest.raises(FileNotFoundError, match="MODEL_FILE_MISSING"):
         # 고정 해시와 대조한 자산 정보 실행
-        verification(tmp_path / "model.safetensors", "0" * 64)
+        assets.verification(tmp_path / "model.safetensors", "0" * 64)
 
 # 변조된 모델 거부 확인
 def test_tampered_model_is_rejected(tmp_path):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception.assets import verification
-
     # 파일 경로 준비
     path = tmp_path / "model.safetensors"
     # 파일 경로에 시험 바이트 기록
@@ -213,13 +203,10 @@ def test_tampered_model_is_rejected(tmp_path):
     # 파일 해시 불일치 발생 기대
     with pytest.raises(ValueError, match="MODEL_HASH_MISMATCH"):
         # 고정 해시와 대조한 자산 정보 실행
-        verification(path, "0" * 64)
+        assets.verification(path, "0" * 64)
 
 # 유효한 모델 파일 허용 확인
 def test_valid_model_file_is_accepted(tmp_path):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception.assets import verification
-
     # 전송 본문 준비
     payload = b"verified local bytes"
     # 파일 경로 준비
@@ -227,15 +214,12 @@ def test_valid_model_file_is_accepted(tmp_path):
     # 파일 경로에 시험 바이트 기록
     path.write_bytes(payload)
     # 유효한 파일 검증이 예외 없이 끝나고 별도 값을 반환하지 않음 확인
-    assert verification(path, hashlib.sha256(payload).hexdigest()) is None
+    assert assets.verification(path, hashlib.sha256(payload).hexdigest()) is None
 
 # 필수 파일 검증과 출처 기록 확인
 def test_verify_model_assets_requires_all_required_files_and_reports_provenance(
     monkeypatch, tmp_path
 ):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import assets
-
     # 첫 번째 관측 준비
     first = b"config"
     # 두 번째 관측 준비
@@ -269,9 +253,6 @@ def test_verify_model_assets_requires_all_required_files_and_reports_provenance(
 
 # 선택적 모델 카드 존재 시 검증 확인
 def test_optional_model_card_is_verified_when_present(monkeypatch, tmp_path):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import assets
-
     # 필수 자산 파일 준비
     required = b"config"
     # 선택 자산 파일 준비
@@ -295,9 +276,6 @@ def test_optional_model_card_is_verified_when_present(monkeypatch, tmp_path):
 
 # 네트워크 없이 검증된 기존 파일 재사용 확인
 def test_download_reuses_a_verified_existing_file_without_network(monkeypatch, tmp_path):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import assets
-
     # 전송 본문 준비
     payload = b"already downloaded"
     # 고정 자산 시험 명세 읽음
@@ -325,9 +303,6 @@ def test_download_reuses_a_verified_existing_file_without_network(monkeypatch, t
 
 # 잘못된 기존 파일의 교체 없는 거부 확인
 def test_download_rejects_an_invalid_existing_file_without_replacing_it(monkeypatch, tmp_path):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import assets
-
     # 기대 자료 준비
     expected = b"expected"
     # 파일 경로 준비
@@ -356,9 +331,6 @@ def test_download_rejects_an_invalid_existing_file_without_replacing_it(monkeypa
 def test_download_rejects_repository_ancestor_before_mkdir_or_network(
     monkeypatch, tmp_path, git_marker_kind
 ):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import assets
-
     # 가중치 저장 폴더 준비
     repository = tmp_path / "repository"
     # 가중치 저장 폴더 생성
@@ -401,9 +373,6 @@ def test_download_rejects_repository_ancestor_before_mkdir_or_network(
 
 # 저장소 내부를 가리키는 심볼릭 링크 다운로드 거부 확인
 def test_download_rejects_symlink_that_resolves_inside_a_repository(monkeypatch, tmp_path):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import assets
-
     # 가중치 저장 폴더 준비
     repository = tmp_path / "repository"
     # 가중치 저장 폴더 생성
@@ -443,9 +412,6 @@ def test_download_rejects_symlink_that_resolves_inside_a_repository(monkeypatch,
 
 # 저장소 내부 자산의 검증 거부 확인
 def test_verification_rejects_assets_located_inside_a_repository(monkeypatch, tmp_path):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import assets
-
     # 가중치 저장 폴더 준비
     repository = tmp_path / "repository"
     # 모델 저장 폴더 준비
@@ -472,9 +438,6 @@ def test_verification_rejects_assets_located_inside_a_repository(monkeypatch, tm
 
 # 검증된 보안 연결과 제한 시간 및 고정 주소 사용 확인
 def test_download_uses_verified_tls_timeout_and_fixed_url(monkeypatch, tmp_path):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import assets
-
     # 전송 본문 준비
     payload = b"downloaded"
     # 시험 자산 명세 항목 읽음
@@ -513,9 +476,6 @@ def test_download_uses_verified_tls_timeout_and_fixed_url(monkeypatch, tmp_path)
 def test_download_rejects_declared_or_streamed_oversize_and_cleans_temp_files(
     monkeypatch, tmp_path
 ):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import assets
-
     # 기대 자료 준비
     expected = b"small"
     # 시험 자산 명세 항목 읽음
@@ -555,9 +515,6 @@ def test_download_rejects_declared_or_streamed_oversize_and_cleans_temp_files(
 
 # 다운로드 시간 초과 시 부분·공개 파일 부재 확인
 def test_download_timeout_leaves_no_partial_or_published_file(monkeypatch, tmp_path):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import assets
-
     # 기대 자료 준비
     expected = b"payload"
     # 다운로드 시간 초과 시 부분·공개 파일 부재 의존성의 시험 대역 주입
@@ -588,9 +545,6 @@ def test_download_timeout_leaves_no_partial_or_published_file(monkeypatch, tmp_p
 
 # 동시 캐시 기록을 덮어쓰지 않는 원자적 공개 확인
 def test_atomic_publication_never_clobbers_a_racing_cache_writer(monkeypatch, tmp_path):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import assets
-
     # 다운로드한 바이트 자료 준비
     downloaded = b"downloaded"
     # 경쟁하는 근접 관측 준비

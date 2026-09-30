@@ -6,6 +6,7 @@ import { client } from "@replay/database";
 import { competitionSet, ruleSet } from "@replay/rule-data";
 import { pushResult, varResult } from "@replay/rule-engine";
 import { judgment } from "../fixtures/result";
+import { analysisView } from "../fixtures/status";
 
 // 별도 테스트 데이터베이스에서 사실 버전과 판정의 연결 확인
 describe.skipIf(!process.env.DATABASE_URL)("사실 버전", () => {
@@ -129,7 +130,7 @@ describe.skipIf(!process.env.DATABASE_URL)("사실 버전", () => {
         if (initial.kind !== "CREATED") throw new Error("revision-unavailable");
         // 판정 저장 전에도 최신 사실과 개정 이력 조회 가능
         expect(
-            await status.analysis({ anonymousSessionId: session, analysisId: analysis, now })
+            await analysisView(status, { anonymousSessionId: session, analysisId: analysis, now })
         ).toMatchObject({
             candidates: [
                 { factRevisionId: initial.factRevisionId, facts: judgment.facts, judgment: null }
@@ -148,7 +149,7 @@ describe.skipIf(!process.env.DATABASE_URL)("사실 버전", () => {
             await store.patch(revision("second", initial.factRevisionId, changed))
         ).toMatchObject({ kind: "CREATED" });
         // 상태 분석 결과를 화면자료에 저장
-        const view = await status.analysis({
+        const view = await analysisView(status, {
             anonymousSessionId: session,
             analysisId: analysis,
             now
@@ -165,7 +166,7 @@ describe.skipIf(!process.env.DATABASE_URL)("사실 버전", () => {
         // 새 사실의 판정 완료와 이력 보존 확인
         expect(await store.save(await decision())).toMatchObject({ kind: "CREATED" });
         // 상태 분석 결과를 시험자료에 저장
-        const updated = await status.analysis({
+        const updated = await analysisView(status, {
             anonymousSessionId: session,
             analysisId: analysis,
             now
@@ -207,7 +208,7 @@ describe.skipIf(!process.env.DATABASE_URL)("사실 버전", () => {
         // 영상 샷 삽입
         await database.sql`insert into shots (id, analysis_id, shot_index, start_ms, end_ms, playback_speed, is_replay) values (${shot}, ${analysis}, 0, 0, 3000, 'UNKNOWN', false)`;
         // 상태 분석 결과를 화면자료에 저장
-        const view = await status.analysis({
+        const view = await analysisView(status, {
             anonymousSessionId: session,
             analysisId: analysis,
             now
@@ -225,7 +226,11 @@ describe.skipIf(!process.env.DATABASE_URL)("사실 버전", () => {
         });
         // 다른 세션의 관찰 조회 차단
         expect(
-            await status.analysis({ anonymousSessionId: randomUUID(), analysisId: analysis, now })
+            await analysisView(status, {
+                anonymousSessionId: randomUUID(),
+                analysisId: analysis,
+                now
+            })
         ).toBeNull();
     });
 

@@ -2,8 +2,12 @@ import { createHash } from "node:crypto";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createGunzip } from "node:zlib";
-import { interactionData, type InteractionObservationV1 } from "../../../shared/interaction";
-import { PRIVATE_INDEX_BYTES as INDEX, PRIVATE_INDEX_ROWS as COUNT } from "../../../shared/private-incidents";
+import {
+    interactionData,
+    PRIVATE_INDEX_BYTES as INDEX,
+    PRIVATE_INDEX_ROWS as COUNT,
+    type InteractionObservationV1
+} from "@replay/shared-types";
 
 // 압축 폭탄과 비공개 색인의 최대 자원 범위 고정
 const COMPRESSED = 128 * 1024 * 1024;

@@ -5,12 +5,14 @@ import {
     publicAutomaticResult,
     type AutomaticJudgment,
     type AutomaticReviewBatch,
-    type AutomaticRuleContext
-} from "../shared/review";
-// 분석 처리 유스케이스와 저장소 계약 가져옴
-import type { AnalysisEvidence } from "../application/ports/repositories/job-store";
-// 공유 자료 계약과 검증 기능 가져옴
-import type { EvaluationResult } from "../shared/evaluation";
+    type AutomaticRuleContext,
+    type EvaluationResult
+} from "@replay/shared-types";
+// 분석 증거와 저장 증거 연결 계약 가져옴
+import type {
+    AnalysisEvidence,
+    AutomaticEvidenceBinding
+} from "../../ports/repositories/job-store";
 
 // 판정·재개·징계가 완료됐는지 확인
 const completeResult = (result: EvaluationResult | null): result is EvaluationResult =>
@@ -21,9 +23,6 @@ const completeResult = (result: EvaluationResult | null): result is EvaluationRe
     result.inconclusiveReason === null &&
     result.citations.length > 0;
 
-// 제출 증거와 저장된 증거 식별자의 연결 정의
-export type AutomaticEvidenceBinding = AnalysisEvidence &
-    Readonly<{ evidenceIndex: number; evidenceId: string }>;
 // 자동 평가의 원본 작업 규정 및 증거 대조 문맥 정의
 export type AutomaticBindingContext = Readonly<{
     // 분석 기록의 식별자

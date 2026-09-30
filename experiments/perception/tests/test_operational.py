@@ -4,25 +4,24 @@ from dataclasses import replace
 import gzip
 # 원본과 가중치의 해시 계산 도구 읽음
 import hashlib
-# 인식 모듈 지연 읽기 도구 읽음
-import importlib
 # 기록 직렬화와 읽기 도구 읽음
 import json
+# 시험 파일 경로 도구 읽음
+from pathlib import Path
 # 격리 명령 실행 도구 읽음
 import subprocess
+# 가벼운 모의 객체 생성 도구 읽음
+from types import SimpleNamespace
 # 예외 기대와 반복 사례 검증 도구 읽음
 import pytest
+# 시험에 필요한 인식 구현과 자료 계약 읽음
+from replay_perception import operational
 # 시험에 필요한 인식 구현과 자료 계약 읽음
 from replay_perception.models import Detection
 # 시험에 필요한 인식 구현과 자료 계약 읽음
 from replay_perception.observations import RoleDetection
 # 시험에 필요한 검증 도구와 의존성 읽음
 from test_objects import scene
-
-# 인터페이스 반환
-def api():
-    # 검사할 인식 구현 모듈 반환
-    return importlib.import_module("replay_perception.operational")
 
 # 시험 영상 생성
 def video(path, duration="0.5", fps="10"):
@@ -146,7 +145,7 @@ class Poses:
 # 모델 묶음 생성
 def bundle(**kwargs):
     # 모델 묶음 결과 반환
-    return api().ObserverModels(
+    return operational.ObserverModels(
         Detector(empty=kwargs.get("empty", False)),
         Roles(),
         Poses(fail_after=kwargs.get("fail_after")),
@@ -170,7 +169,7 @@ def test_same_pts_stream_runs_three_existing_observer_ports_and_private_artifact
     # 처리 진행 상황의 빈 누적 공간 생성
     progress = []
     # 시험 프레임의 관측 결과 생성
-    result = api().observations(
+    result = operational.observations(
         source, tmp_path / "output", models, duration_ms=500, progress=progress.append
     )
     # 처리 완료 상태 값이 처리 완료 상태인지 확인
@@ -223,7 +222,7 @@ def test_model_stage_failure_preserves_prior_rows_and_explicit_missing_coverage(
     # 검사에 필요한 시험 자료 묶음 생성
     models = bundle(fail_after=2)
     # 시험 프레임의 관측 결과 생성
-    result = api().observations(source, tmp_path / "output", models, duration_ms=500)
+    result = operational.observations(source, tmp_path / "output", models, duration_ms=500)
     # 처리 완료 상태 값이 일부만 처리한 상태인지 확인
     assert result["processingStatus"] == "PARTIAL"
     # 처리한 표본 수 값이 2인지 확인
@@ -263,7 +262,7 @@ def test_lease_loss_check_stops_before_next_inference_and_preserves_partial(tmp_
             # 처리 취소 모사의 예외 상황 재현
             raise RuntimeError("WORKER_LEASE_LOST")
     # 시험 프레임의 관측 결과 생성
-    result = api().observations(
+    result = operational.observations(
         source, tmp_path / "output", models, duration_ms=500, check_cancelled=cancellation
     )
     # 처리 완료 상태 값이 일부만 처리한 상태인지 확인
@@ -286,7 +285,9 @@ def test_sparse_video_cannot_claim_complete_sampling_coverage(tmp_path):
     # 디코더 검사용 합성 영상 실행
     video(source, "1.0", "2")
     # 시험 프레임의 관측 결과 생성
-    result = api().observations(source, tmp_path / "output", bundle(empty=True), duration_ms=1000)
+    result = operational.observations(
+        source, tmp_path / "output", bundle(empty=True), duration_ms=1000
+    )
     # 처리 완료 상태 값이 일부만 처리한 상태인지 확인
     assert result["processingStatus"] == "PARTIAL"
     # 예상 표본 수 값이 10인지 확인
@@ -307,7 +308,7 @@ def test_empty_detection_is_valid_processing_not_a_negative_foul_fact(tmp_path):
     # 검사에 필요한 시험 자료 묶음 생성
     models = bundle(empty=True)
     # 시험 프레임의 관측 결과 생성
-    result = api().observations(source, tmp_path / "output", models, duration_ms=500)
+    result = operational.observations(source, tmp_path / "output", models, duration_ms=500)
     # 처리 완료 상태 값이 처리 완료 상태인지 확인
     assert result["processingStatus"] == "COMPLETE"
     # 자세 관측 수 값이 0인지 확인
@@ -338,7 +339,7 @@ def test_existing_output_rejected_before_model_calls(tmp_path):
     # 기존 파일 충돌 발생 기대
     with pytest.raises(FileExistsError):
         # 시험 프레임의 관측 결과 실행
-        api().observations(source, output, models, duration_ms=500)
+        operational.observations(source, output, models, duration_ms=500)
     # 파일에 저장한 문자열의 기대 자료 일치 확인
     assert marker.read_text() == "preserve"
     # 호출 이력 값이 0인지 확인
@@ -353,9 +354,9 @@ def test_runtime_limit_is_partial_and_does_not_infer_extra_sample(tmp_path, monk
     # 검사에 필요한 시험 자료 묶음 생성
     models = bundle()
     # 실행 시간 초과의 부분 상태와 추가 표본 추론 방지 의존성의 시험 대역 주입
-    monkeypatch.setattr(api(), "MAX_RUNTIME_SECONDS", 0)
+    monkeypatch.setattr(operational, "MAX_RUNTIME_SECONDS", 0)
     # 시험 프레임의 관측 결과 생성
-    result = api().observations(source, tmp_path / "output", models, duration_ms=500)
+    result = operational.observations(source, tmp_path / "output", models, duration_ms=500)
     # 처리 완료 상태 값이 일부만 처리한 상태인지 확인
     assert result["processingStatus"] == "PARTIAL"
     # 호출 이력 값이 0인지 확인
@@ -381,12 +382,14 @@ def test_source_change_during_observation_is_not_returned_as_source_bound_result
     # 원본 일치 오류 발생 기대
     with pytest.raises(ValueError, match="VIDEO_SOURCE_CHANGED"):
         # 시험 프레임의 관측 결과 실행
-        api().observations(source, tmp_path / "output", bundle(), duration_ms=500, progress=changed)
+        operational.observations(
+            source, tmp_path / "output", bundle(), duration_ms=500, progress=changed
+        )
 
 # 재등장 연결 식별자의 단일 사건 집계 확인
 def test_reappearing_link_id_is_counted_once_not_as_another_episode():
     # 보존한 관측 기록 생성
-    retained = api()._Retained()
+    retained = operational._Retained()
     # 보존한 자료에 현재 입력 반영
     retained.update([{"id": "link-one", "endMs": 300}])
     # 보존한 자료에 현재 입력 반영
@@ -401,9 +404,9 @@ def test_reappearing_link_id_is_counted_once_not_as_another_episode():
 # 사건 식별 색인의 크기 제한과 변경 전 거부 확인
 def test_episode_identity_index_is_bounded_and_rejects_before_mutation(monkeypatch):
     # 사건 식별 색인의 크기 제한과 변경 전 거부 의존성의 시험 대역 주입
-    monkeypatch.setattr(api(), "MAX_INDEXED_EPISODES", 1)
+    monkeypatch.setattr(operational, "MAX_INDEXED_EPISODES", 1)
     # 보존한 관측 기록 생성
-    retained = api()._Retained()
+    retained = operational._Retained()
     # 보존한 자료에 현재 입력 반영
     retained.update([{"id": "one"}])
     # 입력값 오류 발생 기대
@@ -417,14 +420,14 @@ def test_episode_identity_index_is_bounded_and_rejects_before_mutation(monkeypat
 
 # 헤더의 간접 동작 소스 지문 기록 확인
 def test_header_fingerprints_transitive_behavior_sources(tmp_path):
-    # 시험 파일 경로 도구 읽음
-    from pathlib import Path
     # 원본 입력 준비
     source = tmp_path / "source.mkv"
     # 디코더 검사용 합성 영상 실행
     video(source)
     # 시험 프레임의 관측 결과 생성
-    result = api().observations(source, tmp_path / "output", bundle(empty=True), duration_ms=500)
+    result = operational.observations(
+        source, tmp_path / "output", bundle(empty=True), duration_ms=500
+    )
     # 파일별 해시 목록 준비
     hashes = records(result)[0]["implementation"]["sourceFilesSha256"]
     # 헤더의 간접 동작 소스 지문 기록 입력 목록의 항목별 순회
@@ -434,7 +437,7 @@ def test_header_fingerprints_transitive_behavior_sources(tmp_path):
         # 파일별 해시 목록의 선택 항목의 기대 자료 일치 확인
         assert (
             hashes[name]
-            == hashlib.sha256((Path(api().__file__).parent / name).read_bytes()).hexdigest()
+            == hashlib.sha256((Path(operational.__file__).parent / name).read_bytes()).hexdigest()
         )
 
 # 후속 디코딩 실패 시 이전 성공 프레임 상태 보존 확인
@@ -444,7 +447,7 @@ def test_next_decode_failure_does_not_relabel_previously_successful_frame(tmp_pa
     # 디코더 검사용 합성 영상 실행
     video(source)
     # 실제 영상 읽기 객체 준비
-    actual_reader = api().VideoReader
+    actual_reader = operational.VideoReader
     # 실제 외부 실행을 대신할 시험 객체 정의
     class FailedReader:
 
@@ -472,9 +475,11 @@ def test_next_decode_failure_does_not_relabel_previously_successful_frame(tmp_pa
             # 사용 자원의 종료 처리 실행
             self.actual.__exit__(*args)
     # 원본 표시 시각을 보존할 영상 읽기 객체의 시험 대역 주입
-    monkeypatch.setattr(api(), "VideoReader", FailedReader)
+    monkeypatch.setattr(operational, "VideoReader", FailedReader)
     # 시험 프레임의 관측 결과 생성
-    result = api().observations(source, tmp_path / "output", bundle(empty=True), duration_ms=500)
+    result = operational.observations(
+        source, tmp_path / "output", bundle(empty=True), duration_ms=500
+    )
     # 저장된 기록 목록 읽음
     rows = records(result)
     # 처리 완료 상태 값이 일부만 처리한 상태인지 확인
@@ -497,7 +502,7 @@ def test_inference_error_survives_simultaneous_artifact_finalize_error(tmp_path,
     # 디코더 검사용 합성 영상 실행
     video(source, "0.1")
     # 실제 진단 파일 기록기 준비
-    actual_artifact = api().DiagnosticArtifact
+    actual_artifact = operational.DiagnosticArtifact
     # 실제 외부 실행을 대신할 시험 객체 정의
     class BrokenArtifact(actual_artifact):
 
@@ -515,11 +520,11 @@ def test_inference_error_survives_simultaneous_artifact_finalize_error(tmp_path,
             # 사용 자원의 종료 처리 반환
             return super().__exit__(*args)
     # 내부 진단을 저장할 기록기의 시험 대역 주입
-    monkeypatch.setattr(api(), "DiagnosticArtifact", BrokenArtifact)
+    monkeypatch.setattr(operational, "DiagnosticArtifact", BrokenArtifact)
     # 자세 관측 오류 발생 기대
     with pytest.raises(RuntimeError, match="POSE_INFERENCE_FAILED") as caught:
         # 시험 프레임의 관측 결과 실행
-        api().observations(source, tmp_path / "output", bundle(fail_after=0), duration_ms=100)
+        operational.observations(source, tmp_path / "output", bundle(fail_after=0), duration_ms=100)
     # 요구 자료형 충족 여부의 조건 충족 확인
     assert isinstance(caught.value.__cause__, OSError)
     # 문자열로 변환한 값의 기대 자료 일치 확인
@@ -527,8 +532,6 @@ def test_inference_error_survives_simultaneous_artifact_finalize_error(tmp_path,
 
 # 마지막 관측 단계 시간 초과의 완료 보고 방지 확인
 def test_final_observation_stage_over_deadline_cannot_report_complete(tmp_path, monkeypatch):
-    # 가벼운 모의 객체 생성 도구 읽음
-    from types import SimpleNamespace
     # 원본 입력 준비
     source = tmp_path / "source.mkv"
     # 디코더 검사용 합성 영상 실행
@@ -536,7 +539,7 @@ def test_final_observation_stage_over_deadline_cannot_report_complete(tmp_path, 
     # 제어 가능한 시험 시계의 시험 항목 구성
     clock = [0.]
     # 마지막 관측 단계 시간 초과의 완료 보고 방지 의존성의 시험 대역 주입
-    monkeypatch.setattr(api(), "time", SimpleNamespace(perf_counter=lambda: clock[0]))
+    monkeypatch.setattr(operational, "time", SimpleNamespace(perf_counter=lambda: clock[0]))
     # 실제 외부 실행을 대신할 시험 객체 정의
     class SlowLinker:
 
@@ -547,9 +550,11 @@ def test_final_observation_stage_over_deadline_cannot_report_complete(tmp_path, 
             # 빈 목록 반환
             return ()
     # 선수 근접과 심판 신호를 연결할 후보 연결기의 시험 대역 주입
-    monkeypatch.setattr(api(), "IncidentLinker", SlowLinker)
+    monkeypatch.setattr(operational, "IncidentLinker", SlowLinker)
     # 시험 프레임의 관측 결과 생성
-    result = api().observations(source, tmp_path / "output", bundle(empty=True), duration_ms=100)
+    result = operational.observations(
+        source, tmp_path / "output", bundle(empty=True), duration_ms=100
+    )
     # 처리 완료 상태 값이 일부만 처리한 상태인지 확인
     assert result["processingStatus"] == "PARTIAL"
     # 판단 보류 이유에 지정한 항목 포함 확인
@@ -562,9 +567,11 @@ def test_exact_sample_cap_is_successful_when_no_extra_sample_is_attempted(tmp_pa
     # 디코더 검사용 합성 영상 실행
     video(source, "0.1")
     # 추가 표본 시도 없는 정확한 표본 상한의 성공 의존성의 시험 대역 주입
-    monkeypatch.setattr(api(), "MAX_PROCESSED_FRAMES", 1)
+    monkeypatch.setattr(operational, "MAX_PROCESSED_FRAMES", 1)
     # 시험 프레임의 관측 결과 생성
-    result = api().observations(source, tmp_path / "output", bundle(empty=True), duration_ms=100)
+    result = operational.observations(
+        source, tmp_path / "output", bundle(empty=True), duration_ms=100
+    )
     # 처리 완료 상태 값이 처리 완료 상태인지 확인
     assert result["processingStatus"] == "COMPLETE"
     # 처리한 표본 수 값이 1인지 확인

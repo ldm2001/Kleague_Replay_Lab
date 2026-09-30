@@ -111,4 +111,27 @@ describe("complete API", () => {
         // 응답 응답본문 결과의 종류 완료 및 영상 자산 식별자 자료 기준 구조 일치 확인
         expect(await response.json()).toEqual({ kind: "COMPLETED", videoAssetId: VIDEO_ID });
     });
+
+    it("returns the existing video asset with 200 when the completion is replayed", async () => {
+        // 이미 완료된 같은 의도의 재응답 결과 구성
+        const deps: UploadApiDependencies = {
+            ...dependencies(),
+            complete: async () => ({ kind: "REPLAYED", videoAssetId: VIDEO_ID })
+        };
+
+        // 같은 의도의 재완료 요청 실행
+        const response = await completion(
+            new Request("http://localhost/api/uploads/intent/complete", {
+                method: "POST",
+                headers: { cookie: "replay_session=session-token" }
+            }),
+            { intentId: INTENT_ID },
+            deps
+        );
+
+        // 재응답 상태의 기대값 200 일치 확인
+        expect(response.status).toBe(200);
+        // 재응답 본문이 기존 영상 식별자를 담는지 확인
+        expect(await response.json()).toEqual({ kind: "REPLAYED", videoAssetId: VIDEO_ID });
+    });
 });

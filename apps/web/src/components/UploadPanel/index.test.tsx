@@ -178,6 +178,109 @@ describe("UploadPanel", () => {
         expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "100");
     });
 
+    // 일시 장애 재시도와 완료 재응답 수용 확인
+    it("retries transient failures with the same intent and accepts a replayed completion", async () => {
+        // 영상 전송 대역 연결
+        vi.stubGlobal("XMLHttpRequest", FakeUploadRequest);
+        // 재시도 대기를 없애도록 흔들림 값 고정
+        vi.spyOn(Math, "random").mockReturnValue(0);
+        // 의도 생성과 완료 일시 장애와 재응답 및 상태 일시 장애와 후보 준비 응답 구성
+        vi.spyOn(globalThis, "fetch")
+            .mockResolvedValueOnce(
+                new Response(
+                    JSON.stringify({
+                        kind: "CREATED",
+                        uploadIntentId: "22222222-2222-4222-8222-222222222222",
+                        uploadUrl: "http://minio.test/upload-token"
+                    }),
+                    { status: 201 }
+                )
+            )
+            .mockResolvedValueOnce(new Response(null, { status: 503 }))
+            .mockResolvedValueOnce(
+                new Response(
+                    JSON.stringify({
+                        kind: "REPLAYED",
+                        videoAssetId: "33333333-3333-4333-8333-333333333333"
+                    }),
+                    { status: 200 }
+                )
+            )
+            .mockResolvedValueOnce(new Response(null, { status: 503 }))
+            .mockResolvedValueOnce(
+                new Response(
+                    JSON.stringify({
+                        videoAssetId: "33333333-3333-4333-8333-333333333333",
+                        videoStatus: "VALID",
+                        validationErrorCode: null,
+                        analysis: { status: "CANDIDATES_READY", progressPercent: 100 }
+                    }),
+                    { status: 200 }
+                )
+            );
+
+        // 업로드 화면 렌더링
+        render(<UploadPanel />);
+        // 시험 영상 파일 준비
+        const file = new File([new Uint8Array(128)], "highlight.mp4", { type: "video/mp4" });
+        // 영상 파일 선택
+        fireEvent.change(screen.getByLabelText("영상 파일"), { target: { files: [file] } });
+        // 분석 시작 클릭
+        fireEvent.click(screen.getByRole("button", { name: "분석 시작" }));
+
+        // 재시도 뒤 후보 준비 단계 표시 확인
+        await waitFor(() =>
+            expect(screen.getAllByText("기초 장면 탐색 완료").length).toBeGreaterThan(0)
+        );
+        // 요청 주소 목록 수집
+        const urls = vi.mocked(fetch).mock.calls.map((call) => String(call[0]));
+        // 완료 요청과 상태 조회가 같은 주소로 한 번씩 재시도됐는지 확인
+        expect(urls).toEqual([
+            "/api/uploads",
+            "/api/uploads/22222222-2222-4222-8222-222222222222/complete",
+            "/api/uploads/22222222-2222-4222-8222-222222222222/complete",
+            "/api/uploads/33333333-3333-4333-8333-333333333333",
+            "/api/uploads/33333333-3333-4333-8333-333333333333"
+        ]);
+    });
+
+    // 재시도 불가 완료 거부의 단일 요청 확인
+    it("does not retry a non-transient completion rejection", async () => {
+        // 영상 전송 대역 연결
+        vi.stubGlobal("XMLHttpRequest", FakeUploadRequest);
+        // 의도 생성과 준비 미완료 거부 응답 구성
+        vi.spyOn(globalThis, "fetch")
+            .mockResolvedValueOnce(
+                new Response(
+                    JSON.stringify({
+                        kind: "CREATED",
+                        uploadIntentId: "22222222-2222-4222-8222-222222222222",
+                        uploadUrl: "http://minio.test/upload-token"
+                    }),
+                    { status: 201 }
+                )
+            )
+            .mockResolvedValueOnce(
+                new Response(JSON.stringify({ kind: "UPLOAD_NOT_READY" }), { status: 409 })
+            );
+
+        // 업로드 화면 렌더링
+        render(<UploadPanel />);
+        // 시험 영상 파일 준비
+        const file = new File([new Uint8Array(128)], "highlight.mp4", { type: "video/mp4" });
+        // 영상 파일 선택
+        fireEvent.change(screen.getByLabelText("영상 파일"), { target: { files: [file] } });
+        // 분석 시작 클릭
+        fireEvent.click(screen.getByRole("button", { name: "분석 시작" }));
+
+        // 재시도 안내 표시 확인
+        await waitFor(() =>
+            expect(screen.getAllByText("업로드를 다시 시도해 주세요").length).toBeGreaterThan(0)
+        );
+        // 거부 응답을 다시 보내지 않았는지 확인
+        expect(fetch).toHaveBeenCalledTimes(2);
+    });
+
     // 초기 화면 확인
     it("renders the upload controls used by the landing page", () => {
         // 현재 시험자료로 화면 컴포넌트 렌더링

@@ -26,6 +26,8 @@ from urllib.parse import urljoin, urlsplit
 from urllib.request import HTTPRedirectHandler, HTTPSHandler, Request, build_opener
 # 서버 인증서 검증에 사용할 신뢰 인증서 목록 읽음
 import certifi
+# 승인 관측 모델 명세 조회 함수 읽음
+from .catalog import manifestModel
 
 
 # 읽기 제한 시간 초를 30 값으로 설정
@@ -270,9 +272,6 @@ def urlError(exc: URLError, filename: str) -> None:
 
 # 승인 자산 명세의 요청 모델 파일 검색
 def approvedEntry(model_key: str, filename: str) -> dict[str, Any]:
-    # 모델 가중치 관련 함수와 자료형 읽음
-    from .weights import manifestModel
-
     # 모델에 자산 명세 모델 처리 결과 저장
     model = manifestModel(model_key)
     # 모델의 파일 목록에서 명세 항목을 하나씩 읽음

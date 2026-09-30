@@ -13,6 +13,8 @@ import {
     matches,
     type DatabaseClient
 } from "@replay/database";
+// 조회 시점과 보존 규칙이 정한 행 가시성 조건 가져옴
+import { activeSession, liveAnalysis, liveSource, liveVideo } from "./visibility";
 
 // 저장소 구현에 필요한 데이터베이스 연결 부분 정의
 type DatabaseHandle = Pick<DatabaseClient, "db">;
@@ -78,8 +80,8 @@ export class AnalysisStore implements AnalysisPort {
         const keyHash = Buffer.from(command.keyHash);
         // 요청 해시 버퍼 변환
         const requestHash = Buffer.from(command.requestHash);
-        // 세션과 키 기반 잠금 범위
-        const lockScope = `${command.anonymousSessionId}:${keyHash.toString("hex")}`;
+        // 세션과 작업 종류와 키 기반 잠금 범위
+        const lockScope = `${command.anonymousSessionId}:CREATE_ANALYSIS:${keyHash.toString("hex")}`;
 
         // 중복 분석 제약 충돌을 업무 결과로 바꿀 예외 경계 설정
         try {
@@ -89,6 +91,14 @@ export class AnalysisStore implements AnalysisPort {
                 await transaction.execute(
                     sql`select pg_advisory_xact_lock(hashtextextended(${lockScope}, 0))`
                 );
+                // 보존 기한이 지난 같은 키 멱등 기록 정리
+                await transaction.execute(sql`
+          delete from idempotency_records
+          where anonymous_session_id = ${command.anonymousSessionId}
+            and operation = 'CREATE_ANALYSIS'
+            and key_hash = ${keyHash}
+            and expires_at <= ${command.createdAt}
+        `);
 
                 // 기존 멱등 기록 조회
                 const [existingIdempotency] = await transaction
@@ -111,18 +121,34 @@ export class AnalysisStore implements AnalysisPort {
                 // 기존 멱등 기록 분기
                 if (existingIdempotency) {
                     // 요청 해시 비교
-                    return Buffer.compare(existingIdempotency.requestHash, requestHash) === 0
+                    if (Buffer.compare(existingIdempotency.requestHash, requestHash) !== 0) {
+                        // 같은 키를 다른 요청에 사용한 충돌 결과 반환
+                        return { kind: "IDEMPOTENCY_KEY_REUSED" };
+                    }
+                    // 원 요청이 만든 분석이 다른 조회와 같은 가시성 규칙을 지금도 통과하는지 조회
+                    const visible = await transaction.execute(sql`
+            select analysis.id
+            from analyses as analysis
+            join anonymous_sessions as session on session.id = analysis.anonymous_session_id
+            where analysis.id = ${existingIdempotency.analysisId}
+              and analysis.anonymous_session_id = ${command.anonymousSessionId}
+              and ${activeSession(command.createdAt)}
+              and ${liveAnalysis(command.createdAt)}
+              and ${liveSource(command.createdAt)}
+            limit 1
+          `);
+                    // 보이는 분석이면 재사용 결과를 반환하고 아니면 원본 사용 불가 반환
+                    return visible.length > 0
                         ? { kind: "REPLAYED", analysisId: existingIdempotency.analysisId }
-                        : { kind: "IDEMPOTENCY_KEY_REUSED" };
+                        : { kind: "VIDEO_ASSET_UNAVAILABLE" };
                 }
 
                 // 세션 소유권 조회
                 const sessionRows = await transaction.execute(sql`
-          select id
-          from anonymous_sessions
-          where id = ${command.anonymousSessionId}
-            and revoked_at is null
-            and expires_at > ${command.createdAt}
+          select session.id
+          from anonymous_sessions as session
+          where session.id = ${command.anonymousSessionId}
+            and ${activeSession(command.createdAt)}
           for update
         `);
                 // 세션 행 선택
@@ -136,14 +162,13 @@ export class AnalysisStore implements AnalysisPort {
 
                 // 영상 자산 조회
                 const videoRows = await transaction.execute(sql`
-          select id, anonymous_session_id, content_sha256
-          from video_assets
-          where id = ${command.videoAssetId}
-            and anonymous_session_id = ${command.anonymousSessionId}
-            and status = 'VALID'
-            and rights_confirmed_at is not null
-            and (expires_at is null or expires_at > ${command.createdAt})
-            and object_deleted_at is null
+          select video.id, video.anonymous_session_id, video.content_sha256
+          from video_assets as video
+          where video.id = ${command.videoAssetId}
+            and video.anonymous_session_id = ${command.anonymousSessionId}
+            and video.status = 'VALID'
+            and video.rights_confirmed_at is not null
+            and ${liveVideo(command.createdAt)}
           for update
         `);
                 // 영상 행 선택
@@ -201,7 +226,7 @@ export class AnalysisStore implements AnalysisPort {
                     return { kind: "RULE_VERSION_UNAVAILABLE" };
                 }
 
-                // 분석 행 저장
+                // 원본 영상보다 오래 남지 않도록 잠근 영상 기한으로 보존 기한을 제한한 분석 행 저장
                 const analysisRows = await transaction.execute(sql`
           insert into analyses (
             anonymous_session_id, match_id, video_asset_id, status, retention_class,
@@ -210,7 +235,11 @@ export class AnalysisStore implements AnalysisPort {
           ) values (
             ${command.anonymousSessionId}, ${command.matchId}, ${video.id}, 'QUEUED', 'TEMPORARY',
             ${command.sourceUrl}, ${command.sourcePlatform}, ${Buffer.from(video.content_sha256)}, ${ruleVersion.id},
-            ${command.pipelineVersion}, ${command.mediaPolicyVersion}, 0, ${command.createdAt}, ${command.expiresAt}
+            ${command.pipelineVersion}, ${command.mediaPolicyVersion}, 0, ${command.createdAt},
+            least(
+              ${command.expiresAt}::timestamptz,
+              (select video.expires_at from video_assets as video where video.id = ${video.id})
+            )
           )
           returning id
         `);

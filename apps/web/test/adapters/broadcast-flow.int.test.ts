@@ -11,13 +11,15 @@ import { JobStore, StatusStore } from "@replay/adapters";
 import { report, result, type AnalysisPayload } from "@replay/application";
 import {
     broadcastCueData,
+    knownVideoSource,
     sceneEventData,
     WORKER_PROTOCOL,
     type BroadcastCue
 } from "@replay/shared-types";
 import { result as acceptResult, type JobApiDependencies } from "../../src/apis/job";
-import { knownVideoSource } from "../../src/adapters/sources";
 import { judgment } from "../fixtures/result";
+import { analysisView, readDatabase, statusView } from "../fixtures/status";
+import { liveness, livenessQuery } from "../fixtures/liveness";
 
 // 데이터베이스 주소 시험용 실행환경 환경설정 데이터베이스 주소 준비
 const databaseUrl = process.env.DATABASE_URL;
@@ -140,17 +142,15 @@ describe("broadcast scope adapter contracts", () => {
         ];
         // 저장소 시험용 상태 저장소 준비
         const repository = new StatusStore({
-            db: {
-                execute: async (statement: SQL) => {
-                    // 질의목록 추가 결과 처리 수행
-                    queries.push(new PgDialect().sqlToQuery(statement));
-                    // 대기열 선두꺼내기 결과 비교 조건 반환
-                    return queue.shift() ?? [];
-                }
-            }
+            db: readDatabase(async (statement: SQL) => {
+                // 질의목록 추가 결과 처리 수행
+                queries.push(new PgDialect().sqlToQuery(statement));
+                // 대기열 선두꺼내기 결과 비교 조건 반환
+                return queue.shift() ?? [];
+            })
         } as never);
-        // 저장소 상태 결과를 화면자료에 저장
-        const view = await repository.status({
+        // 저장소 원자료의 내부 화면 모델을 화면자료에 저장
+        const view = await statusView(repository, {
             anonymousSessionId: randomUUID(),
             videoAssetId: randomUUID(),
             now: NOW
@@ -347,8 +347,12 @@ describe("broadcast scope adapter contracts", () => {
                 transaction: async (operation: (tx: unknown) => unknown) =>
                     operation({
                         execute: async (statement: SQL) => {
+                            // 질의 시험용 의존성 모의객체 질의 질의 결과 준비
+                            const query = new PgDialect().sqlToQuery(statement);
                             // 질의목록 추가 결과 처리 수행
-                            queries.push(new PgDialect().sqlToQuery(statement));
+                            queries.push(query);
+                            // 잠금 이후 생존 조건 질의에 보존 기한 비교 결과 응답
+                            if (livenessQuery(query)) return liveness(query, jobId, EXPIRES);
                             // 입력 조건 반환
                             return queries.length === 1
                                 ? [
@@ -483,8 +487,8 @@ describe.skipIf(!databaseUrl)("Worker broadcast -> API -> PostgreSQL -> competit
 
     // 검증용 내부 조회 구성
     async function readInternal(sessionId: string, analysisId: string) {
-        // 상태 저장소 분석 결과 반환
-        return new StatusStore(database).analysis({
+        // 상태 저장소 원자료의 내부 분석 화면 모델 반환
+        return analysisView(new StatusStore(database), {
             anonymousSessionId: sessionId,
             analysisId,
             now: NOW

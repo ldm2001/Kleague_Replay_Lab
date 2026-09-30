@@ -2,7 +2,6 @@
 
 // 화면 구성에 필요한 기능과 공유 자료 형식 읽음
 import * as React from "react";
-import { useEffect, useRef } from "react";
 import { images, path } from "../../assets/image";
 
 // 랜딩과 분석 화면을 구분할 헤더 모드 정의
@@ -16,10 +15,10 @@ export function Header({ mode }: Props) {
     // 랜딩 모드 확인
     const landing = mode === "landing";
     // 헤더 참조
-    const header = useRef<HTMLElement>(null);
+    const header = React.useRef<HTMLElement>(null);
 
     // 스크롤 상태 연결
-    useEffect(() => {
+    React.useEffect(() => {
         // 랜딩 화면에서만 스크롤 상태 연결
         if (!landing) return;
         // 예약된 화면 갱신 식별자

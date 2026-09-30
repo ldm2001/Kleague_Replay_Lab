@@ -1,6 +1,8 @@
 // 세션 저장 명령
 // 익명 세션 발급 입력
 export type SessionIssue = Readonly<{
+    // 원문 대신 저장하는 세션 토큰 해시
+    tokenHash: Uint8Array;
     // 기록이 처음 생성된 시각
     createdAt: string;
     // 접근과 보존을 허용하는 만료 시각
@@ -29,8 +31,8 @@ export type SessionGrant = Readonly<SessionRecord & {
 
 // 세션 저장 포트
 export type SessionStore = Readonly<{
-    // 새 익명 세션 권한 발급 기능
-    issue: (input: SessionIssue) => Promise<SessionGrant>;
+    // 해시로 받은 새 익명 세션 저장 기능
+    issue: (input: SessionIssue) => Promise<SessionRecord>;
     // 식별자나 토큰으로 기존 기록을 찾는 기능
     lookup: (input: SessionLookup) => Promise<SessionRecord | null>;
 }>;

@@ -1,18 +1,16 @@
-// 실행 규정 묶음 가져오기
-import type { ConceptKey, RuleSet } from "../../../shared/rule-set";
-// 규정 인용 자료형 가져오기
-import type { RuleCitation } from "../../../shared/citation";
-// 사건 관측 자료형 가져오기
-import type { IncidentAssertion, IncidentRecordV1 } from "../../../shared/incident";
-// 질문별 평가 결과형 가져오기
-import type {
-    IncidentConclusion,
-    IncidentEvaluationV1,
-    IncidentFactDiagnostic,
-    IncidentQuestion
-} from "../../../shared/verdict";
-// 사건 구조 검증 기능 가져오기
-import { incidentRecordData } from "../../../shared/incident-schema";
+// 규정과 사건 관측 및 질문별 평가 자료형과 사건 구조 검증 기능 가져오기
+import {
+    incidentRecordData,
+    type ConceptKey,
+    type RuleSet,
+    type RuleCitation,
+    type IncidentAssertion,
+    type IncidentRecordV1,
+    type IncidentConclusion,
+    type IncidentEvaluationV1,
+    type IncidentFactDiagnostic,
+    type IncidentQuestion
+} from "@replay/shared-types";
 // 사실 승인과 영상 근거 기능 가져오기
 import {
     admissionMatch,

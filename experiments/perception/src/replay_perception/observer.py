@@ -34,6 +34,12 @@ from .frames import RecordedFrames
 from .matching import MIN_IOU, MIN_IOU_MARGIN, MIN_ROLE_SCORE, assignments
 # 동작 신호 관련 함수와 자료형 읽음
 from .signals import ArmSignalTracker, armObservations
+# 모델 가중치 관련 함수와 자료형 읽음
+from .weights import directory
+# 역할 목록 관련 함수와 자료형 읽음
+from .roles import YoloRoleDetector
+# 자세 관련 함수와 자료형 읽음
+from .pose import VitPoseEstimator
 
 
 # 최댓값 실행 환경 초를 1800 값으로 설정
@@ -363,9 +369,6 @@ def observation(
 
 # 명령행 인자 검증과 진단·영상 작업 실행
 def main() -> int:
-    # 모델 가중치 관련 함수와 자료형 읽음
-    from .weights import directory
-
     # 명령행 해석기에 인자 명령행 해석기 처리 결과 저장
     parser = argparse.ArgumentParser(description="기존 검출 기록과 원본의 역할·자세·팔 동작 독립 관측")
     # 명령행에서 받을 원본의 형식과 기본값 등록
@@ -413,10 +416,6 @@ def main() -> int:
         ):
             # 상위 단계 입력 아닌 찾은 오류 알림
             raise ValueError("UPSTREAM_INPUT_NOT_FOUND")
-        # 역할 목록 관련 함수와 자료형 읽음
-        from .roles import YoloRoleDetector
-        # 자세 관련 함수와 자료형 읽음
-        from .pose import VitPoseEstimator
 
         # 시작 시각에 경과 시간 측정용 현재 시각 저장
         started = time.perf_counter()

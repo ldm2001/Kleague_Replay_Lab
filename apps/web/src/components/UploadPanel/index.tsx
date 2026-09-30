@@ -1,7 +1,6 @@
 "use client";
 
 // 화면 구성에 필요한 기능과 공유 자료 형식 읽음
-import { useEffect, useRef, useState } from "react";
 import * as React from "react";
 import type { MediaView } from "@replay/application";
 
@@ -103,35 +102,76 @@ const body = async (response: Response): Promise<Record<string, unknown>> => {
     return value as Record<string, unknown>;
 };
 
+// 재시도 대상 일시 장애 응답 상태
+const transient = new Set([408, 425, 429, 500, 502, 503, 504]);
+// 요청당 최대 시도 횟수
+const attempts = 3;
+// 재시도 대기 상한 밀리초
+const ceiling = 4000;
+
+// 재시도 대기 밀리초 계산
+const pause = (attempt: number, response: Response | null): number => {
+    // 서버가 알려준 재시도 대기 초 읽음
+    const header = response?.headers.get("retry-after");
+    // 숫자 초 값 변환
+    const seconds = header ? Number(header) : Number.NaN;
+    // 음수가 아닌 서버 대기 요구 우선 사용 후 지수 증가 전체 흔들림 대기 반환
+    return Number.isFinite(seconds) && seconds >= 0
+        ? seconds * 1000
+        : Math.random() * Math.min(ceiling, 500 * 2 ** (attempt - 1));
+};
+
+// 일시 장애와 연결 실패의 제한 재시도 요청
+const retry = async (url: string, init: RequestInit): Promise<Response> => {
+    // 최대 시도 횟수까지 요청 반복
+    for (let attempt = 1; ; attempt += 1) {
+        // 연결 실패를 빈 응답으로 바꾸고 마지막 시도에서는 오류 전달
+        const response = await fetch(url, init).catch((error: unknown) => {
+            // 마지막 시도의 연결 오류 전달
+            if (attempt >= attempts) throw error;
+            // 재시도할 연결 실패 표시 반환
+            return null;
+        });
+        // 성공과 재시도 불가 응답 반환
+        if (response && !transient.has(response.status)) return response;
+        // 다음 시도 대기 시간 계산
+        const wait = pause(attempt, response);
+        // 마지막 시도와 상한을 넘는 서버 대기 요구의 응답 반환
+        if (response && (attempt >= attempts || wait > ceiling)) return response;
+        // 다음 시도 전 대기
+        await new Promise((resolve) => globalThis.setTimeout(resolve, wait));
+    }
+};
+
 // 업로드 상태와 진행률 화면
 export function UploadPanel({ onView }: UploadPanelProps = {}) {
     // 사용자 입력은 파일 선택으로 제한하고 대회·시즌·분석 조건은 서버 정책으로 처리
     // 파일 입력 참조
-    const input = useRef<HTMLInputElement>(null);
+    const input = React.useRef<HTMLInputElement>(null);
     // 현재 전송 참조
-    const request = useRef<XMLHttpRequest | null>(null);
+    const request = React.useRef<XMLHttpRequest | null>(null);
     // 영상 미리보기 참조
-    const preview = useRef<string | null>(null);
+    const preview = React.useRef<string | null>(null);
     // 전송 진행률 참조
-    const progress = useRef(0);
+    const progress = React.useRef(0);
     // 진행률 타이머 참조
-    const timer = useRef<ReturnType<typeof globalThis.setInterval> | null>(null);
+    const timer = React.useRef<ReturnType<typeof globalThis.setInterval> | null>(null);
     // 상태 조회 타이머 참조
-    const poll = useRef<ReturnType<typeof globalThis.setTimeout> | null>(null);
+    const poll = React.useRef<ReturnType<typeof globalThis.setTimeout> | null>(null);
     // 상태 응답 서명
-    const snapshot = useRef("");
+    const snapshot = React.useRef("");
     // 컴포넌트 활성 상태
-    const alive = useRef(true);
+    const alive = React.useRef(true);
     // 업로드 단계 상태
-    const [phase, setPhase] = useState<Phase>("idle");
+    const [phase, setPhase] = React.useState<Phase>("idle");
     // 화면 진행률 상태
-    const [value, setValue] = useState(0);
+    const [value, setValue] = React.useState(0);
     // 분석 결과 상태
-    const [view, setView] = useState<MediaView | null>(null);
+    const [view, setView] = React.useState<MediaView | null>(null);
     // 선택 영상 상태
-    const [selection, setSelection] = useState<Selection | null>(null);
+    const [selection, setSelection] = React.useState<Selection | null>(null);
     // 파일 선택 오류 안내
-    const [notice, noticeState] = useState("");
+    const [notice, noticeState] = React.useState("");
 
     // 진행률 갱신 중지
     const timerEnd = () => {
@@ -172,7 +212,7 @@ export function UploadPanel({ onView }: UploadPanelProps = {}) {
     };
 
     // 컴포넌트 종료 정리
-    useEffect(() => {
+    React.useEffect(() => {
         // 컴포넌트 활성 상태 설정
         alive.current = true;
         // 화면 종료 시 실행할 자원 정리 함수 반환
@@ -191,7 +231,7 @@ export function UploadPanel({ onView }: UploadPanelProps = {}) {
     }, []);
 
     // 부모 알림 함수나 분석 결과가 바뀔 때 상태 전달 효과 연결
-    useEffect(() => {
+    React.useEffect(() => {
         // 부모 화면에 분석 상태 전달
         onView?.(view);
     }, [onView, view]);
@@ -202,7 +242,7 @@ export function UploadPanel({ onView }: UploadPanelProps = {}) {
         // 영상 상태 조회
         try {
             // 상태 요청 경로 호출
-            const response = await fetch(`/api/uploads/${videoAssetId}`, { cache: "no-store" });
+            const response = await retry(`/api/uploads/${videoAssetId}`, { cache: "no-store" });
             // 서버 응답이 성공 조건과 기대 형식을 충족하는지 확인
             if (!response.ok) throw new Error("status-failed");
             // 상태 본문 변환
@@ -335,8 +375,8 @@ export function UploadPanel({ onView }: UploadPanelProps = {}) {
             // 완료 확인 단계 전환
             setPhase("completing");
 
-            // 업로드 완료 등록
-            const completedResponse = await fetch(
+            // 업로드 완료 등록과 같은 의도 식별자의 일시 장애 재시도
+            const completedResponse = await retry(
                 `/api/uploads/${created.uploadIntentId}/complete`,
                 { method: "POST" }
             );
@@ -345,7 +385,7 @@ export function UploadPanel({ onView }: UploadPanelProps = {}) {
             // 완료 응답 검증
             if (
                 !completedResponse.ok ||
-                completed.kind !== "COMPLETED" ||
+                !["COMPLETED", "REPLAYED"].includes(String(completed.kind)) ||
                 typeof completed.videoAssetId !== "string"
             ) {
                 // 서버 응답의 실패를 오류 경로로 전달

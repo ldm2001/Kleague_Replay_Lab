@@ -30,7 +30,8 @@ export { pipelineFilter } from "./gates/pipeline-filter";
 export {
     perceptionAdmission,
     perceptionModelPins,
-    perceptionRecognitionMethods
+    perceptionRecognitionMethods,
+    pinnedModels
 } from "./admission";
 // 하위 모듈의 자료형과 기능를 공통 진입점에 공개
 export type {

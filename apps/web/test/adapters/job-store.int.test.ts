@@ -79,17 +79,18 @@ describeDatabase("PostgreSQL job result repository", () => {
       ) values (${jobId}, ${assetId}, 'VALIDATE_VIDEO', 'QUEUED', 1, 3, ${NOW}, ${NOW})
     `;
 
+        // 임대 토큰 해시 시험용 바이트배열 변환 결과 준비
+        const leaseTokenHash = Uint8Array.from(digest("sha256").update("validate-lease").digest());
         // 저장소 작업선점 결과를 작업선점에 저장
         const claim = await repository.claim({
             workerId: "worker-1",
             jobType: "VALIDATE_VIDEO",
             now: NOW,
-            leaseUntil: LEASE
+            leaseUntil: LEASE,
+            leaseTokenHash
         });
         // 작업선점 작업 식별자의 기대값 작업 식별자 일치 확인
         expect(claim?.jobId).toBe(jobId);
-        // 임대 토큰 해시 시험용 바이트배열 변환 결과 준비
-        const leaseTokenHash = Uint8Array.from(digest("sha256").update(claim!.leaseToken).digest());
         // 저장소 진행률 결과의 종류 지정 문자열 및 진행률 백분율 10 자료의 필드 일치 확인
         await expect(
             repository.progress({
@@ -298,16 +299,25 @@ describeDatabase("PostgreSQL job result repository", () => {
       )
     `;
 
+        // 새 작업자 임대 토큰 해시 준비
+        const successor = digest("sha256").update("delete-lease").digest();
         // 저장소 작업선점 결과를 시험자료에 저장
         const claimed = await repository.claim({
             workerId: "new-worker",
             jobType: "DELETE_VIDEO_ASSET",
             now: NOW,
-            leaseUntil: LEASE
+            leaseUntil: LEASE,
+            leaseTokenHash: successor
         });
 
         // 시험자료의 작업 식별자 및 작업 개정번호 2 및 시도 2 자료의 필드 일치 확인
         expect(claimed).toMatchObject({ jobId, jobRevision: 2, attempt: 2 });
+        // 영상 처리 작업의 임대 소유자와 해시 조회
+        const [row] = await database.sql<{ lease_owner: string; lease_token_hash: Buffer }[]>`
+      select lease_owner, lease_token_hash from processing_jobs where id = ${jobId}
+    `;
+        // 만료 임대의 해시가 새 작업자가 넘긴 해시로 교체됨 확인
+        expect(row).toEqual({ lease_owner: "new-worker", lease_token_hash: successor });
     });
 
     it("marks an analysis failed for an accepted worker failure", async () => {

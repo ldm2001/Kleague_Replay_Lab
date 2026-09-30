@@ -16,6 +16,8 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 # 예외 기대와 반복 사례 검증 도구 읽음
 import pytest
+# 시험에 필요한 인식 구현과 자료 계약 읽음
+from replay_perception import transport
 
 # 자산 항목 생성
 def _entry(payload: bytes) -> dict[str, object]:
@@ -99,9 +101,6 @@ class FakeOpener:
 def test_manual_redirect_rejects_http_and_closes_without_draining(
     monkeypatch,
 ):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import transport
-
     # 다운로드 본문과 헤더를 가진 모의 응답 생성
     redirect = FakeResponse(
         302,
@@ -130,9 +129,6 @@ def test_manual_redirect_rejects_http_and_closes_without_draining(
 def test_manual_redirect_allows_https_cdn_and_closes_redirect_without_draining(
     monkeypatch,
 ):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import transport
-
     # 전송 본문 준비
     payload = b"weights"
     # 다운로드 본문과 헤더를 가진 모의 응답 생성
@@ -176,9 +172,6 @@ def test_manual_redirect_allows_https_cdn_and_closes_redirect_without_draining(
 
 # 감싼 주소 시간 초과의 고정 다운로드 오류 코드 확인
 def test_wrapped_url_timeout_has_stable_download_timeout_code(monkeypatch):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import transport
-
     # 실제 외부 실행을 대신할 시험 객체 정의
     class TimedOutOpener:
 
@@ -203,9 +196,6 @@ def test_wrapped_url_timeout_has_stable_download_timeout_code(monkeypatch):
 
 # 제한된 통신의 정지 자식 종료와 대기 확인
 def test_bounded_communicate_kills_and_waits_for_a_blocking_child():
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import transport
-
     # 모의 하위 프로세스 준비
     process = subprocess.Popen(
         [sys.executable, "-c", "import time; time.sleep(60)"],
@@ -231,9 +221,6 @@ def test_bounded_communicate_kills_and_waits_for_a_blocking_child():
 
 # 부모의 고정 로컬 다운로드 모듈만 실행 확인
 def test_parent_launches_only_the_fixed_local_downloader_module(monkeypatch):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import transport
-
     # 관측 결과의 빈 누적 공간 생성
     observed = {}
 

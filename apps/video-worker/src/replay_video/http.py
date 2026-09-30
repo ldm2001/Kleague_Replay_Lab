@@ -2,10 +2,16 @@
 from __future__ import annotations
 # 직렬화 자료 읽기와 기록 도구 가져옴
 import json
+# 재시도 대기 흔들림 난수 도구 가져옴
+import random
+# 재시도 대기와 경과 시간 측정 도구 가져옴
+import time
+# 응답 수신 중 끊긴 연결의 오류 타입 가져옴
+from http.client import HTTPException
 # 파일과 폴더 경로 도구 가져옴
 from pathlib import Path
-# 함수와 키 기반 입력의 타입 표기 가져옴
-from typing import Callable, Mapping
+# 함수와 키 기반 입력 및 재시도 응답의 타입 표기 가져옴
+from typing import Callable, Mapping, TypeVar
 # 서버 상태 오류와 연결 오류 타입 가져옴
 from urllib.error import HTTPError, URLError
 # 웹 요청 구성과 전송 도구 가져옴
@@ -26,12 +32,50 @@ class Rejection(HttpError):
     pass
 
 
+# 같은 요청을 다시 보내면 성공할 수 있는 일시 장애 예외 타입 선언
+class Transient(HttpError):
+
+    # 서버 대기 요구를 함께 보존하는 일시 장애
+    def __init__(self, message: str, wait: float | None = None) -> None:
+        # 기존 상태 오류 문자열 유지
+        super().__init__(message)
+        # 서버가 알려준 재시도 대기 초 보존
+        self.wait = wait
+
+
 # 재실행으로 바뀌지 않는 원본과 산출물 및 참조와 저장 문맥의 결과 거부 사유
 TERMINAL = frozenset({"SOURCE", "ARTIFACT", "REFERENCE", "CONTEXT"})
 
 
+# 다시 보내도 되는 시간 초과와 요청 과다 및 서버 일시 장애 상태
+TRANSIENT = frozenset({408, 425, 429, 500, 502, 503, 504})
+# 첫 재시도 대기 기준 초
+BASE = 0.5
+# 재시도 대기와 서버 대기 요구의 상한 초
+CEILING = 4.0
+# 서버 임대 30초에서 갱신 주기 10초를 뺀 진행 보고 재시도 시간 상한 초
+RENEWAL = 20.0
+
+
 # 교체 가능한 요청 실행 함수의 타입 선언
 Open = Callable[..., object]
+
+
+# 재시도 요청 응답의 타입 변수 선언
+T = TypeVar("T")
+
+
+# 서버가 알려준 재시도 대기 초 읽음
+def delay(headers: Mapping[str, str] | None) -> float | None:
+    try:
+        # 숫자 초 형식의 재시도 대기 값 변환
+        seconds = float((headers or {}).get("retry-after", ""))
+    # 날짜 형식이나 누락된 대기 값 분기
+    except (TypeError, ValueError):
+        # 기본 지수 대기 사용 표시 반환
+        return None
+    # 음수와 무한 및 숫자 아닌 값을 제외한 대기 초 반환
+    return seconds if 0 <= seconds < float("inf") else None
 
 
 # 작업 선점과 진행 및 결과 전송을 맡는 통신 객체 선언
@@ -46,6 +90,10 @@ class Api:
         *,
         timeout: float = 30.0,
         opener: Open = urlopen,
+        attempts: int = 3,
+        sleep: Callable[[float], object] = time.sleep,
+        jitter: Callable[[], float] = random.random,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         # 호출 규약 기본 주소 정규화
         self.base = base.rstrip("/")
@@ -57,6 +105,46 @@ class Api:
         self.timeout = timeout
         # 웹 통신 열기 함수 저장
         self.opener = opener
+        # 일시 장애 요청의 최대 시도 횟수 저장
+        self.attempts = attempts
+        # 재시도 사이 대기 함수 저장
+        self.sleep = sleep
+        # 재시도 대기 흔들림 난수 함수 저장
+        self.jitter = jitter
+        # 재시도 시간 상한 측정 시계 저장
+        self.clock = clock
+
+    # 일시 장애의 제한 재시도 요청
+    def retry(self, call: Callable[[], T], budget: float = float("inf")) -> T:
+        # 첫 요청 시작 시각 기록
+        start = self.clock()
+        # 현재 시도 순번 초기화
+        attempt = 1
+        # 성공 또는 재시도 불가 판단까지 같은 요청 반복
+        while True:
+            try:
+                # 같은 본문의 요청 결과 반환
+                return call()
+            # 다시 보내면 성공할 수 있는 장애 분기
+            except Transient as error:
+                # 서버 대기 요구 우선 사용 후 지수 증가 전체 흔들림 대기 계산
+                wait = (
+                    error.wait
+                    if error.wait is not None
+                    else self.jitter() * min(CEILING, BASE * 2 ** (attempt - 1))
+                )
+                # 마지막 시도와 상한 초과 대기 및 시간 상한 소진 여부 확인
+                if (
+                    attempt >= self.attempts
+                    or wait > CEILING
+                    or self.clock() - start + wait > budget
+                ):
+                    # 마지막 일시 장애 오류 전달
+                    raise
+            # 다음 시도 전 대기
+            self.sleep(wait)
+            # 다음 시도 순번 증가
+            attempt += 1
 
     # 직렬화 자료 요청
     def request(
@@ -93,6 +181,10 @@ class Api:
                 body = response.read()
         # 서버 오류 상태 응답 분기
         except HTTPError as error:
+            # 호출자가 허용하지 않은 일시 장애 상태 확인
+            if error.code in TRANSIENT and error.code not in allowed_errors:
+                # 서버 대기 요구와 함께 재시도 가능한 상태 오류 전달
+                raise Transient(f"http-{error.code}", delay(error.headers)) from error
             # 호출자가 허용하지 않은 오류 상태 확인
             if error.code not in allowed_errors:
                 # 상태 코드를 내부 통신 예외로 전달
@@ -103,10 +195,18 @@ class Api:
             body = error.read()
         # 연결 실패 등 통신 오류 분기
         except URLError as error:
-            # 서버 연결 불가 예외 전달
-            raise HttpError("http-unavailable") from error
+            # 재시도 가능한 서버 연결 불가 예외 전달
+            raise Transient("http-unavailable") from error
+        # 요청 전송 뒤 응답 수신 중 시간 초과와 연결 끊김 분기
+        except (TimeoutError, ConnectionError, HTTPException) as error:
+            # 처리 여부를 모르는 응답 유실을 재시도 가능한 연결 불가로 전달
+            raise Transient("http-unavailable") from error
         # 성공 범위도 허용 오류도 아닌 상태 확인
         if (status < 200 or status >= 300) and status not in allowed_errors:
+            # 일시 장애 상태 확인
+            if status in TRANSIENT:
+                # 재시도 가능한 상태 오류 전달
+                raise Transient(f"http-{status}")
             # 오류 상태 변환
             raise HttpError(f"http-{status}")
         # 직렬화 자료 본문 해석
@@ -163,27 +263,30 @@ class Api:
         if message:
             # 진행 설명을 본문에 추가
             payload["message"] = message
-        # 해당 작업의 진행 보고 요청 결과 반환
-        return self.json(f"/api/internal/jobs/{job['jobId']}/progress", payload)
+        # 임대 기한 안에서만 재시도한 해당 작업의 진행 보고 요청 결과 반환
+        return self.retry(
+            lambda: self.json(f"/api/internal/jobs/{job['jobId']}/progress", payload),
+            RENEWAL,
+        )
 
     # 작업 결과
     def result(
         self, job: Mapping[str, object], payload: Mapping[str, object]
     ) -> dict[str, object] | None:
-        # 결과 제출의 거부와 충돌 응답까지 해석할 요청 실행
-        response = self.request(
-            f"/api/internal/jobs/{job['jobId']}/result",
-            {
-                # 결과를 제출하는 작업자 식별자 전달
-                "workerId": self.worker,
-                # 제출 대상 작업 판본 전달
-                "jobRevision": job["jobRevision"],
-                # 제출 권한을 증명하는 선점 토큰 전달
-                "leaseToken": job["leaseToken"],
-                # 분석 산출물 본문의 복사본 전달
-                "payload": dict(payload),
-            },
-            (400, 409),
+        # 결과 제출 본문 생성
+        body = {
+            # 결과를 제출하는 작업자 식별자 전달
+            "workerId": self.worker,
+            # 제출 대상 작업 판본 전달
+            "jobRevision": job["jobRevision"],
+            # 제출 권한을 증명하는 선점 토큰 전달
+            "leaseToken": job["leaseToken"],
+            # 분석 산출물 본문의 복사본 전달
+            "payload": dict(payload),
+        }
+        # 결과 제출의 거부와 충돌 응답까지 해석하며 일시 장애 시 같은 본문 재전송
+        response = self.retry(
+            lambda: self.request(f"/api/internal/jobs/{job['jobId']}/result", body, (400, 409))
         )
         # 결과 접수 또는 이미 완료된 응답인지 확인
         if response and response.get("kind") in {"ACCEPTED", "ALREADY_FINISHED"}:
@@ -212,19 +315,20 @@ class Api:
     def evidence(
         self, job: Mapping[str, object], items: list[dict[str, object]]
     ) -> dict[str, object] | None:
-        # 증거 파일 업로드 권한 요청 결과 반환
-        return self.json(
-            f"/api/internal/jobs/{job['jobId']}/evidence",
-            {
-                # 증거 등록 작업자 식별자 전달
-                "workerId": self.worker,
-                # 증거를 연결할 작업 판본 전달
-                "jobRevision": job["jobRevision"],
-                # 증거 등록 권한을 증명하는 선점 토큰 전달
-                "leaseToken": job["leaseToken"],
-                # 업로드할 증거 메타데이터 목록 전달
-                "items": items,
-            },
+        # 증거 파일 업로드 권한 요청 본문 생성
+        body = {
+            # 증거 등록 작업자 식별자 전달
+            "workerId": self.worker,
+            # 증거를 연결할 작업 판본 전달
+            "jobRevision": job["jobRevision"],
+            # 증거 등록 권한을 증명하는 선점 토큰 전달
+            "leaseToken": job["leaseToken"],
+            # 업로드할 증거 메타데이터 목록 전달
+            "items": items,
+        }
+        # 서명 주소만 발급하는 권한 요청을 일시 장애 시 재전송한 결과 반환
+        return self.retry(
+            lambda: self.json(f"/api/internal/jobs/{job['jobId']}/evidence", body)
         )
 
     # 증거 파일 전송
@@ -310,6 +414,11 @@ class Api:
 
     # 원본 다운로드
     def media(self, url: str, target: Path) -> None:
+        # 안전한 조회 요청이므로 일시 장애 시 처음부터 다시 받음
+        self.retry(lambda: self.download(url, target))
+
+    # 원본 한 번 받음
+    def download(self, url: str, target: Path) -> None:
         # 원본 다운로드 요청 구성
         request = Request(url, method="GET")
         # 대상 폴더 생성
@@ -326,9 +435,17 @@ class Api:
                     output.write(chunk)
         # 원본 다운로드 서버 오류 분기
         except HTTPError as error:
+            # 저장소 일시 장애 상태 확인
+            if error.code in TRANSIENT:
+                # 서버 대기 요구와 함께 재시도 가능한 다운로드 오류 전달
+                raise Transient(f"media-{error.code}", delay(error.headers)) from error
             # 원본 다운로드 상태 오류 전달
             raise HttpError(f"media-{error.code}") from error
         # 원본 다운로드 연결 오류 분기
         except URLError as error:
-            # 원본 다운로드 연결 불가 오류 전달
-            raise HttpError("media-unavailable") from error
+            # 재시도 가능한 원본 다운로드 연결 불가 오류 전달
+            raise Transient("media-unavailable") from error
+        # 다운로드 도중 시간 초과와 연결 끊김 분기
+        except (TimeoutError, ConnectionError, HTTPException) as error:
+            # 재시도 가능한 원본 다운로드 연결 불가 오류 전달
+            raise Transient("media-unavailable") from error

@@ -1,34 +1,34 @@
 // 저장소 질의와 자료 구조 정의 기능 가져옴
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 // 분석 처리 유스케이스와 저장소 계약 가져옴
 import type {
     AnalysisResultCommand,
     AnalysisResultStore as ResultPort,
-    AnalysisView,
-    CandidateView,
+    AutomaticEvidenceBinding,
+    AutomaticSnapshot,
+    CandidateSnapshot,
     EvidenceMedia,
     EvidenceMediaCommand,
     EvidenceMediaStore as EvidencePort,
+    EvidenceSnapshot,
     LatestMediaCommand,
     LatestMediaStore as LatestPort,
+    MediaSnapshot,
     MediaStatusCommand,
-    MediaStatusStore as StatusPort,
-    MediaView
+    MediaStatusStore as StatusPort
 } from "@replay/application";
 // 데이터베이스 연결과 저장 구조 가져옴
 import type { DatabaseClient } from "@replay/database";
-// 규정 자료와 평가 기능 가져옴
-import { scopeVerdict, pipelineFilter, perceptionModelPins } from "@replay/rule-engine";
-// 규정 자료와 평가 기능 가져옴
-import { competitionRules, ruleSet } from "@replay/rule-data";
-// 공유 자료 계약과 검증 기능 가져옴
-import { broadcastCueData, sceneEventData, type ScopeEvidence } from "@replay/shared-types";
-// 원본 해시에 대응하는 검증된 경기 문맥 가져옴
-import { knownVideoSource } from "./sources";
-// 자동 평가의 경기 문맥과 증거 연결 기능 가져옴
-import { automaticJudgments, type AutomaticEvidenceBinding } from "./binding";
-// 공유 자료 계약과 검증 기능 가져옴
-import type { AutomaticReviewBatch, AutomaticRuleContext } from "../shared/review";
+// 자동 평가 묶음과 인식 실행의 공유 자료 계약 가져옴
+import type { AutomaticReviewBatch, PerceptionRun } from "@replay/shared-types";
+// 조회 시점과 보존 규칙이 정한 행 가시성 조건 가져옴
+import {
+    activeSession,
+    CONSISTENT_READ,
+    liveAnalysis,
+    liveEvidence,
+    liveVideo
+} from "./visibility";
 
 // 저장소 구현에 필요한 데이터베이스 연결 부분 정의
 type DatabaseHandle = Pick<DatabaseClient, "db">;
@@ -76,17 +76,17 @@ type MediaRow = Readonly<{
 // 후보 장면과 보존된 사실 및 판단 조회 행 정의
 type CandidateRow = Readonly<{
     // 동일 물체의 연속 이동 관측
-    tracking: CandidateView["tracking"];
+    tracking: CandidateSnapshot["tracking"];
     // 장면에서 인식한 사건과 근거
-    scene_event: CandidateView["sceneEvent"];
+    scene_event: CandidateSnapshot["sceneEvent"];
     // 규정 사실과 구분하여 보존하는 방송 단서
-    broadcast_cue: CandidateView["broadcastCue"];
+    broadcast_cue: CandidateSnapshot["broadcastCue"];
     // 후보 사건의 분류
     category: string;
     // 판정 사실과 구분하여 보존하는 원시 관측
-    observation: CandidateView["observation"];
+    observation: CandidateSnapshot["observation"];
     // 후보에 연결된 화면 구간 목록
-    linked_shots: NonNullable<CandidateView["shots"]> | null;
+    linked_shots: CandidateSnapshot["shots"];
     // 다른 기록과 구별하는 고유 식별자
     id: string;
     // 처리 결과에서 후보 장면을 찾는 순번
@@ -167,15 +167,148 @@ type EvidenceRow = Readonly<{
     end_ms: number;
 }>;
 
+// 보존된 자동 평가와 당시 모델 출처 및 현재 경기 문맥 조회 행 정의
+type AutomaticRow = Readonly<{
+    // 보존된 후보별 자동 평가 묶음
+    summary: AutomaticReviewBatch;
+    // 제출 증거 순서와 저장 식별자의 연결
+    evidence_bindings: AutomaticEvidenceBinding[];
+    // 현재 경기와 규정 연결의 유효 여부
+    match_context_valid: boolean;
+    // 사용한 모델과 고정 가중치의 출처
+    model_provenance: PerceptionRun["models"] | null;
+}>;
+
+// 한 읽기 스냅숏 안에서 질의를 실행하는 기능 정의
+type Reader = (statement: SQL) => Promise<unknown>;
+
+// 후보 조회 행의 이름만 바꾼 후보 원자료 생성
+const candidateSnapshot = (row: CandidateRow): CandidateSnapshot => ({
+    // 다른 기록과 구별하는 고유 식별자
+    id: row.id,
+    // 처리 결과에서 후보 장면을 찾는 순번
+    index: row.candidate_index,
+    // 후보 사건의 분류
+    category: row.category,
+    // 원본 영상 기준 구간 시작 밀리초
+    startMs: row.start_ms,
+    // 원본 영상 기준 구간 종료 밀리초
+    endMs: row.end_ms,
+    // 장면을 대표하는 원본 영상 시각
+    anchorMs: row.anchor_ms,
+    // 화면 변화 점수이며 접촉이나 파울 확률과 별개인 값
+    signalScore: row.signal_score,
+    // 관측에 필요한 화면의 충분성
+    cameraSufficiency: row.camera_sufficiency,
+    // 후보 생성 또는 처리 결과의 근거 사유
+    reasons: row.reasons,
+    // 판정 사실과 구분하여 보존하는 원시 관측
+    observation: row.observation,
+    // 동일 물체의 연속 이동 관측
+    tracking: row.tracking,
+    // 장면에서 인식한 사건과 근거
+    sceneEvent: row.scene_event,
+    // 규정 사실과 구분하여 보존하는 방송 단서
+    broadcastCue: row.broadcast_cue,
+    // 후보에 연결된 화면 구간 목록
+    shots: row.linked_shots,
+    // 평가에 사용한 사실 판본 식별자
+    factRevisionId: row.fact_revision_id,
+    // 사실 기록의 출처
+    factSource: row.fact_source,
+    // 평가에 연결한 당시 사실 내용
+    facts: row.fact_snapshot,
+    // 규정 평가로 얻은 반칙 판단
+    foulDecision: row.foul_decision,
+    // 규정 평가에서 구분한 행위의 심각도
+    severity: row.severity,
+    // 규정 평가에 따른 경기 재개 방식
+    restartType: row.restart_type,
+    // 규정 평가에 따른 징계 조치
+    disciplinaryAction: row.disciplinary_action,
+    // 관측 원심과 규정 평가의 일치 여부
+    decisionMatch: row.decision_match,
+    // 규정 판단 근거의 충분성 수준
+    confidenceLevel: row.judgment_confidence_level,
+    // 결론을 확정하지 못한 사유
+    inconclusiveReason: row.inconclusive_reason,
+    // 영상 판독 검토 대상 여부
+    varReviewable: row.var_reviewable,
+    // 영상 판독의 적용 범주
+    varCategory: row.var_category,
+    // 영상 판독 허용 시점 충족 여부
+    varWithinTimeWindow: row.var_within_time_window,
+    // 영상 판독 개입 문턱 충족 여부
+    varThresholdMet: row.var_threshold_met,
+    // 영상 판독 개입 판단
+    varIntervention: row.var_intervention,
+    // 영상 판독에 개입하지 않는 이유
+    varNoInterventionReason: row.var_no_intervention_reason,
+    // 영상 판독 검토 대상이 아닌 이유
+    varNotReviewableReason: row.var_not_reviewable_reason,
+    // 영상 판독 허용 시점이 지난 이유
+    varWindowClosedReason: row.var_window_closed_reason,
+    // 영상 판독 시점 제한에 적용한 예외
+    varWindowException: row.var_window_exception,
+    // 영상 판독 검토 절차
+    varReviewProcedure: row.var_review_procedure,
+    // 영상 판독 판단의 설명
+    varExplanation: row.var_explanation,
+    // 보존된 규정 판단의 인용 목록
+    citations: row.decision_citations
+});
+
+// 증거 조회 행의 이름만 바꾼 증거 원자료 생성
+const evidenceSnapshot = (row: EvidenceRow): EvidenceSnapshot => ({
+    // 저장된 증거 자산의 식별자
+    evidenceId: row.id,
+    // 처리 결과에서 후보 장면을 찾는 순번
+    candidateIndex: row.candidate_index,
+    // 처리 분기 또는 자료 종류를 구별하는 값
+    kind: row.kind,
+    // 원본 영상 기준 구간 시작 밀리초
+    startMs: row.start_ms,
+    // 원본 영상 기준 구간 종료 밀리초
+    endMs: row.end_ms,
+    // 객체 저장소에서 파일을 찾는 경로
+    objectKey: row.object_key,
+    // 파일 내용의 동일성을 대조하는 해시
+    contentSha256: row.content_sha256
+});
+
+// 자동 평가 조회 행의 이름만 바꾼 자동 평가 원자료 생성
+const automaticSnapshot = (row: AutomaticRow): AutomaticSnapshot => ({
+    // 보존된 후보별 자동 평가 묶음
+    summary: row.summary,
+    // 제출 증거 순서와 저장 식별자의 연결
+    evidenceBindings: row.evidence_bindings,
+    // 현재 경기와 규정 연결의 유효 여부
+    matchContextValid: row.match_context_valid,
+    // 사용한 모델과 고정 가중치의 출처
+    modelProvenance: row.model_provenance
+});
+
 // 상태와 결과 조회 저장소
 export class StatusStore implements StatusPort, ResultPort, EvidencePort, LatestPort {
     // 저장소 구현에 사용할 연결과 의존 기능 주입
     public constructor(private readonly client: DatabaseHandle) {}
 
-    // 상태 처리
-    public async status(command: MediaStatusCommand): Promise<MediaView | null> {
+    // 소유와 만료를 확인한 영상 원자료를 하나의 읽기 스냅숏으로 조회
+    public async status(command: MediaStatusCommand): Promise<MediaSnapshot | null> {
+        // 여러 질의가 같은 시점의 자료를 보도록 하나의 읽기 전용 트랜잭션에서 조회
+        return this.client.db.transaction(
+            (transaction) => this.snapshot((statement) => transaction.execute(statement), command),
+            CONSISTENT_READ
+        );
+    }
+
+    // 주어진 읽기 스냅숏에서 소유와 만료를 확인한 영상과 분석 원자료 조회
+    private async snapshot(
+        read: Reader,
+        command: MediaStatusCommand
+    ): Promise<MediaSnapshot | null> {
         // 영상 처리 상태 조회
-        const rows = await this.client.db.execute(sql`
+        const rows = await read(sql`
       select video.id as video_asset_id,
              encode(video.content_sha256, 'hex') as source_sha256,
              video.status::text as video_status,
@@ -202,6 +335,7 @@ export class StatusStore implements StatusPort, ResultPort, EvidencePort, Latest
       from video_assets as video
       join anonymous_sessions as session on session.id = video.anonymous_session_id
       left join analyses as analysis on analysis.video_asset_id = video.id
+        and ${liveAnalysis(command.now)}
       left join competition_rule_versions as rule on rule.id = analysis.applied_rule_version_id
       left join lateral (
         select job_type, status, stage, progress_percent
@@ -212,33 +346,30 @@ export class StatusStore implements StatusPort, ResultPort, EvidencePort, Latest
       ) as job on true
       where video.id = ${command.videoAssetId}
         and video.anonymous_session_id = ${command.anonymousSessionId}
-        and session.revoked_at is null
-        and session.expires_at > ${command.now}
-        and (video.expires_at is null or video.expires_at > ${command.now})
-        and video.object_deleted_at is null
+        and ${activeSession(command.now)}
+        and ${liveVideo(command.now)}
       limit 1
     `);
         // 영상 상태 행 선택
         const [row] = rows as unknown as MediaRow[];
         // 영상이 없으면 빈 결과 반환
         if (!row) return null;
-        // 분석이 아직 생성되지 않은 영상 반환
-        if (!row.analysis_id || !row.analysis_status) {
-            // 분석 연결이 없는 영상의 현재 상태만 반환
-            return {
-                // 업로드된 원본 영상 기록의 식별자
-                videoAssetId: row.video_asset_id,
-                // 영상 파일의 검증 상태
-                videoStatus: row.video_status,
-                // 영상 유효성 검사 실패 사유
-                validationErrorCode: row.validation_error_code,
-                // 아직 연결되지 않은 분석 상태
-                analysis: null
-            };
-        }
+        // 분석 연결과 무관한 원본 영상 원자료 구성
+        const media = {
+            // 업로드된 원본 영상 기록의 식별자
+            videoAssetId: row.video_asset_id,
+            // 분석한 원본 영상의 내용 해시
+            sourceSha256: row.source_sha256,
+            // 영상 파일의 검증 상태
+            videoStatus: row.video_status,
+            // 영상 유효성 검사 실패 사유
+            validationErrorCode: row.validation_error_code
+        };
+        // 분석이 아직 생성되지 않은 영상은 분석 원자료 없이 반환
+        if (!row.analysis_id || !row.analysis_status) return { ...media, analysis: null };
 
         // 후보와 최신 판정 조회
-        const candidates = await this.client.db.execute(sql`
+        const candidates = await read(sql`
       select candidate.id, candidate.review_scenario::text as category, candidate.candidate_index, candidate.start_ms, candidate.end_ms, candidate.anchor_ms,
              candidate.detection_confidence as signal_score, candidate.camera_sufficiency::text as camera_sufficiency,
              candidate.reasons, fact.id as fact_revision_id, fact.source::text as fact_source,
@@ -282,59 +413,20 @@ export class StatusStore implements StatusPort, ResultPort, EvidencePort, Latest
       order by detection_confidence desc nulls last, candidate_index
     `);
         // 증거 파일 목록 조회
-        const evidence = await this.client.db.execute(sql`
+        const evidence = await read(sql`
       select asset.id, candidate.candidate_index, asset.kind::text as kind, asset.start_ms, asset.end_ms,
              asset.object_key, encode(asset.content_sha256, 'hex') as content_sha256
       from evidence_assets as asset
       join incident_candidates as candidate on candidate.id = asset.incident_candidate_id
       where asset.analysis_id = ${row.analysis_id}
-        and asset.object_deleted_at is null
-        and (asset.expires_at is null or asset.expires_at > ${command.now})
+        and ${liveEvidence(command.now)}
       order by candidate.candidate_index, asset.kind, asset.id
     `);
-        // 후보별 증거 묶음 초기화
-        const grouped = new Map<number, Array<{ evidenceId: string; kind: "FRAME" | "CLIP" }>>();
-        // 후보별 범주 평가에 사용할 증거 조회표 생성
-        const scopeEvidence = new Map<number, ScopeEvidence[]>();
-        // 증거 행을 후보 번호로 그룹화
-        for (const item of evidence as unknown as EvidenceRow[]) {
-            // 현재 후보에 누적된 증거 목록 읽음
-            const entries = grouped.get(item.candidate_index) ?? [];
-            // 현재 후보의 공개 증거 식별자와 종류 추가
-            entries.push({ evidenceId: item.id, kind: item.kind });
-            // 후보 순번으로 증거 목록을 찾을 수 있도록 조회표 갱신
-            grouped.set(item.candidate_index, entries);
-            // 현재 후보의 범주 평가용 증거 목록 읽음
-            const scopeEntries = scopeEvidence.get(item.candidate_index) ?? [];
-            // 범주 평가용 증거에 원본 시간 범위 추가
-            scopeEntries.push({
-                // 저장된 증거 자산의 식별자
-                evidenceId: item.id,
-                // 처리 분기 또는 자료 종류를 구별하는 값
-                kind: item.kind,
-                // 원본 영상 기준 구간 시작 밀리초
-                startMs: item.start_ms,
-                // 원본 영상 기준 구간 종료 밀리초
-                endMs: item.end_ms
-            });
-            // 후보 순번으로 시간 범위 증거를 찾도록 조회표 갱신
-            scopeEvidence.set(item.candidate_index, scopeEntries);
-        }
-        // 후보 데이터 화면 모델 변환
-        // 검증된 경기 연결이 없는 업로드는 추정 판본을 적용하지 않음
-        const rules =
-            row.match_id && row.verification_status === "VERIFIED" && row.ifab_edition
-                ? ruleSet(`ifab-${row.ifab_edition}`)
-                : null;
-        // 처리 버전 유무로 자동 산출물과 예전 수동 이력 구분
+        // 처리 버전이 같아야 하는 자동 평가 조건상 예전 수동 이력은 조회 생략
         const pipelineOutput = row.pipeline_version != null;
-        // 원본 내용 해시와 일치하는 검증된 경기 등록 정보 조회
-        const source = knownVideoSource(row.source_sha256 ?? "");
-        // 등록된 원본의 대회와 시즌에 맞는 규정집 조회
-        const book = source ? competitionRules(source.competition, source.season) : null;
         // 보존된 자동 평가와 현재 경기 문맥 및 모델 출처 조회
         const automaticRows = pipelineOutput
-            ? await this.client.db.execute(sql`
+            ? await read(sql`
       select review.summary, review.evidence_bindings, perception.model_provenance,
              exists(select 1 from matches as match join competition_rule_versions as rule
                on rule.id = analysis.applied_rule_version_id and rule.competition = match.competition and rule.season = match.season
@@ -354,326 +446,23 @@ export class StatusStore implements StatusPort, ResultPort, EvidencePort, Latest
         and review.pipeline_version = analysis.pipeline_version
         and review.evaluator_version = 'automatic-review-v1'
         and job.status = 'SUCCEEDED' and job.job_type = 'ANALYZE_VIDEO' and job.job_revision = review.job_revision
-        and review.expires_at > ${command.now} and analysis.expires_at > ${command.now}
+        and review.expires_at > ${command.now} and ${liveAnalysis(command.now)}
       order by review.created_at desc, review.id desc limit 1
     `)
             : [];
         // 저장소 조회 목록에서 필요한 첫 번째 행 읽음
-        const [automatic] = automaticRows as unknown as Array<{
-            // 세부 자료에서 보존할 처리 요약
-            summary: AutomaticReviewBatch;
-            // 제출 증거 순서와 저장 식별자의 연결
-            evidence_bindings: AutomaticEvidenceBinding[];
-            // 현재 경기와 규정 연결의 유효 여부
-            match_context_valid: boolean;
-            // 사용한 모델과 고정 가중치의 출처
-            model_provenance: import("@replay/shared-types").PerceptionRun["models"] | null;
-        }>;
-        // 검증된 경기와 판본이 모두 있을 때만 규정 문맥 생성
-        const currentRule: AutomaticRuleContext | null =
-            row.rule_version_id &&
-            row.match_id &&
-            row.competition &&
-            row.season &&
-            row.ifab_edition &&
-            row.verification_status === "VERIFIED"
-                ? {
-                      // 다른 기록과 구별하는 고유 식별자
-                      id: row.rule_version_id,
-                      // 검증된 경기 기록의 식별자
-                      matchId: row.match_id,
-                      // 규정 적용 대상 대회
-                      competition: row.competition,
-                      // 규정 적용 대상 시즌
-                      season: row.season,
-                      // 국제 축구 규정 판본 식별자
-                      ifabVersionId: `ifab-${row.ifab_edition}`,
-                      // 규정 문맥의 검증 상태
-                      verificationStatus: "VERIFIED"
-                  }
-                : null;
-        // 보존된 모델 출처가 현재 승인된 고정 가중치와 일치하는지 확인
-        const currentPins =
-            automatic?.model_provenance &&
-            Object.values(perceptionModelPins).every((pin) =>
-                automatic.model_provenance!.some(
-                    (model) =>
-                        model.component === pin.component &&
-                        model.modelId === pin.modelId &&
-                        model.revision === pin.revision &&
-                        model.weightsSha256 === pin.weightsSha256
-                )
-            );
-        // 현재 규정 문맥과 고정 모델 출처를 통과한 자동 평가만 조회
-        const automaticViews =
-            automatic && currentPins && automatic.match_context_valid
-                ? automaticJudgments(
-                      automatic.summary,
-                      automatic.evidence_bindings,
-                      (evidence as unknown as EvidenceRow[]).map((item, evidenceIndex) => ({
-                          // 제출 목록에서 증거를 찾는 순번
-                          evidenceIndex,
-                          // 저장된 증거 자산의 식별자
-                          evidenceId: item.id,
-                          // 처리 결과에서 후보 장면을 찾는 순번
-                          candidateIndex: item.candidate_index,
-                          // 처리 분기 또는 자료 종류를 구별하는 값
-                          kind: item.kind,
-                          // 객체 저장소에서 파일을 찾는 경로
-                          objectKey: item.object_key,
-                          // 파일 내용의 동일성을 대조하는 해시
-                          contentSha256: item.content_sha256,
-                          // 원본 영상 기준 구간 시작 밀리초
-                          startMs: item.start_ms,
-                          // 원본 영상 기준 구간 종료 밀리초
-                          endMs: item.end_ms,
-                          // 영상 또는 증거 이미지의 가로 크기
-                          width: null,
-                          // 영상 또는 증거 이미지의 세로 크기
-                          height: null
-                      })),
-                      currentRule
-                  )
-                : new Map();
-        // 후보의 관측과 사실 및 규정 필터 결과를 조회 형태로 구성
-        const views: CandidateView[] = (candidates as unknown as CandidateRow[]).map((item) => {
-            // 후보의 시간과 사건 및 증거 연결을 규정 필터에 대조
-            const filter = pipelineFilter(
-                {
-                    // 원본 영상 기준 구간 시작 밀리초
-                    startMs: item.start_ms,
-                    // 원본 영상 기준 구간 종료 밀리초
-                    endMs: item.end_ms,
-                    // 장면을 대표하는 원본 영상 시각
-                    anchorMs: item.anchor_ms,
-                    // 후보 사건의 분류
-                    category: item.category ?? "OTHER",
-                    // 동일 물체의 연속 이동 관측
-                    tracking: item.tracking ?? null,
-                    // 장면에서 인식한 사건과 근거
-                    sceneEvent: item.scene_event ?? null,
-                    // 참조하는 저장 증거 식별자 목록
-                    evidenceIds: (grouped.get(item.candidate_index) ?? []).map(
-                        (entry) => entry.evidenceId
-                    )
-                },
-                rules
-            );
-            // 후보 관측과 보존된 판단 및 별도 범주 평가를 구분한 조회 자료 반환
-            return {
-                // 완료 조건을 별도로 검사하는 자동 규정 평가 결과
-                automaticJudgment: automaticViews.get(item.candidate_index) ?? null,
-                // 원시 후보에 대한 규정 필터 결과
-                filter,
-                // 전체 반칙 판단과 별개인 영상 판독 범주 평가
-                varScopeEvaluation:
-                    pipelineOutput && filter.status !== "EXCLUDED"
-                        ? scopeVerdict(
-                              {
-                                  // 규정 사실과 구분하여 보존하는 방송 단서
-                                  broadcastCue: item.broadcast_cue ?? null,
-                                  // 원본 영상 기준 구간 시작 밀리초
-                                  startMs: item.start_ms,
-                                  // 원본 영상 기준 구간 종료 밀리초
-                                  endMs: item.end_ms,
-                                  // 원본에 연결한 증거 자료 또는 접근 기능
-                                  evidence: scopeEvidence.get(item.candidate_index) ?? [],
-                                  // 값의 출처 또는 원본 접근 수단
-                                  source
-                              },
-                              book
-                          )
-                        : null,
-                // 보정과 재평가에 필요한 현재 사실 및 영상 근거
-                factRevisionId: item.fact_revision_id ?? null,
-                // 확인된 출처와 판본을 보존하는 규정 사실 자료
-                facts: (item.fact_snapshot ?? null) as
-                    import("@replay/shared-types").EvaluationFacts | null,
-                // 원본 영상의 화면 구간 목록
-                shots: item.linked_shots ?? [],
-                // 판정 사실과 구분하여 보존하는 원시 관측
-                observation: item.observation ?? null,
-                // 동일 물체의 연속 이동 관측
-                tracking: item.tracking ?? null,
-                // 장면에서 인식한 사건과 근거
-                sceneEvent: item.scene_event ?? null,
-                // 규정 사실과 구분하여 보존하는 방송 단서
-                broadcastCue: item.broadcast_cue ?? null,
-                // 다른 기록과 구별하는 고유 식별자
-                id: item.id,
-                // 목록 안에서 해당 항목을 식별하는 순번
-                index: item.candidate_index,
-                // 원본 영상 기준 구간 시작 밀리초
-                startMs: item.start_ms,
-                // 원본 영상 기준 구간 종료 밀리초
-                endMs: item.end_ms,
-                // 장면을 대표하는 원본 영상 시각
-                anchorMs: item.anchor_ms,
-                // 화면 변화 점수이며 접촉이나 파울 확률과 별개인 값
-                signalScore: item.signal_score,
-                // 관측에 필요한 화면의 충분성
-                cameraSufficiency: item.camera_sufficiency,
-                // 후보 생성 또는 처리 결과의 근거 사유
-                reasons: item.reasons,
-                // 원본에 연결한 증거 자료 또는 접근 기능
-                evidence: grouped.get(item.candidate_index) ?? [],
-                // 사실과 규정을 대조한 판단 결과
-                judgment:
-                    item.fact_revision_id &&
-                    item.fact_source &&
-                    item.foul_decision &&
-                    item.var_reviewable !== null &&
-                    item.var_category &&
-                    item.var_within_time_window !== null &&
-                    item.var_threshold_met &&
-                    item.var_intervention &&
-                    item.var_window_exception &&
-                    item.var_review_procedure
-                        ? {
-                              // 평가에 사용한 사실 판본 식별자
-                              factRevisionId: item.fact_revision_id,
-                              // 확인된 출처와 판본을 보존하는 규정 사실 자료
-                              facts: item.fact_snapshot as import("@replay/shared-types").EvaluationFacts,
-                              // 값의 출처 또는 원본 접근 수단
-                              source: item.fact_source,
-                              // 사실과 규정을 대조하는 판단 처리
-                              decision:
-                                  item.foul_decision as import("@replay/shared-types").EvaluationResult["decision"],
-                              // 규정 평가에서 구분한 행위의 심각도
-                              severity:
-                                  item.severity as import("@replay/shared-types").EvaluationResult["severity"],
-                              // 판단에 따른 경기 재개 방식
-                              restart:
-                                  item.restart_type as import("@replay/shared-types").EvaluationResult["restart"],
-                              // 판단에 따른 징계 조치
-                              disciplinary:
-                                  item.disciplinary_action as import("@replay/shared-types").EvaluationResult["disciplinary"],
-                              // 관측 원심과 규정 평가의 일치 여부
-                              decisionMatch:
-                                  item.decision_match as import("@replay/shared-types").EvaluationResult["decisionMatch"],
-                              // 관측 또는 판단 근거의 신뢰 수준
-                              confidence:
-                                  item.judgment_confidence_level as import("@replay/shared-types").EvaluationResult["confidence"],
-                              // 결론을 확정하지 못한 사유
-                              inconclusiveReason:
-                                  item.inconclusive_reason as import("@replay/shared-types").EvaluationResult["inconclusiveReason"],
-                              // 영상 판독 개입에 대한 규정 평가
-                              varAssessment: {
-                                  // 영상 판독의 검토 가능 여부
-                                  reviewable: item.var_reviewable,
-                                  // 후보 사건의 분류
-                                  category:
-                                      item.var_category as import("@replay/shared-types").VarAssessment["category"],
-                                  // 영상 판독 허용 시점 충족 여부
-                                  withinTimeWindow: item.var_within_time_window,
-                                  // 영상 판독 개입 문턱 충족 여부
-                                  thresholdMet:
-                                      item.var_threshold_met as import("@replay/shared-types").VarAssessment["thresholdMet"],
-                                  // 영상 판독 검토 절차
-                                  reviewProcedure:
-                                      item.var_review_procedure as import("@replay/shared-types").VarAssessment["reviewProcedure"],
-                                  // 영상 판독 개입 판단
-                                  intervention:
-                                      item.var_intervention as import("@replay/shared-types").VarAssessment["intervention"],
-                                  // 영상 판독에 개입하지 않는 이유
-                                  noInterventionReason:
-                                      item.var_no_intervention_reason as import("@replay/shared-types").VarAssessment["noInterventionReason"],
-                                  // 영상 판독 검토 대상이 아닌 이유
-                                  notReviewableReason:
-                                      item.var_not_reviewable_reason as import("@replay/shared-types").VarAssessment["notReviewableReason"],
-                                  // 영상 판독 허용 시점 종료 사유
-                                  windowClosedReason:
-                                      item.var_window_closed_reason as import("@replay/shared-types").VarAssessment["windowClosedReason"],
-                                  // 영상 판독 시점 제한의 예외
-                                  windowException:
-                                      item.var_window_exception as import("@replay/shared-types").VarAssessment["windowException"],
-                                  // 판단 결과의 사용자 안내 설명
-                                  explanation: item.var_explanation ?? "규정 설명 없음"
-                              },
-                              // 판단 근거가 된 규정 인용 목록
-                              citations: (item.decision_citations ??
-                                  []) as import("@replay/shared-types").RuleCitation[]
-                          }
-                        : null
-            };
-        });
-
-        // 사건 인식과 규정 검토 상태는 별개이며 근거 부족인 인식 장면도 보존
-        const recognition = (candidate: CandidateView) =>
-            sceneEventData(candidate.sceneEvent, candidate.startMs, candidate.endMs) ||
-            broadcastCueData(candidate.broadcastCue, candidate.startMs, candidate.endMs);
-        // 제외되지 않았으며 사건 종류를 인식한 후보 분리
-        const recognized = views.filter(
-            (candidate) => candidate.filter?.status !== "EXCLUDED" && recognition(candidate)
-        );
-        // 규정 필터에서 유효하지 않다고 제외한 후보 분리
-        const invalid = views.filter((candidate) => candidate.filter?.status === "EXCLUDED");
-        // 사건 종류를 인식하지 못한 원시 변화 후보 분리
-        const raw = views.filter(
-            (candidate) => candidate.filter?.status !== "EXCLUDED" && !recognition(candidate)
-        );
-        // 원시 후보와 잘못된 출력의 사유를 중복 없이 정렬
-        const diagnosticReasons = [
-            ...new Set(
-                [...raw, ...invalid].flatMap((candidate) => candidate.filter?.reasonCodes ?? [])
-            )
-        ].sort();
-        // 버전 없는 과거 분석은 기존 이력 조회를 유지하며 자동 파이프라인과 합치지 않음
-        const hasBroadcast = views.some((candidate) =>
-            broadcastCueData(candidate.broadcastCue, candidate.startMs, candidate.endMs)
-        );
-        // 자동 출력과 예전 이력에 맞춰 조회 후보를 분리
-        const publicCandidates = pipelineOutput
-            ? views.filter(
-                  (candidate) =>
-                      recognized.includes(candidate) || candidate.automaticJudgment != null
-              )
-            : views.filter((candidate) => candidate.filter?.status !== "EXCLUDED");
-        // 자동 산출물에서는 인식 사건만 판단 집계 대상으로 선택
-        const judgmentViews = pipelineOutput ? recognized : views;
-        // 화면에 연결한 현재 버전 판정만 완료 건수에 포함
-        const evaluated = judgmentViews.filter((item) => item.judgment !== null).length;
-        // 평가 대상이 존재하고 모두 판단되었는지 확인
-        const allJudged = judgmentViews.length > 0 && evaluated === judgmentViews.length;
-        // 상태와 결과 화면 모델 반환
+        const [automatic] = automaticRows as unknown as AutomaticRow[];
+        // 같은 스냅숏에서 읽은 분석 진행과 규정 및 후보 증거 자동 평가 원자료 반환
         return {
-            // 업로드된 원본 영상 기록의 식별자
-            videoAssetId: row.video_asset_id,
-            // 영상 파일의 검증 상태
-            videoStatus: row.video_status,
-            // 영상 유효성 검사 실패 사유
-            validationErrorCode: row.validation_error_code,
-            // 원본 영상과 연결된 분석 상태 및 결과 자료
+            ...media,
+            // 원본 영상에 연결된 분석 원자료
             analysis: {
-                ...(automatic
-                    ? {
-                          // 후보별 자동 평가 진행의 내부 집계
-                          automaticReviewSummary: {
-                              // 인식 처리가 실제 다룬 영상 범위
-                              videoCoverage: automatic.summary.videoCoverage,
-                              // 요약 일부가 잘려 보존되지 않았는지 여부
-                              summaryTruncated: automatic.summary.summaryTruncated,
-                              // 자동 평가 조건을 검사한 후보 수
-                              checkedCount: automatic.summary.rows.length,
-                              // 지원 질문의 평가를 완료한 후보 수
-                              completedCount: automaticViews.size,
-                              // 근거 부족 등으로 평가가 막힌 후보 수
-                              blockedCount: automatic.summary.blockedCount
-                          }
-                      }
-                    : {}),
                 // 분석 기록의 식별자
                 analysisId: row.analysis_id,
-                // 자료를 해석하거나 표시하는 방식
-                mode: allJudged ? "ADJUDICATED" : "VISUAL_CHANGE_BASELINE",
-                // 영상 처리 성공과 구분한 규정 판단 상태
-                judgmentStatus: allJudged
-                    ? "EVALUATED"
-                    : evaluated > 0
-                      ? "PARTIAL"
-                      : "NOT_EVALUATED",
-                // 처리 상태 또는 요청 응답 상태
+                // 임대 중인 작업 단계를 반영한 분석 처리 상태
                 status: row.analysis_status,
+                // 영상 처리 절차를 구별하는 버전
+                pipelineVersion: row.pipeline_version,
                 // 현재 영상 처리 단계
                 stage: row.stage,
                 // 작업 진행률의 백분율
@@ -681,124 +470,82 @@ export class StatusStore implements StatusPort, ResultPort, EvidencePort, Latest
                 // 처리 실패 원인을 구별하는 코드
                 failureCode: row.failure_code,
                 // 처리가 제공하지 못하는 관측의 한계
-                limitations: row.limitations ?? [],
-                // 경기 문맥에 맞춰 연결한 규정 자료
-                rule:
-                    row.competition && row.season && row.ifab_edition && row.verification_status
-                        ? {
-                              // 규정 적용 대상 대회
-                              competition: row.competition,
-                              // 규정 적용 대상 시즌
-                              season: row.season,
-                              // 국제 축구 규정의 판본
-                              ifabEdition: row.ifab_edition,
-                              // 규정 문맥의 검증 상태
-                              verificationStatus: row.verification_status,
-                              // 원본 영상의 출처 주소
-                              sourceUrl: row.source_document
-                          }
-                        : null,
-                // 완료된 반칙 규정 평가 수
-                evaluatedCount: evaluated,
-                // 전체 내부 후보의 필터 처리 집계
-                filterSummary: {
-                    // 자동 평가 조건을 검사한 후보 수
-                    checkedCount: views.length,
-                    // 필터가 제외한 후보 수
-                    excludedCount: invalid.length,
-                    // 필터가 판단을 확정하지 못한 후보 수
-                    undeterminedCount: views.filter(
-                        (candidate) => candidate.filter?.status === "UNDETERMINED"
-                    ).length,
-                    // 관측된 사건 후보 수
-                    observedCount: views.filter(
-                        (candidate) => candidate.filter?.status === "OBSERVED"
-                    ).length,
-                    // 규정 적용 가능 조건을 충족한 후보 수
-                    applicableCount: views.filter(
-                        (candidate) => candidate.filter?.status === "APPLICABLE"
-                    ).length
-                },
-                ...(pipelineOutput
-                    ? {
-                          // 최종 결과와 분리한 내부 진단 자료
-                          diagnostics: {
-                              // 사건으로 인식되지 않은 원시 변화 후보 수
-                              rawProposalCount: raw.length,
-                              // 유효성 조건을 통과하지 못한 산출물 수
-                              invalidOutputCount: invalid.length,
-                              // 사건 종류를 인식한 후보 수
-                              recognizedEventCount: recognized.length,
-                              // 현재 인식기가 지원하는 사건 유형 목록
-                              supportedEventTypes: hasBroadcast
-                                  ? (["CORNER_KICK", "GOAL_GRAPHIC"] as const)
-                                  : (["CORNER_KICK"] as const),
-                              // 후보 생성 또는 처리 결과의 근거 사유
-                              reasons: [
-                                  hasBroadcast
-                                      ? "BROADCAST_AND_CORNER_DETECTORS"
-                                      : "CORNER_ONLY_DETECTOR",
-                                  ...(raw.length > 0 ? ["UNRECOGNIZED_PROPOSALS"] : []),
-                                  ...diagnosticReasons
-                              ]
-                          }
-                      }
-                    : {}),
-                // 파울 확정과 별개로 관리하는 후보 장면 목록
-                candidates: publicCandidates
+                limitations: row.limitations,
+                // 검증된 경기 기록의 식별자
+                matchId: row.match_id,
+                // 대회 규정 판본 식별자
+                ruleVersionId: row.rule_version_id,
+                // 규정 적용 대상 대회
+                competition: row.competition,
+                // 규정 적용 대상 시즌
+                season: row.season,
+                // 국제 축구 규정의 판본
+                ifabEdition: row.ifab_edition,
+                // 규정 문맥의 검증 상태
+                verificationStatus: row.verification_status,
+                // 규정 검증에 사용한 원문 출처
+                sourceDocument: row.source_document,
+                // 신호 점수 순서로 정렬한 후보 원자료
+                candidates: (candidates as unknown as CandidateRow[]).map(candidateSnapshot),
+                // 후보 순번과 종류 순서로 정렬한 유효 증거 원자료
+                evidence: (evidence as unknown as EvidenceRow[]).map(evidenceSnapshot),
+                // 가장 최근의 유효한 자동 평가 원자료
+                automatic: automatic ? automaticSnapshot(automatic) : null
             }
         };
     }
 
-    // 영상 분석 처리
-    public async analysis(command: AnalysisResultCommand): Promise<AnalysisView | null> {
-        // 분석 식별자 소유권 확인
-        const rows = await this.client.db.execute(sql`
+    // 세션 소유 분석이 속한 영상 원자료를 하나의 읽기 스냅숏으로 조회
+    public async analysis(command: AnalysisResultCommand): Promise<MediaSnapshot | null> {
+        // 소유권 확인과 원자료 조회가 같은 시점의 자료를 보도록 하나의 읽기 전용 트랜잭션 사용
+        return this.client.db.transaction(async (transaction) => {
+            // 트랜잭션 연결에서 질의를 실행하는 기능 생성
+            const read: Reader = (statement) => transaction.execute(statement);
+            // 분석 식별자 소유권 확인
+            const rows = await read(sql`
       select analysis.video_asset_id
       from analyses as analysis
       join anonymous_sessions as session on session.id = analysis.anonymous_session_id
       join video_assets as video on video.id = analysis.video_asset_id
       where analysis.id = ${command.analysisId}
         and analysis.anonymous_session_id = ${command.anonymousSessionId}
-        and session.revoked_at is null
-        and session.expires_at > ${command.now}
-        and analysis.expires_at > ${command.now}
-        and video.object_deleted_at is null
+        and ${activeSession(command.now)}
+        and ${liveAnalysis(command.now)}
+        and ${liveVideo(command.now)}
       limit 1
     `);
-        // 분석 소유권 행 선택
-        const [row] = rows as unknown as Array<{ video_asset_id: string }>;
-        // 분석이 없으면 빈 결과 반환
-        if (!row) return null;
-        // 영상 상태 조회 결과에서 분석 결과 추출
-        const media = await this.status({
-            // 업로드 소유자를 구별하는 익명 세션 식별자
-            anonymousSessionId: command.anonymousSessionId,
-            // 업로드된 원본 영상 기록의 식별자
-            videoAssetId: row.video_asset_id,
-            // 유효 기한 판단에 사용하는 현재 시각
-            now: command.now
-        });
-        // 해당 영상의 분석 자료를 반환하고 없으면 빈 값 반환
-        return media?.analysis ?? null;
+            // 분석 소유권 행 선택
+            const [row] = rows as unknown as Array<{ video_asset_id: string }>;
+            // 분석이 없으면 빈 결과 반환
+            if (!row) return null;
+            // 소유가 확인된 분석이 속한 영상 원자료를 같은 스냅숏에서 조회
+            return this.snapshot(read, {
+                // 업로드 소유자를 구별하는 익명 세션 식별자
+                anonymousSessionId: command.anonymousSessionId,
+                // 업로드된 원본 영상 기록의 식별자
+                videoAssetId: row.video_asset_id,
+                // 유효 기한 판단에 사용하는 현재 시각
+                now: command.now
+            });
+        }, CONSISTENT_READ);
     }
 
     // 저장된 미디어의 접근 정보 조회
     public async media(command: EvidenceMediaCommand): Promise<EvidenceMedia | null> {
-        // 증거 파일 접근 권한 확인
+        // 분석 조회와 같은 소유와 보존 조건으로 증거 파일 접근 권한 확인
         const rows = await this.client.db.execute(sql`
       select asset.object_key, asset.kind::text as kind
       from evidence_assets as asset
       join analyses as analysis on analysis.id = asset.analysis_id
       join anonymous_sessions as session on session.id = analysis.anonymous_session_id
+      join video_assets as video on video.id = analysis.video_asset_id
       where asset.id = ${command.evidenceId}
         and asset.analysis_id = ${command.analysisId}
         and analysis.anonymous_session_id = ${command.anonymousSessionId}
-        and session.revoked_at is null
-        and session.expires_at > ${command.now}
-        and analysis.expires_at > ${command.now}
-        and asset.object_deleted_at is null
-        and (asset.expires_at is null or asset.expires_at > ${command.now})
+        and ${activeSession(command.now)}
+        and ${liveAnalysis(command.now)}
+        and ${liveVideo(command.now)}
+        and ${liveEvidence(command.now)}
       limit 1
     `);
         // 증거 접근 행 선택
@@ -822,10 +569,8 @@ export class StatusStore implements StatusPort, ResultPort, EvidencePort, Latest
       from video_assets as video
       join anonymous_sessions as session on session.id = video.anonymous_session_id
       where video.anonymous_session_id = ${command.anonymousSessionId}
-        and session.revoked_at is null
-        and session.expires_at > ${command.now}
-        and (video.expires_at is null or video.expires_at > ${command.now})
-        and video.object_deleted_at is null
+        and ${activeSession(command.now)}
+        and ${liveVideo(command.now)}
       order by video.created_at desc, video.id desc
       limit 1
     `);

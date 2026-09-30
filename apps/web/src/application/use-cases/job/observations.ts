@@ -1,9 +1,10 @@
 import type { AnalysisPayload } from "../../ports/repositories/job-store";
 import { ObjectLimitError, type CompletionStorage } from "../../ports/storage/upload-storage";
 import type { EvidenceBodyStorage } from "../../ports/storage/evidence-storage";
-import { PRIVATE_INDEX_BYTES, PRIVATE_INDEX_ROWS, type PrivateIndex } from "../../../shared/private-incidents";
+import type { PrivateIndex } from "@replay/shared-types";
 import { incidentArchive } from "../incidents/archive";
 import { incidentBatch } from "../incidents/batch";
+import { boundedBatch } from "../incidents/plan";
 import { bytesHex, type Context } from "./objects";
 
 // 산출물 자체의 형식과 무결성 오류 부호
@@ -73,7 +74,7 @@ export const observations = async (
                 : {})
         }, { head: (key, limit) => storageCall(() => storage.head(key, limit)) });
         // 저장 경계와 같은 상한을 먼저 적용해 용량 초과가 결과 전체 실패로 번지지 않게 함
-        if (batch.rows.length > PRIVATE_INDEX_ROWS || Buffer.byteLength(JSON.stringify(batch)) > PRIVATE_INDEX_BYTES) {
+        if (!boundedBatch(batch)) {
             return { status: "SKIPPED", reason: "PRIVATE_INDEX_CAPACITY" };
         }
         return { status: "INDEXED", batch };

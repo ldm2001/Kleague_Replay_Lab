@@ -269,6 +269,8 @@ const evidenceStatus = (value: EvidenceResult): number => {
         case "STALE_LEASE": return 409;
         // 이미 종료된 작업에 대응하는 응답 분기
         case "ALREADY_FINISHED": return 409;
+        // 보존 규칙을 벗어나 되돌릴 수 없는 원본에 대응하는 응답 분기
+        case "SOURCE_UNAVAILABLE": return 410;
         // 입력 계약 위반에 대응하는 응답 분기
         case "INVALID_INPUT": return 400;
         // 필요한 저장소 기능 부재에 대응하는 응답 분기

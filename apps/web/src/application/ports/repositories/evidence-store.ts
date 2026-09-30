@@ -16,7 +16,8 @@ export type EvidenceAccessCommand = Readonly<{
 // 증거 접근 결과
 export type EvidenceAccess =
     | Readonly<{ kind: "AUTHORIZED"; analysisId: string }>
-    | Readonly<{ kind: "NOT_FOUND" | "STALE_LEASE" | "ALREADY_FINISHED" }>;
+    | Readonly<{ kind: "NOT_FOUND" | "STALE_LEASE" | "ALREADY_FINISHED" }>
+    | Readonly<{ kind: "SOURCE_UNAVAILABLE" }>;
 
 // 증거 저장 포트
 export type EvidenceStore = Readonly<{

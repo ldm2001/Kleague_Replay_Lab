@@ -1,11 +1,15 @@
+import base64
 import gzip
 import hashlib
-import importlib
 import json
 from pathlib import Path
 import pytest
 from replay_video.domain.models import Evidence, Shot
+from replay_video.infrastructure import interactions
+from replay_video.infrastructure.ports import operating
+from replay_video.runner import perceptionArtifact
 from fixtures.interaction import frame
+from test_transport import TransportApi, CLAIM, ANALYSIS_ID, JOB_ID, JOB_REVISION
 
 # 시험 환경 구성
 def setup(tmp_path):
@@ -32,7 +36,7 @@ def setup(tmp_path):
 # 관측 확장 모형
 def enrich(tmp_path, artifact, evidence):
     # 원시 관측과 실제 증거를 검증하여 비공개 측정 기록 확장 결과 반환
-    return importlib.import_module('replay_video.infrastructure.interactions').enrichment(
+    return interactions.enrichment(
         tmp_path, artifact, "a" * 64, (Shot(0, 0, 1000),), evidence
     )
 
@@ -135,9 +139,6 @@ def test_output_is_not_overwritten(tmp_path):
 
 # 확장 산출물의 기존 비공개 업로드 경로 사용 확인
 def test_extended_artifact_uses_existing_private_upload_path(tmp_path):
-    from replay_video.runner import perceptionArtifact
-    from test_transport import TransportApi, CLAIM, ANALYSIS_ID, JOB_ID, JOB_REVISION
-    import base64
     # 기존 업로드 경로와 연결할 관측 및 증거 준비
     artifact, evidence, _ = setup(tmp_path)
     # 원시 관측과 실제 증거를 검증하여 비공개 측정 기록 확장
@@ -187,7 +188,6 @@ def test_extended_artifact_uses_existing_private_upload_path(tmp_path):
 def test_cancel_does_not_publish_partial_artifact(tmp_path):
     # 처리 취소를 주입할 정상 관측 자료 준비
     artifact, _, _ = setup(tmp_path)
-    from replay_video.infrastructure.interactions import enrichment
 
     # 작업 취소
     def cancel():
@@ -197,7 +197,7 @@ def test_cancel_does_not_publish_partial_artifact(tmp_path):
     # 취소 시 부분 산출물 미게시을 위한 예상 예외 확인
     with pytest.raises(RuntimeError, match="cancelled"):
         # 원시 관측과 실제 증거를 검증하여 비공개 측정 기록 확장
-        enrichment(tmp_path, artifact, "a" * 64, (), (), check_cancelled=cancel)
+        interactions.enrichment(tmp_path, artifact, "a" * 64, (), (), check_cancelled=cancel)
     # 압축 관측 파일의 존재 여부가 거짓이거나 비어 있는지 확인
     assert not (tmp_path / "interaction-observations.jsonl.gz").exists()
     # 취소 후 게시용 임시 파일도 남지 않는지 확인
@@ -207,10 +207,8 @@ def test_cancel_does_not_publish_partial_artifact(tmp_path):
 def test_raw_size_limit_is_checked_without_publishing(tmp_path, monkeypatch):
     # 압축 해제 크기 상한 시험에 사용할 정상 자료 준비
     artifact, _, _ = setup(tmp_path)
-    # 시험에서 크기 상한을 교체할 관측 확장 모듈 읽음
-    module = importlib.import_module('replay_video.infrastructure.interactions')
     # 작은 관측 파일로도 상한 초과가 발생하도록 원시 크기 제한 축소
-    monkeypatch.setattr(module, "MAX_RAW_BYTES", 32)
+    monkeypatch.setattr(interactions, "MAX_RAW_BYTES", 32)
     # 게시 전 원시 크기 상한 검사을 위한 예상 예외 확인
     with pytest.raises(ValueError, match="OBSERVATION_INPUT_LIMIT"):
         # 원시 관측과 실제 증거를 검증하여 비공개 측정 기록 확장
@@ -230,10 +228,8 @@ def published(tmp_path, result):
 def test_budget_keeps_prefix_and_marks_omitted_observations(tmp_path, monkeypatch):
     # 관측 예산 시험에 사용할 정상 자료 준비
     artifact, evidence, _ = setup(tmp_path)
-    # 시험에서 예산을 교체할 관측 확장 모듈 읽음
-    module = importlib.import_module('replay_video.infrastructure.interactions')
     # 두 관측 중 첫 관측만 기록되도록 행 예산 축소
-    monkeypatch.setattr(module, "BUDGET_ROWS", 1)
+    monkeypatch.setattr(interactions, "BUDGET_ROWS", 1)
     # 예산을 넘은 확장도 실패 없이 게시된 기록 행 읽음
     rows = published(tmp_path, enrich(tmp_path, artifact, evidence))
     # 기록된 상호작용 관측 선택
@@ -249,10 +245,8 @@ def test_budget_keeps_prefix_and_marks_omitted_observations(tmp_path, monkeypatc
 def test_oversized_observation_is_omitted_with_marker(tmp_path, monkeypatch):
     # 거대 관측 행 시험에 사용할 정상 자료 준비
     artifact, evidence, _ = setup(tmp_path)
-    # 시험에서 행 상한을 교체할 관측 확장 모듈 읽음
-    module = importlib.import_module('replay_video.infrastructure.interactions')
     # 모든 관측 행이 상한을 넘도록 관측 행 바이트 상한 축소
-    monkeypatch.setattr(module, "MAX_OBSERVATION_BYTES", 16)
+    monkeypatch.setattr(interactions, "MAX_OBSERVATION_BYTES", 16)
     # 거대 관측 행이 있어도 실패 없이 게시된 기록 행 읽음
     rows = published(tmp_path, enrich(tmp_path, artifact, evidence))
     # 상호작용 관측이 하나도 기록되지 않았는지 확인
@@ -264,14 +258,12 @@ def test_oversized_observation_is_omitted_with_marker(tmp_path, monkeypatch):
 
 # 기본 관측 예산의 서버 색인 상한 미만 유지와 작은 입력의 무손실 기록 확인
 def test_default_budget_stays_below_server_index_limits(tmp_path):
-    # 기본 예산을 읽을 관측 확장 모듈 읽음
-    module = importlib.import_module('replay_video.infrastructure.interactions')
     # 서버 공유 비공개 색인 행 수 상한 10000보다 행 예산이 낮은지 확인
-    assert module.BUDGET_ROWS < 10_000
+    assert interactions.BUDGET_ROWS < 10_000
     # 서버 공유 비공개 색인 바이트 상한 32MiB보다 바이트 예산이 낮은지 확인
-    assert module.BUDGET_BYTES < 32 * 1024 * 1024
+    assert interactions.BUDGET_BYTES < 32 * 1024 * 1024
     # 서버 수신기의 관측 한 행 상한 65536 이하인지 확인
-    assert module.MAX_OBSERVATION_BYTES <= 65_536
+    assert interactions.MAX_OBSERVATION_BYTES <= 65_536
     # 기본 예산으로 작은 입력을 확장한 기록 행 읽음
     rows = published(tmp_path, enrich(tmp_path, *setup(tmp_path)[:2]))
     # 생략 없이 모든 관측을 기록했다는 요약 표시 확인
@@ -279,6 +271,5 @@ def test_default_budget_stays_below_server_index_limits(tmp_path):
 
 # 조립기의 비공개 관측 포트 활성화 확인
 def test_factory_enables_private_observation_port():
-    from replay_video.infrastructure.ports import operating
     # 비공개 관측 포트가 존재하는지 확인
     assert operating().private_observations is not None

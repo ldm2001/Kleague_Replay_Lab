@@ -3,6 +3,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { client } from "@replay/database";
 import { JobStore, StatusStore } from "@replay/adapters";
 import type { JobResultCommand } from "@replay/application";
+import { statusView } from "../fixtures/status";
 
 // 데이터베이스 주소 시험용 실행환경 환경설정 데이터베이스 주소 준비
 const databaseUrl = process.env.DATABASE_URL;
@@ -130,7 +131,7 @@ describe.skipIf(!databaseUrl)("automatic review storage", () => {
             // 상태 시험용 상태 저장소 준비
             const status = new StatusStore(database);
             // 상태 상태 결과를 화면자료에 저장
-            const view = await status.status({
+            const view = await statusView(status, {
                 anonymousSessionId: sessionId,
                 videoAssetId: videoId,
                 now
@@ -146,8 +147,13 @@ describe.skipIf(!databaseUrl)("automatic review storage", () => {
             await database.sql`update analyses set source_fingerprint = ${randomBytes(32)} where id = ${analysisId}`;
             // 상태 상태 결과 분석 자동평가 요약의 미정의 확인
             expect(
-                (await status.status({ anonymousSessionId: sessionId, videoAssetId: videoId, now }))
-                    ?.analysis?.automaticReviewSummary
+                (
+                    await statusView(status, {
+                        anonymousSessionId: sessionId,
+                        videoAssetId: videoId,
+                        now
+                    })
+                )?.analysis?.automaticReviewSummary
             ).toBeUndefined();
         } finally {
             // 근거 자산 삭제

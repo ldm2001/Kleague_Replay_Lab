@@ -9,6 +9,7 @@ import { JobStore, StatusStore } from "@replay/adapters";
 import { result, report, type AnalysisPayload } from "@replay/application";
 import { sceneEventData, WORKER_PROTOCOL, type SceneEvent } from "@replay/shared-types";
 import { result as acceptResult, type JobApiDependencies } from "../../src/apis/job";
+import { analysisView } from "../fixtures/status";
 
 // 데이터베이스 주소 시험용 실행환경 환경설정 데이터베이스 주소 준비
 const databaseUrl = process.env.DATABASE_URL;
@@ -164,8 +165,8 @@ describe.skipIf(!databaseUrl)("Worker tracking -> API -> PostgreSQL -> rules", (
 
     // 검증용 내부 조회 구성
     async function readInternal(sessionId: string, analysisId: string) {
-        // 상태 저장소 분석 결과 반환
-        return new StatusStore(database).analysis({
+        // 상태 저장소 원자료의 내부 분석 화면 모델 반환
+        return analysisView(new StatusStore(database), {
             anonymousSessionId: sessionId,
             analysisId,
             now: NOW

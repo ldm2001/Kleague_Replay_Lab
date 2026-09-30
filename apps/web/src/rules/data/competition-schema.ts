@@ -1,7 +1,5 @@
-// 공통 관측과 판정 자료형 가져오기
-import type { ConceptKey } from "@replay/shared-types";
-// 대회요강 자료형 가져오기
-import type { CompetitionRuleBook } from "../../shared/competition-rules";
+// 공통 관측과 판정 및 대회요강 자료형 가져오기
+import type { ConceptKey, CompetitionRuleBook } from "@replay/shared-types";
 // 규정 자료 구조 가져오기
 import type { StoredCitation } from "./schema";
 

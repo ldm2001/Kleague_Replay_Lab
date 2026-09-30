@@ -2,7 +2,6 @@
 
 // 화면 구성에 필요한 기능과 공유 자료 형식 읽음
 import * as React from "react";
-import { useState } from "react";
 
 // 솔루션 탭별 이름과 설명 묶음 생성
 const slides = [
@@ -41,7 +40,7 @@ const slides = [
 // 솔루션 패널 구성
 export function SolutionDeck() {
     // 활성 패널 상태
-    const [active, setActive] = useState(0);
+    const [active, setActive] = React.useState(0);
     // 현재 솔루션 조회
     const slide = slides[active] ?? slides[0];
 

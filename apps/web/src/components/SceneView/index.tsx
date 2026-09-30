@@ -1,7 +1,6 @@
 "use client";
 
 // 화면 구성에 필요한 기능과 공유 자료 형식 읽음
-import { useCallback, useState } from "react";
 import * as React from "react";
 import type { AnalysisView, CandidateView } from "@replay/application";
 import { RulePanel } from "../RulePanel";
@@ -25,7 +24,7 @@ const source = (analysisId: string, evidenceId: string) =>
 export function SceneView({ analysis }: Readonly<{ analysis: AnalysisView }>) {
     // 서버에서 제외 후보를 제거한 뒤 남은 결과만 재생
     // 완료된 범위 평가를 우선 보여주되 이후 사용자가 선택한 위치는 유지
-    const [index, setIndex] = useState(() => {
+    const [index, setIndex] = React.useState(() => {
         // 자동 규정 평가나 범위 평가를 완료한 첫 후보 위치 검색
         const completed = analysis.candidates.findIndex(
             (candidate) =>
@@ -54,7 +53,7 @@ export function SceneView({ analysis }: Readonly<{ analysis: AnalysisView }>) {
     const candidate = analysis.candidates[index] ?? null;
 
     // 장면 위치 제한
-    const select = useCallback(
+    const select = React.useCallback(
         (value: number) => {
             // 요청한 장면 위치를 첫 후보와 마지막 후보 사이로 제한
             setIndex(Math.max(0, Math.min(value, last)));
@@ -63,7 +62,7 @@ export function SceneView({ analysis }: Readonly<{ analysis: AnalysisView }>) {
     );
 
     // 키보드 장면 이동
-    const key = useCallback(
+    const key = React.useCallback(
         (event: React.KeyboardEvent<HTMLElement>) => {
             // 입력 요소의 방향키는 장면 이동에 사용하지 않도록 확인
             if (

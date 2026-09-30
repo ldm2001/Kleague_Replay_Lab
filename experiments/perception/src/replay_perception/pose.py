@@ -44,7 +44,7 @@ _PREPROCESSING = {
     "image_std": [0.229, 0.224, 0.225],
 }
 
-# 실행 환경 읽음
+# 추론 시점에만 필요한 대형 실행 환경을 모듈 적재와 분리해 지연 읽음
 def runtimeBundle():
     # 검증된 모델의 텐서 추론 도구 읽음
     import torch
@@ -104,6 +104,7 @@ def safeConfig(config: Any) -> bool:
 def inputTransform(
     box: list[float],
 ) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
+    # 모델 실행 환경을 모듈 적재와 분리하도록 변환 함수 지연 읽음
     # 선택한 처리기의 중심·배율·좌표 변환 함수를 그대로 사용
     # 32비트 실수 반올림 보존과 단순 자르기·크기 조정의 대체 금지
     from transformers.models.vitpose.image_processing_pil_vitpose import (

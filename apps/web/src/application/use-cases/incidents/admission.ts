@@ -1,8 +1,6 @@
-import type { IncidentAssertion, IncidentRecordV1 } from "../../../shared/incident";
-import { incidentRecordData } from "../../../shared/incident-schema";
-import { incidentDigest, type IncidentAdmission } from "../../../rules/engine/incidents/evidence";
-import { holdingVerdict, incidentPublic } from "../../../rules/engine/incidents/holding";
-import { ruleSet } from "../../../rules/data";
+import { ruleSet } from "@replay/rule-data";
+import { holdingVerdict, incidentDigest, incidentPublic, type IncidentAdmission } from "@replay/rule-engine";
+import { incidentRecordData, type IncidentAssertion, type IncidentRecordV1 } from "@replay/shared-types";
 
 // 서버 코드에서만 등록하는 사실별 검증 방법 계약
 export interface IncidentMethod {

@@ -100,11 +100,18 @@ class CompletionDouble implements UploadCompletionStore {
         expiresAt: "2026-08-24T00:15:00.000Z",
     };
     readonly commands: Array<Parameters<UploadCompletionStore["complete"]>[0]> = [];
+    replayed: string | null = null;
 
     // 검증용 소유권 구성
     async owned() {
         // 입력 조건 의도 반환
         return this.intent;
+    }
+
+    // 검증용 완료 재응답 구성
+    async replay() {
+        // 이미 완료된 업로드의 영상 식별자 반환
+        return this.replayed;
     }
 
     // 검증용 완료 구성
@@ -303,6 +310,28 @@ describe("completeUpload", () => {
             validationJobPayloadVersion: 1,
             validationMaxAttempts: 3
         });
+    });
+
+    it("replays the existing video asset when the same intent was already completed", async () => {
+        // 저장공간 시험용 객체 준비
+        const storage = new ObjectDouble();
+        // 저장소 시험용 완료처리 준비
+        const repository = new CompletionDouble();
+        // 작업 시험용 완료처리 결과 준비
+        const operation = completion({ clock, policy: POLICY, storage, repository });
+        // 활성 의도 없이 완료 이력만 남은 상태 설정
+        repository.intent = null;
+        // 먼저 끝난 완료 요청의 영상 식별자 설정
+        repository.replayed = VIDEO_ID;
+
+        // 같은 의도의 재완료 요청이 기존 영상 식별자를 재응답하는지 확인
+        await expect(
+            operation({ anonymousSessionId: SESSION_ID, uploadIntentId: INTENT_ID })
+        ).resolves.toEqual({ kind: "REPLAYED", videoAssetId: VIDEO_ID });
+        // 재응답이 저장 객체를 다시 조회하지 않는지 확인
+        expect(storage.objectKeys).toHaveLength(0);
+        // 재응답이 새 완료 명령을 만들지 않는지 확인
+        expect(repository.commands).toHaveLength(0);
     });
 
     it("rejects missing intent, missing object, and size mismatch without completing", async () => {

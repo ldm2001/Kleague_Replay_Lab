@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 from replay_video import sound
+from replay_video.infrastructure import audio
 from replay_video.infrastructure.audio import (
     AudioFrameMeasures,
     AudioScanStatus,
@@ -16,6 +17,7 @@ from replay_video.infrastructure.audio import (
     WhistleCueDetector,
     frameMeasures,
     audioCues,
+    pcmScan,
 )
 
 
@@ -25,7 +27,6 @@ SAMPLE_RATE = 48_000
 # 정상 종료 코드와 파형 출력이 있어도 디코더 오류를 실패로 분류
 @pytest.mark.parametrize("size", [32, 200_000])
 def test_decoder_error_output_is_failed_even_with_pcm_and_zero_exit(tmp_path, monkeypatch, size):
-    from replay_video.infrastructure import audio
     # 실제 파이프를 사용하는 자식 실행기 보관
     original = audio.subprocess.Popen
     # 프레임 경계 이후 오류와 파이프 용량 초과 오류를 생성하는 자식 코드 구성
@@ -41,7 +42,7 @@ def test_decoder_error_output_is_failed_even_with_pcm_and_zero_exit(tmp_path, mo
     # 디코더 출력 처리만 격리하고 메타데이터 추정 제외
     monkeypatch.setattr(audio.subprocess, "Popen", decoder)
     metadata = audio._MediaAudioMetadata(1, 48000, 1, 0, 0, 100)
-    scan = audio.pcmScan(tmp_path / "source", metadata)
+    scan = pcmScan(tmp_path / "source", metadata)
     # 부분 파형을 완료 관측이나 정상 무음으로 공개하지 않음 확인
     assert scan.status is AudioScanStatus.FAILED
     assert scan.reason == "DECODE_FAILED"
@@ -52,7 +53,6 @@ def test_decoder_error_output_is_failed_even_with_pcm_and_zero_exit(tmp_path, mo
 # 빈 파형과 잘린 실수 표본의 완료 오인 방지 확인
 @pytest.mark.parametrize("size", [0, 3])
 def test_empty_or_incomplete_pcm_is_not_complete(tmp_path, monkeypatch, size):
-    from replay_video.infrastructure import audio
     # 정상 종료하지만 파형이 없거나 표본 바이트가 잘린 자식 실행기 준비
     original = audio.subprocess.Popen
 
@@ -64,7 +64,7 @@ def test_empty_or_incomplete_pcm_is_not_complete(tmp_path, monkeypatch, size):
 
     monkeypatch.setattr(audio.subprocess, "Popen", decoder)
     metadata = audio._MediaAudioMetadata(1, 48000, 1, 0, 0, 100)
-    scan = audio.pcmScan(tmp_path / "source", metadata)
+    scan = pcmScan(tmp_path / "source", metadata)
     # 실제 표본이 없는 성공 응답을 정상 무음으로 오인하지 않음 확인
     assert scan.status is AudioScanStatus.FAILED
     assert scan.reason == "DECODE_FAILED"
@@ -72,7 +72,6 @@ def test_empty_or_incomplete_pcm_is_not_complete(tmp_path, monkeypatch, size):
 # 출력 없는 디코더의 시간 제한과 취소 이후 자식 프로세스 회수 확인
 @pytest.mark.parametrize("cancel", [False, True])
 def test_decoder_pipes_preserve_timeout_and_cancellation(tmp_path, monkeypatch, cancel):
-    from replay_video.infrastructure import audio
     # 실제 자식 프로세스의 종료 상태를 확인할 목록 준비
     original = audio.subprocess.Popen
     children = []
@@ -97,11 +96,11 @@ def test_decoder_pipes_preserve_timeout_and_cancellation(tmp_path, monkeypatch, 
     if cancel:
         # 취소를 디코딩 실패로 바꾸지 않고 동일 예외로 전달 확인
         with pytest.raises(RuntimeError) as caught:
-            audio.pcmScan(tmp_path / "source", metadata, checkpoint)
+            pcmScan(tmp_path / "source", metadata, checkpoint)
         assert caught.value is cancellation
     else:
         # 출력 없는 디코더의 기한 초과 상태 확인
-        scan = audio.pcmScan(tmp_path / "source", metadata)
+        scan = pcmScan(tmp_path / "source", metadata)
         assert scan.status is AudioScanStatus.FAILED
         assert scan.reason == "DECODE_TIMEOUT"
     # 실패와 취소 모두 자식 프로세스와 파이프 해제 확인
@@ -674,27 +673,30 @@ def test_unknown_stream_origin_is_unsupported_instead_of_assumed_aligned(
     source = tmp_path / "unknown-origin.media"
     # 입력 영상에 시험 내용을 기록
     source.write_bytes(b"probe payload supplied by the test")
-    # 시험 영상 정보를 비교에 사용할 고정 시험 자료로 구성
-    video = {
-        "index": 0,
-        "codec_type": "video",
-        "start_time": "0.000",
-        "duration": "1.000",
-        "disposition": {"attached_pic": 0},
-    }
-    # 음향 관측 정보를 비교에 사용할 고정 시험 자료로 구성
-    audio = {
-        "index": 1,
-        "codec_type": "audio",
-        "start_time": "0.000",
-        "duration": "1.000",
-        "sample_rate": "48000",
-        "channels": 1,
+    # 시험 매개변수 종류로 고를 스트림 정보를 종류별 고정 시험 자료로 구성
+    streams = {
+        # 시험 영상 정보를 비교에 사용할 고정 시험 자료로 구성
+        "video": {
+            "index": 0,
+            "codec_type": "video",
+            "start_time": "0.000",
+            "duration": "1.000",
+            "disposition": {"attached_pic": 0},
+        },
+        # 음향 관측 정보를 비교에 사용할 고정 시험 자료로 구성
+        "audio": {
+            "index": 1,
+            "codec_type": "audio",
+            "start_time": "0.000",
+            "duration": "1.000",
+            "sample_rate": "48000",
+            "channels": 1,
+        },
     }
     # 영상 또는 음향의 시작 시각을 제거하여 원점 미확인 상황 재현
-    del (video if missing_stream_start == "video" else audio)["start_time"]
+    del streams[missing_stream_start]["start_time"]
     # 전송 본문을 비교에 사용할 고정 시험 자료로 구성
-    payload = {"streams": [video, audio], "format": {"start_time": "0.000"}}
+    payload = {"streams": list(streams.values()), "format": {"start_time": "0.000"}}
 
     # 원점 없는 스트림 조회 모형
     def probe_without_stream_origin(*args, **kwargs):

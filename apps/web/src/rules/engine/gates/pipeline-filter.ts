@@ -1,13 +1,13 @@
-// 공통 관측과 판정 자료형 가져오기
-import type {
-    PipelineFilterReason,
-    PipelineFilterResult,
-    PipelineRuleCondition,
-    RuleCitation,
-    RuleSet
+// 공통 관측과 판정 자료형과 구조 검증 기능 가져오기
+import {
+    sceneEventData,
+    trackingData,
+    type PipelineFilterReason,
+    type PipelineFilterResult,
+    type PipelineRuleCondition,
+    type RuleCitation,
+    type RuleSet
 } from "@replay/shared-types";
-// 공통 관측과 판정 자료형 가져오기
-import { sceneEventData, trackingData } from "@replay/shared-types";
 
 // 영상 처리에서 생성한 후보의 자료 구조 정의
 type PipelineCandidate = Readonly<{

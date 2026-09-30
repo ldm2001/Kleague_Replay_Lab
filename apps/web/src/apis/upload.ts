@@ -123,6 +123,8 @@ const completionStatus = (result: CompletionResult): number => {
     switch (result.kind) {
         // 업로드 완료에 대응하는 응답 분기
         case "COMPLETED": return 202;
+        // 완료된 업로드의 재응답에 대응하는 응답 분기
+        case "REPLAYED": return 200;
         // 업로드 기록 없음에 대응하는 응답 분기
         case "UPLOAD_NOT_FOUND": return 404;
         // 이미 완료된 업로드에 대응하는 응답 분기

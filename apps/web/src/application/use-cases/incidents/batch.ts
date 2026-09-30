@@ -2,11 +2,10 @@ import { createHash } from "node:crypto";
 import type { AnalysisPayload } from "../../ports/repositories/job-store";
 import type { CompletionStorage } from "../../ports/storage/upload-storage";
 import type { IncidentArchive } from "./archive";
-import type { PrivateIncidentBatch, PrivateIncidentRow } from "../../../shared/private-incidents";
+import { incidentDigest } from "@replay/rule-engine";
+import type { IncidentMatch, PrivateIncidentBatch, PrivateIncidentRow } from "@replay/shared-types";
 import { incidentRecord } from "./record";
 import { incidentReasons } from "./admission";
-import { incidentDigest } from "../../../rules/engine/incidents/evidence";
-import type { IncidentMatch } from "../../../shared/incident";
 
 // 비공개 관측의 직렬화 내용에 결합된 저장 해시 반환
 export const observationDigest = (value: unknown): string =>

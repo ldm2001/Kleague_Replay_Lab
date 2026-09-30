@@ -4,9 +4,7 @@ import type { Hasher } from "../../ports/hashing/hasher";
 import type { Clock } from "../../ports/clock/clock";
 // 사실과 규정을 대조하는 평가 기능 가져옴
 import type { EvaluationStore, FactPatchResult } from "../../ports/repositories/evaluation-store";
-// 공유 자료 계약과 검증 기능 가져옴
-import type { EvaluationFacts, PushFacts } from "@replay/shared-types";
-// 공유 자료 계약과 검증 기능 가져옴
+// 공유 자료 계약과 허용 어휘 가져옴
 import {
     CAMERA_SUFFICIENCY_LEVELS,
     DECISION_NATURES,
@@ -20,7 +18,9 @@ import {
     RESTART_BENEFICIARIES,
     RESTART_TYPES,
     REVIEW_SCENARIOS,
-    SEND_OFF_CATEGORIES
+    SEND_OFF_CATEGORIES,
+    type EvaluationFacts,
+    type PushFacts
 } from "@replay/shared-types";
 
 // 외부 식별자의 고유 식별자 형식 검사 패턴 생성

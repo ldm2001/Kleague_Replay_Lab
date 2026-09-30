@@ -1,7 +1,7 @@
 // 규정 자료와 평가 기능 가져옴
 import { competitionSet } from "@replay/rule-data";
 // 규정 자료와 평가 기능 가져옴
-import { perceptionModelPins, pushResult } from "@replay/rule-engine";
+import { pinnedModels, pushResult } from "@replay/rule-engine";
 // 공유 자료 계약과 검증 기능 가져옴
 import {
     AUTOMATIC_REVIEW_VERSION,
@@ -134,21 +134,8 @@ export const automaticReview = (
         // 처리 버전 불일치를 모든 후보의 보류 사유에 기록
         sharedReasons.push("PIPELINE_VERSION_UNVERIFIED");
     }
-    // 승인된 각 모델의 고정 버전과 가중치 출처 순회
-    for (const pin of Object.values(perceptionModelPins)) {
-        // 실행 모델 목록에서 승인된 버전과 가중치 해시의 정확한 일치 확인
-        if (
-            !run.models.some(
-                (model) =>
-                    model.component === pin.component &&
-                    model.modelId === pin.modelId &&
-                    model.revision === pin.revision &&
-                    model.weightsSha256 === pin.weightsSha256
-            )
-        )
-            // 고정되지 않은 모델 출처를 공통 보류 사유에 기록
-            sharedReasons.push("MODEL_PROVENANCE_UNPINNED");
-    }
+    // 고정되지 않은 모델 출처를 공통 보류 사유에 기록
+    if (!pinnedModels(run.models)) sharedReasons.push("MODEL_PROVENANCE_UNPINNED");
     // 경기 식별자와 검증 상태를 갖춘 규정 문맥만 선택
     const rule =
         input.rule?.verificationStatus === "VERIFIED" && input.rule.matchId ? input.rule : null;

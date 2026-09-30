@@ -10,22 +10,22 @@ import {
 } from "@aws-sdk/client-s3";
 // 객체 저장소 명령과 서명 기능 가져옴
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-// 분석 처리 유스케이스와 저장소 계약 가져옴
-import type {
-    CompletionStorage,
-    UploadStorage,
-    EvidenceBody,
-    EvidenceBodyStorage,
-    EvidenceGrant,
-    EvidenceGrantInput,
-    EvidenceStorage,
-    JobSourceStorage,
-    PerceptionGrantInput,
-    UploadGrant,
-    UploadedObjectHead
+// 저장소 계약과 검증 상한 초과 및 요청 구간 불충족을 저장소 장애와 구별하는 오류 가져옴
+import {
+    ObjectLimitError,
+    RangeNotSatisfiableError,
+    type CompletionStorage,
+    type UploadStorage,
+    type EvidenceBody,
+    type EvidenceBodyStorage,
+    type EvidenceGrant,
+    type EvidenceGrantInput,
+    type EvidenceStorage,
+    type JobSourceStorage,
+    type PerceptionGrantInput,
+    type UploadGrant,
+    type UploadedObjectHead
 } from "@replay/application";
-// 검증 상한 초과와 요청 구간 불충족을 저장소 장애와 구별하는 오류 가져옴
-import { ObjectLimitError, RangeNotSatisfiableError } from "@replay/application";
 
 // 객체 저장소 명령 실행 인터페이스 정의
 export type S3ObjectClient = Readonly<{

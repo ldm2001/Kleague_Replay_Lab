@@ -1,5 +1,4 @@
 // 화면 구성에 필요한 기능과 공유 자료 형식 읽음
-import { memo, useEffect, useRef } from "react";
 import * as React from "react";
 import type { CandidateView } from "@replay/application";
 
@@ -38,7 +37,7 @@ const time = (value: number): string => {
 };
 
 // 같은 입력의 후보 행을 다시 그리지 않도록 화면 함수 감쌈
-const SceneRow = memo(function SceneRow({
+const SceneRow = React.memo(function SceneRow({
     analysisId,
     candidate,
     index,
@@ -46,7 +45,7 @@ const SceneRow = memo(function SceneRow({
     onSelect
 }: SceneRowProps) {
     // 활성 행 참조
-    const row = useRef<HTMLLIElement>(null);
+    const row = React.useRef<HTMLLIElement>(null);
     // 대표 프레임 선택
     const frame = candidate.evidence?.find((item) => item.kind === "FRAME");
     // 선택 후보의 비디오 판독 범위 평가 읽음
@@ -93,7 +92,7 @@ const SceneRow = memo(function SceneRow({
             : "파이프라인 후보";
 
     // 선택 상태가 바뀌면 활성 행을 보이도록 화면 효과 연결
-    useEffect(() => {
+    React.useEffect(() => {
         // 활성 후보를 목록 안에서 보이도록 이동
         if (active && typeof row.current?.scrollIntoView === "function") {
             // 선택 행이 보이도록 가장 가까운 위치까지 목록 이동

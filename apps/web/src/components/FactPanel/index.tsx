@@ -2,7 +2,6 @@
 
 // 화면 구성에 필요한 기능과 공유 자료 형식 읽음
 import * as React from "react";
-import { useEffect, useRef, useState } from "react";
 import type { CandidateView } from "@replay/application";
 import { reviewFacts, reviewFields, reviewValues } from "../../constant/review";
 
@@ -43,31 +42,33 @@ export function FactPanel({
     // 저장된 최신 사실은 판정 실패 후에도 복원
     const previous = candidate.facts ?? candidate.judgment?.facts;
     // 사용자가 직접 확인한 값 관리
-    const [values, valuesState] = useState(() => reviewValues(previous));
+    const [values, valuesState] = React.useState(() => reviewValues(previous));
     // 근거 샷은 자동 확정하지 않고 선택 필요
-    const [shots, shotsState] = useState<string[]>(
+    const [shots, shotsState] = React.useState<string[]>(
         () => previous?.push.contactDetected.shotIds ?? []
     );
     // 저장된 사실에서 달라진 입력 추적
-    const [dirty, dirt] = useState(false);
+    const [dirty, dirt] = React.useState(false);
     // 검토 유형 명시적 확인
-    const [confirmed, confirmation] = useState(false);
+    const [confirmed, confirmation] = React.useState(false);
     // 처리 상태와 오류 안내
-    const [busy, activity] = useState(false);
+    const [busy, activity] = React.useState(false);
     // 사실 저장과 규정 대조 안내 상태 생성
-    const [notice, notification] = useState("");
+    const [notice, notification] = React.useState("");
     // 빠른 이중 제출과 화면 종료 뒤 갱신 차단
-    const pending = useRef(false);
+    const pending = React.useRef(false);
     // 화면 종료 후 상태 갱신을 막을 참조 생성
-    const alive = useRef(true);
+    const alive = React.useRef(true);
     // 같은 사실 재시도에는 같은 멱등 키 유지
-    const submission = useRef<{ fingerprint: string; key: string; expected: string | null } | null>(
-        null
-    );
+    const submission = React.useRef<
+        { fingerprint: string; key: string; expected: string | null } | null
+    >(null);
     // 서버가 승인한 최신 이력 추적
-    const revision = useRef(candidate.factRevisionId ?? candidate.judgment?.factRevisionId ?? null);
+    const revision = React.useRef(
+        candidate.factRevisionId ?? candidate.judgment?.factRevisionId ?? null
+    );
     // 화면 종료 시 후속 요청과 화면 갱신 중단
-    useEffect(() => {
+    React.useEffect(() => {
         // 화면이 활성 상태임을 기록
         alive.current = true;
         // 화면 종료 시 실행할 자원 정리 함수 반환

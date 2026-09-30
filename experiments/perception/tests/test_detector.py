@@ -6,6 +6,8 @@ from pathlib import Path
 import numpy as np
 # 예외 기대와 반복 사례 검증 도구 읽음
 import pytest
+# 시험에 필요한 인식 구현과 자료 계약 읽음
+from replay_perception import detector
 
 
 # 실제 외부 실행을 대신할 시험 객체 정의
@@ -217,9 +219,6 @@ class FakeTransformers:
 # 검출기 시험 실행 환경 생성
 @pytest.fixture
 def detector_runtime(monkeypatch, tmp_path):
-    # 시험에 필요한 인식 구현과 자료 계약 읽음
-    from replay_perception import detector
-
     # 모델 메타데이터의 시험 항목 구성
     metadata = {
         # 모델 명세 판본의 1 시험값 지정

@@ -57,6 +57,14 @@ import {
     uploadIntentStatus,
     videoAssetStatus
 } from "./enums";
+// 관측 기록 열에 담는 공유 자료 계약 가져옴
+import type {
+    BroadcastCue,
+    PerceptionModelProvenance,
+    SceneEvent,
+    SceneObservation,
+    TrackingSummary
+} from "@replay/shared-types";
 
 // 데이터 접근 계층 조회 스키마와 마이그레이션 계약
 
@@ -405,7 +413,7 @@ export const analysisPerceptionRuns = pgTable(
         artifactSizeBytes: bigint("artifact_size_bytes", { mode: "number" }).notNull(),
         // 사용한 모델과 고정 가중치의 출처
         modelProvenance: jsonb("model_provenance")
-            .$type<import("@replay/shared-types").PerceptionModelProvenance[]>()
+            .$type<PerceptionModelProvenance[]>()
             .notNull(),
         // 세부 자료에서 보존할 처리 요약
         summary: jsonb().$type<Record<string, unknown>>().notNull(),
@@ -527,13 +535,13 @@ export const incidentCandidates = pgTable(
         // 현재 참조하는 사실 기록 판본 식별자
         currentFactRevisionId: uuid("current_fact_revision_id"),
         // 동일 물체의 연속 이동 관측
-        tracking: jsonb().$type<import("@replay/shared-types").TrackingSummary>(),
+        tracking: jsonb().$type<TrackingSummary>(),
         // 장면에서 인식한 사건과 근거
-        sceneEvent: jsonb("scene_event").$type<import("@replay/shared-types").SceneEvent>(),
+        sceneEvent: jsonb("scene_event").$type<SceneEvent>(),
         // 규정 사실과 구분하여 보존하는 방송 단서
-        broadcastCue: jsonb("broadcast_cue").$type<import("@replay/shared-types").BroadcastCue>(),
+        broadcastCue: jsonb("broadcast_cue").$type<BroadcastCue>(),
         // 과거 관찰 전송 자료 보존용 필드 현재 작업자는 채우지 않음
-        observation: jsonb().$type<import("@replay/shared-types").SceneObservation>(),
+        observation: jsonb().$type<SceneObservation>(),
         // 후보에 대한 규정 검토 진행 상태
         reviewStatus: candidateReviewStatus("review_status").notNull(),
         // 기록이 처음 생성된 시각

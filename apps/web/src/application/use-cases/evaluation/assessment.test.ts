@@ -1,6 +1,6 @@
 // 평가 엔진 테스트
 import { describe, expect, it } from "vitest";
-import type { CompetitionOptions, PushFacts, VarFacts } from "@replay/shared-types";
+import type { CompetitionOptions, ObservedDecision, PushFacts, VarFacts } from "@replay/shared-types";
 import { competitionSet, ruleSet } from "@replay/rule-data";
 import { pushResult, varResult } from "@replay/rule-engine";
 import { assessment } from "./assessment.js";
@@ -224,7 +224,7 @@ describe("assessment", () => {
                 source: "USER_INPUT"
             }
         } as Parameters<typeof operation>[0] & {
-            observed: import("@replay/shared-types").ObservedDecision;
+            observed: ObservedDecision;
         };
         // 작업 결과를 결과에 저장
         const result = await operation(input);

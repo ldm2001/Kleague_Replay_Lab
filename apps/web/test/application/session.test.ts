@@ -22,7 +22,7 @@ const policy: SessionPolicy = { ttlMs: 24 * 60 * 60 * 1000 };
 class SessionStoreFake implements SessionStore {
     readonly issued: Array<Parameters<SessionStore["issue"]>[0]> = [];
     readonly lookups: Array<Parameters<SessionStore["lookup"]>[0]> = [];
-    issuedResult = { sessionId: SESSION_ID, token: "session-token" };
+    issuedResult = { sessionId: SESSION_ID };
     lookupResult: Awaited<ReturnType<SessionStore["lookup"]>> = { sessionId: SESSION_ID };
 
     // 검증용 발급 구성
@@ -55,17 +55,24 @@ class HashFake implements Hasher {
 }
 
 describe("session", () => {
-    it("issues a session with a bounded expiry", async () => {
+    it("issues a session with a bounded expiry and stores only the token hash", async () => {
         // 세션 발급 실행
         const repository = new SessionStoreFake();
+        // 해시계산기 시험용 해시 모의 준비
+        const hasher = new HashFake();
+        // 고정 토큰을 돌려주는 비밀 토큰 모의 준비
+        const secret = { token: () => "session-token" };
 
         // 세션 결과를 결과에 저장
-        const result = await session({ clock, policy, repository })();
+        const result = await session({ clock, hasher, policy, repository, secret })();
 
-        // 결과의 세션 식별자 및 토큰 세션 토큰 자료 기준 구조 일치 확인
+        // 결과의 세션 식별자 및 원문 토큰 자료 기준 구조 일치 확인
         expect(result).toEqual({ sessionId: SESSION_ID, token: "session-token" });
-        // 저장소의 1개 항목 목록 기준 구조 일치 확인
+        // 조회와 같은 해시 계산기에 발급 토큰을 넘겼는지 확인
+        expect(hasher.values).toEqual(["session-token"]);
+        // 저장소에는 원문 토큰 없이 해시와 기한만 전달했는지 확인
         expect(repository.issued).toEqual([{
+            tokenHash: Uint8Array.from([1, 2, 3]),
             createdAt: "2030-01-01T12:00:00.000Z",
             expiresAt: "2030-01-02T12:00:00.000Z",
         }]);
