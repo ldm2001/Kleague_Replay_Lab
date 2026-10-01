@@ -153,6 +153,22 @@ _APPROVED_MODELS: dict[str, dict[str, Any]] = {
         ],
     },
 }
+# 승인 검출 모델 키를 지정 문자열 값으로 설정
+DETECTOR_KEY = "detector"
+# 승인 검출 모델의 캐시 폴더 이름을 승인 검출 모델 값으로 설정
+DETECTOR_SLUG = "rtdetr_r18vd"
+# 승인 검출 모델의 고정 판본 식별자를 고정 식별 문자열 값으로 설정
+DETECTOR_REVISION = "ac77a11ff0170a41b771c03264987f8ce2b0d753"
+# 승인 검출 모델 식별자를 지정 문자열 값으로 설정
+_DETECTOR_ID = "PekingU/rtdetr_r18vd"
+# 승인 검출 모델 호스트를 지정 문자열 값으로 설정
+_DETECTOR_HOST = "https://huggingface.co"
+# 승인 검출 모델 파일 이름 목록에 여러 값을 순서대로 모은 자료의 변경 불가 집합 변환 결과 저장
+_DETECTOR_FILENAMES = frozenset(
+    {"config.json", "preprocessor_config.json", "model.safetensors", "README.md"}
+)
+# 내려받기 경로가 받는 모델 키 목록에 검출 모델과 승인 관측 모델 키 저장
+MODEL_KEYS = (DETECTOR_KEY, *_APPROVED_MODELS)
 
 # 관측 모델 자산 명세 읽음
 def observerManifest() -> dict[str, Any]:
@@ -193,3 +209,92 @@ def manifestModel(model_key: str) -> dict[str, Any]:
     approvedModel(model_key)
     # 중첩 값까지 독립된 사본 반환
     return deepcopy(manifest["models"][model_key])
+
+# 검출 모델 자산 명세 읽음
+def detectorManifest() -> dict[str, Any]:
+    # 자산 명세 경로에 하위 경로 결합 처리 결과 저장
+    manifest_path = resources.files("replay_perception").joinpath("model-manifest.json")
+    # 자산 명세에 직렬화 문자열을 해석한 자료 저장
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    # 검출 명세 입력 검사으로 자산 명세의 계약 확인
+    detectorValidation(manifest)
+    # 자산 명세 반환
+    return manifest
+
+# 검출 모델 자산 명세 입력 검사
+def detectorValidation(manifest: dict[str, Any]) -> None:
+    # 모델 명세의 승인 값과 파일 계약에서 벗어난 항목이 있는지 확인
+    if (
+        manifest.get("schema_version") != 1
+        or manifest.get("model_id") != _DETECTOR_ID
+        or manifest.get("revision") != DETECTOR_REVISION
+        or manifest.get("architecture") != "RTDetrForObjectDetection"
+        or manifest.get("disable_custom_kernels") is not True
+        or manifest.get("labels") != ["person", "sports ball"]
+        or manifest.get("threshold") != 0.30
+    ):
+        # 모델 자산 명세 유효하지 않음 오류 알림
+        raise ValueError("MODEL_MANIFEST_INVALID")
+
+    # 명세 항목 목록에 파일 목록의 키에 해당하는 값 저장
+    entries = manifest.get("files")
+    # 모델 자산 명세의 자료 형식과 허용 조건 확인
+    if not isinstance(entries, list) or not entries:
+        # 모델 자산 명세 유효하지 않음 오류 알림
+        raise ValueError("MODEL_MANIFEST_INVALID")
+    # 이미 확인한에 빈 중복을 없앤 집합 저장
+    seen: set[str] = set()
+    # 다른 판본이나 저장소 주소를 허용하지 않도록 승인 다운로드 주소의 고정 접두 경로 생성
+    prefix = f"{_DETECTOR_HOST}/{_DETECTOR_ID}/resolve/{DETECTOR_REVISION}/"
+    # 명세 항목 목록에서 명세 항목을 하나씩 읽음
+    for entry in entries:
+        # 이름에 이름의 키에 해당하는 값 저장
+        name = entry.get("name")
+        # 모델 자산 명세의 자료 형식과 허용 조건 확인
+        if name not in _DETECTOR_FILENAMES or name in seen:
+            # 모델 자산 명세 유효하지 않음 오류 알림
+            raise ValueError("MODEL_MANIFEST_INVALID")
+        # 이미 확인한에 이름을 중복 없이 추가
+        seen.add(name)
+        # 모델 명세의 승인 값과 파일 계약에서 벗어난 항목이 있는지 확인
+        if (
+            entry.get("url") != prefix + name
+            or not isinstance(entry.get("sha256"), str)
+            or len(entry["sha256"]) != 64
+            or not isinstance(entry.get("size"), int)
+            or isinstance(entry["size"], bool)
+            or entry["size"] <= 0
+            or not isinstance(entry.get("required"), bool)
+        ):
+            # 모델 자산 명세 유효하지 않음 오류 알림
+            raise ValueError("MODEL_MANIFEST_INVALID")
+
+# 모델 키별 오류 코드 접두사 반환
+def codePrefix(model_key: str) -> str:
+    # 모델 키 및 검출 모델의 일치 조건 확인
+    if model_key == DETECTOR_KEY:
+        # 검출 모델 오류 코드 접두사 반환
+        return "MODEL"
+    # 승인된 모델으로 모델 키의 계약 확인
+    approvedModel(model_key)
+    # 관측 모델 오류 코드 접두사 반환
+    return "OBSERVER_MODEL"
+
+# 승인 자산 명세의 요청 모델 파일 검색
+def approvedEntry(model_key: str, filename: str) -> dict[str, Any]:
+    # 모델 키 및 검출 모델의 일치 조건 확인
+    if model_key == DETECTOR_KEY:
+        # 명세 항목 목록에 검출 모델 자산 명세의 파일 목록 저장
+        entries = detectorManifest()["files"]
+    # 앞선 분기에 해당하지 않는 경우 처리
+    else:
+        # 명세 항목 목록에 관측 모델 자산 명세의 파일 목록 저장
+        entries = manifestModel(model_key)["files"]
+    # 명세 항목 목록에서 명세 항목을 하나씩 읽음
+    for entry in entries:
+        # 명세 항목의 이름 및 파일 이름의 일치 조건 확인
+        if entry["name"] == filename:
+            # 명세 항목 반환
+            return entry
+    # 모델 파일 유효하지 않음 오류 알림
+    raise ValueError(f"{codePrefix(model_key)}_FILE_INVALID: {filename}")

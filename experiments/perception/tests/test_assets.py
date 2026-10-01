@@ -2,14 +2,16 @@
 import hashlib
 # 메모리 바이트 입출력 도구 읽음
 import io
-# 보안 다운로드 연결 도구 읽음
-import ssl
+# 파일 핸들을 다룰 운영체제 도구 읽음
+import os
 # 시험 파일 경로 도구 읽음
 from pathlib import Path
+# 다운로드 요청 도구 읽음
+from urllib.request import Request
 # 예외 기대와 반복 사례 검증 도구 읽음
 import pytest
 # 시험에 필요한 인식 구현과 자료 계약 읽음
-from replay_perception import assets
+from replay_perception import assets, catalog, transport, weights
 
 
 # 고정 모델 판본 준비
@@ -96,10 +98,54 @@ class FakeResponse:
         # 요청한 분량의 바이트 자료 반환
         return self._stream.read(amount)
 
+# 제한된 자식을 실제 크기와 해시 검증 코드를 거치는 제어된 전송으로 대체
+@pytest.fixture(autouse=True)
+def _replace_bounded_child_with_controlled_transport(monkeypatch):
+    # 제한된 자식을 제어된 전송으로 대체 의존성의 시험 대역 주입
+    monkeypatch.setattr(assets, "_urlopen", None, raising=False)
+
+    # 제어된 전송 실행
+    def controlled_transfer(model_key, filename, descriptor, timeout_seconds):
+        # 검출 모델 키로 전송을 요청했는지 확인
+        assert model_key == "detector"
+        # 검출 모델에 고정된 자산 명세 읽음
+        manifest = assets.detectorManifest()
+        # 조건에 맞는 다음 항목 생성
+        entry = next(item for item in manifest["files"] if item["name"] == filename)
+        # 제어된 전송 입력의 비교 결과별 분기
+        if assets._urlopen is None:
+            # 제어된 전송의 예외 상황 재현
+            raise AssertionError("test must provide controlled transport")
+        # 자산 다운로드 요청 준비
+        request = Request(
+            entry["url"],
+            # 전송 응답 헤더의 호출 조건 지정
+            headers={"User-Agent": "Replay-Lab-Perception/0.1"},
+            # 관측 방법의 호출 조건 지정
+            method="GET",
+        )
+        # 제어된 전송 처리 자원의 사용 구간 시작
+        with assets._urlopen(
+            request,
+            # 제한 시간의 호출 조건 지정
+            timeout=min(transport.READ_TIMEOUT_SECONDS, timeout_seconds),
+        ) as response:
+            # 부모가 닫는 핸들과 분리한 복제 핸들로 출력 스트림 연결
+            with os.fdopen(os.dup(descriptor), "wb") as output:
+                # 실제 크기와 해시 검증 코드로 응답을 출력에 기록
+                transport.responseStream(response, entry, output, model_key)
+
+    # 제한된 자식을 제어된 전송으로 대체 의존성의 시험 대역 주입
+    monkeypatch.setattr(
+        weights,
+        'boundedDownload',
+        controlled_transfer,
+    )
+
 # 승인된 모델 자산만 고정한 명세 확인
 def test_packaged_manifest_pins_only_the_approved_model_assets():
     # 고정 모델 명세 준비
-    manifest = assets.assetManifest()
+    manifest = catalog.detectorManifest()
     # 승인 모델 식별자의 기대 자료 일치 확인
     assert manifest["model_id"] == "PekingU/rtdetr_r18vd"
     # 고정 모델 판본의 기대 자료 일치 확인
@@ -190,9 +236,13 @@ def test_default_model_dir_is_outside_the_repository(monkeypatch, tmp_path):
 # 모델 파일 누락의 고정 실패 코드 확인
 def test_missing_model_file_has_a_stable_failure_code(tmp_path):
     # 모델 계약 오류 발생 기대
-    with pytest.raises(FileNotFoundError, match="MODEL_FILE_MISSING"):
-        # 고정 해시와 대조한 자산 정보 실행
-        assets.verification(tmp_path / "model.safetensors", "0" * 64)
+    with pytest.raises(FileNotFoundError, match="^MODEL_FILE_MISSING: model.safetensors$"):
+        # 검출 모델 키로 자산 항목 무결성 검증 실행
+        weights.entryValidation(
+            tmp_path / "model.safetensors",
+            _entry("model.safetensors", b"weights"),
+            "detector",
+        )
 
 # 변조된 모델 거부 확인
 def test_tampered_model_is_rejected(tmp_path):
@@ -201,9 +251,28 @@ def test_tampered_model_is_rejected(tmp_path):
     # 파일 경로에 시험 바이트 기록
     path.write_bytes(b"tampered")
     # 파일 해시 불일치 발생 기대
-    with pytest.raises(ValueError, match="MODEL_HASH_MISMATCH"):
-        # 고정 해시와 대조한 자산 정보 실행
-        assets.verification(path, "0" * 64)
+    with pytest.raises(ValueError, match="^MODEL_HASH_MISMATCH: model.safetensors$"):
+        # 검출 모델 키로 자산 항목 무결성 검증 실행
+        weights.entryValidation(
+            path,
+            _entry("model.safetensors", b"expected"),
+            "detector",
+        )
+
+# 크기만 다른 모델 파일 거부 확인
+def test_model_file_with_a_different_size_is_rejected(tmp_path):
+    # 전송 본문 준비
+    payload = b"verified local bytes"
+    # 파일 경로 준비
+    path = tmp_path / "config.json"
+    # 파일 경로에 시험 바이트 기록
+    path.write_bytes(payload)
+    # 해시는 맞지만 기대 크기만 다른 자산 항목 준비
+    entry = {**_entry("config.json", payload), "size": len(payload) + 1}
+    # 파일 크기 불일치 발생 기대
+    with pytest.raises(ValueError, match="^MODEL_SIZE_MISMATCH: config.json$"):
+        # 검출 모델 키로 자산 항목 무결성 검증 실행
+        weights.entryValidation(path, entry, "detector")
 
 # 유효한 모델 파일 허용 확인
 def test_valid_model_file_is_accepted(tmp_path):
@@ -214,7 +283,7 @@ def test_valid_model_file_is_accepted(tmp_path):
     # 파일 경로에 시험 바이트 기록
     path.write_bytes(payload)
     # 유효한 파일 검증이 예외 없이 끝나고 별도 값을 반환하지 않음 확인
-    assert assets.verification(path, hashlib.sha256(payload).hexdigest()) is None
+    assert weights.entryValidation(path, _entry("config.json", payload), "detector") is None
 
 # 필수 파일 검증과 출처 기록 확인
 def test_verify_model_assets_requires_all_required_files_and_reports_provenance(
@@ -227,7 +296,7 @@ def test_verify_model_assets_requires_all_required_files_and_reports_provenance(
     # 고정 자산 시험 명세 읽음
     manifest = _manifest(_entry("config.json", first), _entry("model.safetensors", second))
     # 필수 파일 검증과 출처 기록 의존성의 시험 대역 주입
-    monkeypatch.setattr(assets, 'assetManifest', lambda: manifest)
+    monkeypatch.setattr(assets, 'detectorManifest', lambda: manifest)
     # 시험 파일 경로에 시험 바이트 기록
     (tmp_path / "config.json").write_bytes(first)
     # 시험 파일 경로에 시험 바이트 기록
@@ -263,14 +332,35 @@ def test_optional_model_card_is_verified_when_present(monkeypatch, tmp_path):
         _entry("README.md", b"expected card", required=False),
     )
     # 선택적 모델 카드 존재 시 검증 의존성의 시험 대역 주입
-    monkeypatch.setattr(assets, 'assetManifest', lambda: manifest)
+    monkeypatch.setattr(assets, 'detectorManifest', lambda: manifest)
     # 시험 파일 경로에 시험 바이트 기록
     (tmp_path / "config.json").write_bytes(required)
     # 시험 파일 경로에 시험 바이트 기록
     (tmp_path / "README.md").write_bytes(optional)
 
     # 파일 해시 불일치 발생 기대
-    with pytest.raises(ValueError, match="MODEL_HASH_MISMATCH"):
+    with pytest.raises(ValueError, match="^MODEL_HASH_MISMATCH"):
+        # 승인 모델 자산의 검증 결과 실행
+        assets.assetVerification(tmp_path)
+
+# 대상 없는 선택 모델 카드 링크의 누락 거부 확인
+def test_optional_model_card_dangling_link_is_rejected(monkeypatch, tmp_path):
+    # 필수 자산 파일 준비
+    required = b"config"
+    # 고정 자산 시험 명세 읽음
+    manifest = _manifest(
+        _entry("config.json", required),
+        _entry("README.md", b"expected card", required=False),
+    )
+    # 대상 없는 선택 모델 카드 링크의 누락 거부 의존성의 시험 대역 주입
+    monkeypatch.setattr(assets, 'detectorManifest', lambda: manifest)
+    # 시험 파일 경로에 시험 바이트 기록
+    (tmp_path / "config.json").write_bytes(required)
+    # 대상이 없는 심볼릭 링크 생성
+    (tmp_path / "README.md").symlink_to(tmp_path / "missing-card")
+
+    # 파일 누락 발생 기대
+    with pytest.raises(FileNotFoundError, match="^MODEL_FILE_MISSING: README.md$"):
         # 승인 모델 자산의 검증 결과 실행
         assets.assetVerification(tmp_path)
 
@@ -281,7 +371,7 @@ def test_download_reuses_a_verified_existing_file_without_network(monkeypatch, t
     # 고정 자산 시험 명세 읽음
     manifest = _manifest(_entry("config.json", payload))
     # 네트워크 없이 검증된 기존 파일 재사용 의존성의 시험 대역 주입
-    monkeypatch.setattr(assets, 'assetManifest', lambda: manifest)
+    monkeypatch.setattr(assets, 'detectorManifest', lambda: manifest)
     # 파일 경로 준비
     path = tmp_path / "config.json"
     # 파일 경로에 시험 바이트 기록
@@ -310,7 +400,11 @@ def test_download_rejects_an_invalid_existing_file_without_replacing_it(monkeypa
     # 파일 경로에 시험 바이트 기록
     path.write_bytes(b"user cache content")
     # 잘못된 기존 파일의 교체 없는 거부 의존성의 시험 대역 주입
-    monkeypatch.setattr(assets, 'assetManifest', lambda: _manifest(_entry("config.json", expected)))
+    monkeypatch.setattr(
+        assets,
+        'detectorManifest',
+        lambda: _manifest(_entry("config.json", expected)),
+    )
 
     # 금지된 네트워크 호출 검출
     def network_must_not_run(*_args, **_kwargs):
@@ -320,14 +414,14 @@ def test_download_rejects_an_invalid_existing_file_without_replacing_it(monkeypa
     # 잘못된 기존 파일의 교체 없는 거부 의존성의 시험 대역 주입
     monkeypatch.setattr(assets, "_urlopen", network_must_not_run)
     # 파일 해시 불일치 발생 기대
-    with pytest.raises(ValueError, match="MODEL_HASH_MISMATCH"):
+    with pytest.raises(ValueError, match="^MODEL_HASH_MISMATCH"):
         # 승인 자산 다운로드 결과 실행
         assets.download(tmp_path)
     # 파일의 원래 바이트 자료의 기대 자료 일치 확인
     assert path.read_bytes() == b"user cache content"
 
 # 디렉터리 생성과 통신 전 저장소 상위 경로 거부 확인
-@pytest.mark.parametrize("git_marker_kind", ["directory", "file"])
+@pytest.mark.parametrize("git_marker_kind", ["directory", "file", "dangling_symlink"])
 def test_download_rejects_repository_ancestor_before_mkdir_or_network(
     monkeypatch, tmp_path, git_marker_kind
 ):
@@ -341,9 +435,14 @@ def test_download_rejects_repository_ancestor_before_mkdir_or_network(
     if git_marker_kind == "directory":
         # 시험 식별 값 생성
         marker.mkdir()
-    else:
+    # 표식 종류가 파일인지 확인
+    elif git_marker_kind == "file":
         # 시험 식별 값에 시험 문자열 기록
         marker.write_text("gitdir: ../metadata/worktrees/test\n", encoding="utf-8")
+    # 앞선 분기에 해당하지 않는 경우 처리
+    else:
+        # 대상이 없는 심볼릭 링크 표식 생성
+        marker.symlink_to(repository / "missing-git-target")
     # 대상 경로 준비
     target = repository / "nested" / "model-cache"
     # 네트워크 호출 이력의 빈 누적 공간 생성
@@ -351,7 +450,7 @@ def test_download_rejects_repository_ancestor_before_mkdir_or_network(
     # 디렉터리 생성과 통신 전 저장소 상위 경로 거부 의존성의 시험 대역 주입
     monkeypatch.setattr(
         assets,
-        'assetManifest',
+        'detectorManifest',
         lambda: _manifest(_entry("config.json", b"expected")),
     )
     # 디렉터리 생성과 통신 전 저장소 상위 경로 거부 의존성의 시험 대역 주입
@@ -362,7 +461,7 @@ def test_download_rejects_repository_ancestor_before_mkdir_or_network(
     )
 
     # 파일 경로 오류 발생 기대
-    with pytest.raises(ValueError, match="MODEL_PATH_IN_REPOSITORY"):
+    with pytest.raises(ValueError, match="^MODEL_PATH_IN_REPOSITORY"):
         # 승인 자산 다운로드 결과 실행
         assets.download(target)
 
@@ -390,7 +489,7 @@ def test_download_rejects_symlink_that_resolves_inside_a_repository(monkeypatch,
     # 저장소 내부를 가리키는 심볼릭 링크 다운로드 거부 의존성의 시험 대역 주입
     monkeypatch.setattr(
         assets,
-        'assetManifest',
+        'detectorManifest',
         lambda: _manifest(_entry("config.json", b"expected")),
     )
     # 저장소 내부를 가리키는 심볼릭 링크 다운로드 거부 의존성의 시험 대역 주입
@@ -401,7 +500,7 @@ def test_download_rejects_symlink_that_resolves_inside_a_repository(monkeypatch,
     )
 
     # 파일 경로 오류 발생 기대
-    with pytest.raises(ValueError, match="MODEL_PATH_IN_REPOSITORY"):
+    with pytest.raises(ValueError, match="^MODEL_PATH_IN_REPOSITORY"):
         # 승인 자산 다운로드 결과 실행
         assets.download(target)
 
@@ -427,34 +526,34 @@ def test_verification_rejects_assets_located_inside_a_repository(monkeypatch, tm
     # 저장소 내부 자산의 검증 거부 의존성의 시험 대역 주입
     monkeypatch.setattr(
         assets,
-        'assetManifest',
+        'detectorManifest',
         lambda: _manifest(_entry("config.json", payload)),
     )
 
     # 파일 경로 오류 발생 기대
-    with pytest.raises(ValueError, match="MODEL_PATH_IN_REPOSITORY"):
+    with pytest.raises(ValueError, match="^MODEL_PATH_IN_REPOSITORY"):
         # 승인 모델 자산의 검증 결과 실행
         assets.assetVerification(model_dir)
 
-# 검증된 보안 연결과 제한 시간 및 고정 주소 사용 확인
-def test_download_uses_verified_tls_timeout_and_fixed_url(monkeypatch, tmp_path):
+# 고정 주소와 제한 시간 사용 확인
+def test_download_uses_fixed_url_and_bounded_timeout(monkeypatch, tmp_path):
     # 전송 본문 준비
     payload = b"downloaded"
     # 시험 자산 명세 항목 읽음
     entry = _entry("config.json", payload)
-    # 검증된 보안 연결과 제한 시간 및 고정 주소 사용 의존성의 시험 대역 주입
-    monkeypatch.setattr(assets, 'assetManifest', lambda: _manifest(entry))
+    # 고정 주소와 제한 시간 사용 의존성의 시험 대역 주입
+    monkeypatch.setattr(assets, 'detectorManifest', lambda: _manifest(entry))
     # 관측 결과의 빈 누적 공간 생성
     observed = {}
 
     # 모의 주소 응답 반환
-    def fake_urlopen(request, *, timeout, context):
+    def fake_urlopen(request, *, timeout):
         # 관측 결과에 현재 입력 반영
-        observed.update(url=request.full_url, timeout=timeout, context=context)
+        observed.update(url=request.full_url, timeout=timeout)
         # 다운로드 본문과 헤더를 가진 모의 응답 반환
         return FakeResponse(payload, content_length=len(payload))
 
-    # 검증된 보안 연결과 제한 시간 및 고정 주소 사용 의존성의 시험 대역 주입
+    # 고정 주소와 제한 시간 사용 의존성의 시험 대역 주입
     monkeypatch.setattr(assets, "_urlopen", fake_urlopen)
     # 승인 자산 다운로드 결과 실행
     assets.download(tmp_path)
@@ -463,10 +562,6 @@ def test_download_uses_verified_tls_timeout_and_fixed_url(monkeypatch, tmp_path)
     assert observed["url"] == entry["url"]
     # 다운로드 제한 시간이 양수이며 60초 이하인지 확인
     assert 0 < observed["timeout"] <= 60
-    # 보안 연결에서 서버 인증서 검증이 필수인지 확인
-    assert observed["context"].verify_mode == ssl.CERT_REQUIRED
-    # 보안 연결의 서버 호스트명 검증 활성화 확인
-    assert observed["context"].check_hostname is True
     # 파일의 원래 바이트 자료의 기대 자료 일치 확인
     assert (tmp_path / "config.json").read_bytes() == payload
     # 조건에 맞는 출력 파일 목록의 비교 자료의 부재 또는 비활성 확인
@@ -481,7 +576,7 @@ def test_download_rejects_declared_or_streamed_oversize_and_cleans_temp_files(
     # 시험 자산 명세 항목 읽음
     entry = _entry("config.json", expected)
     # 선언·전송 크기 초과 거부와 임시 파일 정리 의존성의 시험 대역 주입
-    monkeypatch.setattr(assets, 'assetManifest', lambda: _manifest(entry))
+    monkeypatch.setattr(assets, 'detectorManifest', lambda: _manifest(entry))
 
     # 선언·전송 크기 초과 거부와 임시 파일 정리 의존성의 시험 대역 주입
     monkeypatch.setattr(
@@ -490,7 +585,7 @@ def test_download_rejects_declared_or_streamed_oversize_and_cleans_temp_files(
         lambda *_args, **_kwargs: FakeResponse(expected + b"x", content_length=len(expected) + 1),
     )
     # 파일 크기 불일치 발생 기대
-    with pytest.raises(ValueError, match="MODEL_SIZE_MISMATCH"):
+    with pytest.raises(ValueError, match="^MODEL_SIZE_MISMATCH"):
         # 승인 자산 다운로드 결과 실행
         assets.download(tmp_path)
     # 파일 존재 여부의 부재 또는 비활성 확인
@@ -505,7 +600,7 @@ def test_download_rejects_declared_or_streamed_oversize_and_cleans_temp_files(
         lambda *_args, **_kwargs: FakeResponse(expected + b"x"),
     )
     # 파일 크기 불일치 발생 기대
-    with pytest.raises(ValueError, match="MODEL_SIZE_MISMATCH"):
+    with pytest.raises(ValueError, match="^MODEL_SIZE_MISMATCH"):
         # 승인 자산 다운로드 결과 실행
         assets.download(tmp_path)
     # 파일 존재 여부의 부재 또는 비활성 확인
@@ -518,7 +613,11 @@ def test_download_timeout_leaves_no_partial_or_published_file(monkeypatch, tmp_p
     # 기대 자료 준비
     expected = b"payload"
     # 다운로드 시간 초과 시 부분·공개 파일 부재 의존성의 시험 대역 주입
-    monkeypatch.setattr(assets, 'assetManifest', lambda: _manifest(_entry("config.json", expected)))
+    monkeypatch.setattr(
+        assets,
+        'detectorManifest',
+        lambda: _manifest(_entry("config.json", expected)),
+    )
 
     # 실제 외부 실행을 대신할 시험 객체 정의
     class TimedOutResponse(FakeResponse):
@@ -535,7 +634,7 @@ def test_download_timeout_leaves_no_partial_or_published_file(monkeypatch, tmp_p
         lambda *_args, **_kwargs: TimedOutResponse(expected, content_length=len(expected)),
     )
     # 제한 시간 초과 발생 기대
-    with pytest.raises(TimeoutError, match="MODEL_DOWNLOAD_TIMEOUT"):
+    with pytest.raises(TimeoutError, match="^MODEL_DOWNLOAD_TIMEOUT"):
         # 승인 자산 다운로드 결과 실행
         assets.download(tmp_path)
     # 파일 존재 여부의 부재 또는 비활성 확인
@@ -551,7 +650,7 @@ def test_atomic_publication_never_clobbers_a_racing_cache_writer(monkeypatch, tm
     competing = b"other writer"
     # 동시 캐시 기록을 덮어쓰지 않는 원자적 공개 의존성의 시험 대역 주입
     monkeypatch.setattr(
-        assets, 'assetManifest', lambda: _manifest(_entry("config.json", downloaded))
+        assets, 'detectorManifest', lambda: _manifest(_entry("config.json", downloaded))
     )
     # 동시 캐시 기록을 덮어쓰지 않는 원자적 공개 의존성의 시험 대역 주입
     monkeypatch.setattr(
@@ -568,12 +667,123 @@ def test_atomic_publication_never_clobbers_a_racing_cache_writer(monkeypatch, tm
         raise FileExistsError(destination)
 
     # 후보 연결 기록의 시험 대역 주입
-    monkeypatch.setattr(assets.os, "link", racing_link)
+    monkeypatch.setattr(weights.os, "link", racing_link)
     # 파일 해시 불일치 발생 기대
-    with pytest.raises(ValueError, match="MODEL_HASH_MISMATCH"):
+    with pytest.raises(ValueError, match="^MODEL_HASH_MISMATCH"):
         # 승인 자산 다운로드 결과 실행
         assets.download(tmp_path)
     # 파일의 원래 바이트 자료의 기대 자료 일치 확인
     assert (tmp_path / "config.json").read_bytes() == competing
     # 조건에 맞는 출력 파일 목록의 비교 자료의 부재 또는 비활성 확인
     assert not list(tmp_path.glob(".*.download-*"))
+
+# 제한된 전송 위임과 양의 제한 시간 전달 확인
+def test_download_delegates_to_the_bounded_transfer_with_a_positive_deadline(monkeypatch, tmp_path):
+    # 전송 본문 준비
+    payload = b"delegated"
+    # 시험 자산 명세 항목 읽음
+    entry = _entry("config.json", payload)
+    # 제한된 전송 위임과 양의 제한 시간 전달 의존성의 시험 대역 주입
+    monkeypatch.setattr(assets, 'detectorManifest', lambda: _manifest(entry))
+    # 제한된 전송 호출 이력의 빈 누적 공간 생성
+    calls = []
+
+    # 제한된 전송 호출 기록
+    def recorder(model_key, filename, descriptor, timeout_seconds):
+        # 호출 이력에 모델 키와 파일 이름과 제한 시간 추가
+        calls.append((model_key, filename, timeout_seconds))
+        # 전달받은 핸들에 전송 본문 기록
+        os.write(descriptor, payload)
+
+    # 제한된 전송 위임과 양의 제한 시간 전달 의존성의 시험 대역 주입
+    monkeypatch.setattr(weights, 'boundedDownload', recorder)
+    # 승인 자산 다운로드 결과 실행
+    assets.download(tmp_path)
+
+    # 호출 이력의 모델 키와 파일 이름의 기대 자료 일치 확인
+    assert [call[:2] for call in calls] == [("detector", "config.json")]
+    # 제한 시간이 양수이며 전체 내려받기 한도 이하인지 확인
+    assert 0 < calls[0][2] <= weights.MAX_DOWNLOAD_SECONDS
+    # 파일의 원래 바이트 자료의 기대 자료 일치 확인
+    assert (tmp_path / "config.json").read_bytes() == payload
+
+# 선택 모델 카드까지 내려받는지 확인
+def test_download_fetches_the_optional_model_card_too(monkeypatch, tmp_path):
+    # 필수 자산 본문 준비
+    required = b"config"
+    # 선택 자산 본문 준비
+    optional = b"model card"
+    # 필수 자산 항목 읽음
+    config = _entry("config.json", required)
+    # 선택 자산 항목 읽음
+    card = _entry("README.md", optional, required=False)
+    # 선택 모델 카드 내려받기 의존성의 시험 대역 주입
+    monkeypatch.setattr(assets, 'detectorManifest', lambda: _manifest(config, card))
+    # 주소별 전송 본문 준비
+    bodies = {config["url"]: required, card["url"]: optional}
+
+    # 모의 주소 응답 반환
+    def fake_urlopen(request, *, timeout):
+        # 요청 주소에 대응하는 전송 본문 읽음
+        body = bodies[request.full_url]
+        # 다운로드 본문과 헤더를 가진 모의 응답 반환
+        return FakeResponse(body, content_length=len(body))
+
+    # 선택 모델 카드 내려받기 의존성의 시험 대역 주입
+    monkeypatch.setattr(assets, "_urlopen", fake_urlopen)
+    # 승인 자산 다운로드 결과 생성
+    metadata = assets.download(tmp_path)
+
+    # 필수 파일 바이트의 기대 자료 일치 확인
+    assert (tmp_path / "config.json").read_bytes() == required
+    # 선택 모델 카드 바이트의 기대 자료 일치 확인
+    assert (tmp_path / "README.md").read_bytes() == optional
+    # 검증 결과의 파일 목록에 두 파일의 해시가 모두 있는지 확인
+    assert metadata["files"] == {
+        "config.json": hashlib.sha256(required).hexdigest(),
+        "README.md": hashlib.sha256(optional).hexdigest(),
+    }
+
+# 제한된 전송 실패 시 부분·공개 파일 부재 확인
+def test_bounded_transfer_failure_leaves_no_partial_or_published_file(monkeypatch, tmp_path):
+    # 시험 자산 명세 항목 읽음
+    entry = _entry("config.json", b"payload")
+    # 제한된 전송 실패 의존성의 시험 대역 주입
+    monkeypatch.setattr(assets, 'detectorManifest', lambda: _manifest(entry))
+
+    # 일부 본문만 기록하고 실패하는 제한된 전송
+    def failing_transfer(_model_key, _filename, descriptor, _timeout_seconds):
+        # 임시 파일에 일부 본문 기록
+        os.write(descriptor, b"part")
+        # 제한된 전송의 예외 상황 재현
+        raise RuntimeError("MODEL_DOWNLOAD_FAILED: config.json")
+
+    # 제한된 전송 실패 의존성의 시험 대역 주입
+    monkeypatch.setattr(weights, 'boundedDownload', failing_transfer)
+    # 고정 내려받기 실패 발생 기대
+    with pytest.raises(RuntimeError, match="^MODEL_DOWNLOAD_FAILED: config.json$"):
+        # 승인 자산 다운로드 결과 실행
+        assets.download(tmp_path)
+    # 파일 존재 여부의 부재 또는 비활성 확인
+    assert not (tmp_path / "config.json").exists()
+    # 조건에 맞는 출력 파일 목록의 비교 자료의 부재 또는 비활성 확인
+    assert not list(tmp_path.glob(".*.download-*"))
+
+# 잘못된 명세의 폴더 생성 전 거부 확인
+def test_download_rejects_an_invalid_manifest_before_creating_directories(monkeypatch, tmp_path):
+    # 대상 경로 준비
+    target = tmp_path / "nested" / "model-cache"
+
+    # 잘못된 명세 읽기 실패 재현
+    def invalid_manifest():
+        # 잘못된 명세의 예외 상황 재현
+        raise ValueError("MODEL_MANIFEST_INVALID")
+
+    # 잘못된 명세의 폴더 생성 전 거부 의존성의 시험 대역 주입
+    monkeypatch.setattr(assets, 'detectorManifest', invalid_manifest)
+    # 모델 명세 오류 발생 기대
+    with pytest.raises(ValueError, match="^MODEL_MANIFEST_INVALID$"):
+        # 승인 자산 다운로드 결과 실행
+        assets.download(target)
+    # 대상 경로의 상위 폴더까지 생성되지 않았는지 확인
+    assert not (tmp_path / "nested").exists()

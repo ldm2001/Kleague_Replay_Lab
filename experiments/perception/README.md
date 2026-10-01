@@ -28,6 +28,7 @@ PYTHONPATH=src .venv/bin/python -m replay_perception.cache
 ```
 
 고정된 공식 HTTPS 주소에서만 모델과 설정을 내려받는다
+관측 모델과 같은 전송 경로를 쓰므로 재지정도 HTTPS만 따라가고 파일당 제한시간을 넘기면 별도 프로세스를 종료하며 검증 전 파일을 최종 캐시로 게시하지 않는다
 기본 경로는 `~/.cache/replay-lab/models/rtdetr_r18vd/ac77a11ff0170a41b771c03264987f8ce2b0d753`이다
 선택적으로 저장소 밖의 모델 디렉터리를 위치 인자로 지정할 수 있다
 가중치와 설정 및 모델 카드의 크기와 SHA256은 [model-manifest.json](src/replay_perception/model-manifest.json)에 고정했다
