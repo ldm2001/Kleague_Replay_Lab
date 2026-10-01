@@ -1159,6 +1159,403 @@ def test_exclusive_publish_never_clobbers_a_concurrent_cache_writer(
     # 조건에 맞는 출력 파일 목록의 비교 자료의 부재 또는 비활성 확인
     assert not list(tmp_path.glob(".*.download-*"))
 
+# 받은 바이트를 기록하고 정상 종료하는 자식 대역 생성
+def _child_writing(received: bytes):
+    # 자식 대역 실행
+    def child(_key, _filename, descriptor, _timeout_seconds):
+        # 받은 바이트를 넘겨받은 파일 핸들에 기록
+        weights.os.write(descriptor, received)
+        # 기록한 내용을 저장 장치에 반영
+        weights.os.fsync(descriptor)
+
+    # 생성한 자식 대역 반환
+    return child
+
+# 다른 기록자가 먼저 공개한 파일을 남기고 연결에 실패하는 대역 생성
+def _racing_link(competing: bytes):
+    # 동시 파일 공개 모사
+    def racing_link(_source, destination):
+        # 경쟁 기록자의 바이트를 최종 경로에 기록
+        Path(destination).write_bytes(competing)
+        # 이미 존재하는 경로 오류 재현
+        raise FileExistsError(destination)
+
+    # 생성한 대역 반환
+    return racing_link
+
+# 자식이 성공으로 끝나도 부모가 임시 파일을 승인 명세로 검증하고 공개하지 않는 것 확인
+@pytest.mark.parametrize(
+    "received",
+    [b"tampered-bytes", b"short", b"approved-bytes-with-extra-tail"],
+)
+def test_parent_validates_the_temporary_file_even_when_the_child_reports_success(
+    monkeypatch,
+    tmp_path,
+    received,
+):
+    # 승인된 바이트 자료 준비
+    approved = b"approved-bytes"
+    # 고정 시험 모델 생성
+    model = _test_model(("weights.pt", approved))
+    # 승인 모델에 고정된 자산 명세의 시험 대역 주입
+    monkeypatch.setattr(weights, 'manifestModel', lambda _key: model)
+    # 승인과 다른 바이트를 기록하고 정상 종료하는 자식 대역 주입
+    monkeypatch.setattr(
+        weights,
+        'boundedDownload',
+        _child_writing(received),
+        raising=False,
+    )
+
+    # 모델 계약 오류 발생 기대
+    with pytest.raises(ValueError) as caught:
+        # 승인 자산 다운로드 실행
+        weights.download("role", tmp_path)
+
+    # 부모가 고정 사유로 불일치를 알렸는지 확인
+    assert str(caught.value) in {
+        "OBSERVER_MODEL_HASH_MISMATCH: weights.pt",
+        "OBSERVER_MODEL_SIZE_MISMATCH: weights.pt",
+    }
+    # 검증하지 못한 바이트가 최종 경로에 공개되지 않았는지 확인
+    assert not (tmp_path / "weights.pt").exists()
+    # 임시 파일이 남지 않았는지 확인
+    assert not list(tmp_path.glob(".*.download-*"))
+
+# 자식이 실패해도 부모가 임시 파일 핸들을 닫는 것 확인
+def test_failed_child_never_leaks_the_temporary_file_descriptor(monkeypatch, tmp_path):
+    # 고정 시험 모델 생성
+    model = _test_model(("weights.pt", b"approved"))
+    # 승인 모델에 고정된 자산 명세의 시험 대역 주입
+    monkeypatch.setattr(weights, 'manifestModel', lambda _key: model)
+    # 자식이 받은 파일 핸들의 빈 누적 공간 생성
+    handles = []
+
+    # 받은 핸들을 기록하고 일부만 쓴 채 실패하는 자식 대역 실행
+    def failing_child(_key, _filename, descriptor, _timeout_seconds):
+        # 받은 파일 핸들 기록
+        handles.append(descriptor)
+        # 일부 바이트만 기록
+        weights.os.write(descriptor, b"partial")
+        # 자식 실패 재현
+        raise RuntimeError("OBSERVER_MODEL_DOWNLOAD_FAILED: weights.pt")
+
+    # 실패하는 자식 대역 주입
+    monkeypatch.setattr(
+        weights,
+        'boundedDownload',
+        failing_child,
+        raising=False,
+    )
+
+    # 고정 실패 오류 발생 기대
+    with pytest.raises(RuntimeError, match="OBSERVER_MODEL_DOWNLOAD_FAILED"):
+        # 승인 자산 다운로드 실행
+        weights.download("role", tmp_path)
+
+    # 자식 대역이 핸들을 하나 받았는지 확인
+    assert len(handles) == 1
+    # 받은 핸들이 닫혀 더 이상 유효하지 않은지 확인
+    with pytest.raises(OSError):
+        # 닫힌 핸들의 상태 조회 시도
+        weights.os.fstat(handles[0])
+    # 부분 바이트와 임시 파일이 남지 않았는지 확인
+    assert list(tmp_path.iterdir()) == []
+
+# 자식이 성공해도 부모가 임시 파일 핸들을 닫고 임시 파일만 정리하는 것 확인
+def test_successful_child_never_leaks_the_temporary_file_descriptor(monkeypatch, tmp_path):
+    # 승인된 바이트 자료 준비
+    approved = b"approved-bytes"
+    # 고정 시험 모델 생성
+    model = _test_model(("weights.pt", approved))
+    # 승인 모델에 고정된 자산 명세의 시험 대역 주입
+    monkeypatch.setattr(weights, 'manifestModel', lambda _key: model)
+    # 자식이 받은 파일 핸들의 빈 누적 공간 생성
+    handles = []
+    # 승인 바이트를 기록하고 정상 종료하는 자식 대역 생성
+    writing = _child_writing(approved)
+
+    # 받은 핸들을 기록한 뒤 승인 바이트를 쓰는 자식 대역 실행
+    def recording_child(key, filename, descriptor, timeout_seconds):
+        # 받은 파일 핸들 기록
+        handles.append(descriptor)
+        # 승인 바이트 기록과 저장 장치 반영 위임
+        writing(key, filename, descriptor, timeout_seconds)
+
+    # 핸들을 기록하는 자식 대역 주입
+    monkeypatch.setattr(
+        weights,
+        'boundedDownload',
+        recording_child,
+        raising=False,
+    )
+
+    # 승인 자산 다운로드 실행
+    weights.download("role", tmp_path)
+
+    # 자식 대역이 핸들을 하나 받았는지 확인
+    assert len(handles) == 1
+    # 받은 핸들이 닫혀 더 이상 유효하지 않은지 확인
+    with pytest.raises(OSError):
+        # 닫힌 핸들의 상태 조회 시도
+        weights.os.fstat(handles[0])
+    # 공개된 파일 하나만 남고 임시 파일이 없는지 확인
+    assert [item.name for item in tmp_path.iterdir()] == ["weights.pt"]
+
+# 저장소 하위 폴더를 가리키는 링크를 폴더 생성 전에 거부하고 저장소에 아무것도 만들지 않는 것 확인
+def test_cache_download_rejects_a_link_into_a_repository_subdirectory_before_creating_anything(
+    monkeypatch,
+    tmp_path,
+):
+    # 저장소 하위 폴더 생성
+    (tmp_path / "repository" / "sub").mkdir(parents=True)
+    # 저장소 표식 폴더 생성
+    (tmp_path / "repository" / ".git").mkdir()
+    # 저장소 밖에서 하위 폴더를 가리키는 심볼릭 링크 준비
+    alias = tmp_path / "outside-alias"
+    # 심볼릭 링크 경로의 링크 경로 생성
+    alias.symlink_to(tmp_path / "repository" / "sub", target_is_directory=True)
+    # 링크 아래에 아직 없는 모델 폴더 경로 준비
+    model_dir = alias / "not-created"
+    # 고정 시험 모델 생성
+    model = _test_model(("weights.pt", b"approved"))
+    # 자식 호출 이력의 빈 누적 공간 생성
+    calls = []
+    # 호출을 기록만 하는 자식 대역 주입
+    monkeypatch.setattr(
+        weights,
+        'boundedDownload',
+        lambda *args: calls.append(args),
+        raising=False,
+    )
+
+    # 파일 경로 오류 발생 기대
+    with pytest.raises(ValueError) as caught:
+        # 승인 명세의 파일을 캐시 폴더에 채우는 동작 실행
+        weights.cacheDownload("role", model_dir, model["files"])
+
+    # 저장소 내부 경로 사유의 기대 자료 일치 확인
+    assert str(caught.value).startswith("OBSERVER_MODEL_PATH_IN_REPOSITORY: ")
+    # 저장소 하위 폴더에 모델 폴더가 생기지 않았는지 확인
+    assert list((tmp_path / "repository" / "sub").iterdir()) == []
+    # 자식을 호출하지 않았는지 확인
+    assert calls == []
+
+# 끊어진 심볼릭 링크를 내려받기 없이 누락으로 거부하고 그대로 두는 것 확인
+def test_cache_download_rejects_a_dangling_symlink_without_downloading(monkeypatch, tmp_path):
+    # 고정 시험 모델 생성
+    model = _test_model(("weights.pt", b"approved"))
+    # 존재하지 않는 대상을 가리키는 링크 경로 준비
+    link = tmp_path / "weights.pt"
+    # 끊어진 심볼릭 링크 생성
+    link.symlink_to(tmp_path / "missing-target")
+    # 자식 호출 이력의 빈 누적 공간 생성
+    calls = []
+    # 호출을 기록만 하는 자식 대역 주입
+    monkeypatch.setattr(
+        weights,
+        'boundedDownload',
+        lambda *args: calls.append(args),
+        raising=False,
+    )
+
+    # 파일 누락 오류 발생 기대
+    with pytest.raises(FileNotFoundError) as caught:
+        # 승인 명세의 파일을 캐시 폴더에 채우는 동작 실행
+        weights.cacheDownload("role", tmp_path, model["files"])
+
+    # 고정 사유의 기대 자료 일치 확인
+    assert str(caught.value) == "OBSERVER_MODEL_FILE_MISSING: weights.pt"
+    # 자식을 호출하지 않았는지 확인
+    assert calls == []
+    # 링크가 교체되지 않고 끊어진 채 그대로인지 확인
+    assert link.is_symlink() and not link.exists()
+    # 링크 대상이 그대로인지 확인
+    assert link.readlink() == tmp_path / "missing-target"
+    # 임시 파일이 남지 않았는지 확인
+    assert not list(tmp_path.glob(".*.download-*"))
+
+# 저장소 안쪽 경로를 임시 파일 생성과 내려받기 전에 거부하는 것 확인
+def test_entry_download_rejects_a_repository_path_before_creating_a_temporary_file(
+    monkeypatch,
+    tmp_path,
+):
+    # 저장소 표식 폴더 생성
+    (tmp_path / "repository" / ".git").mkdir(parents=True)
+    # 고정 시험 모델 생성
+    model = _test_model(("weights.pt", b"approved"))
+    # 자식 호출 이력의 빈 누적 공간 생성
+    calls = []
+    # 호출을 기록만 하는 자식 대역 주입
+    monkeypatch.setattr(
+        weights,
+        'boundedDownload',
+        lambda *args: calls.append(args),
+        raising=False,
+    )
+
+    # 파일 경로 오류 발생 기대
+    with pytest.raises(ValueError) as caught:
+        # 저장소 안쪽 경로로 자산 항목 내려받기 실행
+        weights.entryDownload(tmp_path / "repository" / "weights.pt", "role", model["files"][0])
+
+    # 저장소 내부 경로 사유의 기대 자료 일치 확인
+    assert str(caught.value).startswith("OBSERVER_MODEL_PATH_IN_REPOSITORY: ")
+    # 자식을 호출하지 않았는지 확인
+    assert calls == []
+    # 저장소에 임시 파일이 생기지 않았는지 확인
+    assert [item.name for item in (tmp_path / "repository").iterdir()] == [".git"]
+
+# 동시 기록자가 먼저 공개한 파일이 승인 내용이면 그대로 받아들이는 것 확인
+def test_entry_download_accepts_a_file_a_concurrent_writer_published_with_the_approved_content(
+    monkeypatch,
+    tmp_path,
+):
+    # 승인된 바이트 자료 준비
+    approved = b"approved-bytes"
+    # 고정 시험 모델 생성
+    model = _test_model(("weights.pt", approved))
+    # 최종 경로 준비
+    destination = tmp_path / "weights.pt"
+    # 승인 바이트를 기록하고 정상 종료하는 자식 대역 주입
+    monkeypatch.setattr(
+        weights,
+        'boundedDownload',
+        _child_writing(approved),
+        raising=False,
+    )
+    # 승인 바이트를 먼저 공개한 동시 기록자 대역 주입
+    monkeypatch.setattr(weights.os, "link", _racing_link(approved))
+
+    # 승인 명세 항목 내려받기 실행
+    weights.entryDownload(destination, "role", model["files"][0])
+
+    # 먼저 공개된 파일의 기대 자료 일치 확인
+    assert destination.read_bytes() == approved
+    # 임시 파일이 남지 않았는지 확인
+    assert not list(tmp_path.glob(".*.download-*"))
+
+# 동시 기록자가 먼저 공개한 파일이 다른 내용이면 덮어쓰지 않고 거부하는 것 확인
+def test_entry_download_rejects_a_file_a_concurrent_writer_published_with_other_content(
+    monkeypatch,
+    tmp_path,
+):
+    # 승인된 바이트 자료 준비
+    approved = b"approved-bytes"
+    # 다른 기록자가 공개한 바이트 자료 준비
+    other = b"other writer!!"
+    # 고정 시험 모델 생성
+    model = _test_model(("weights.pt", approved))
+    # 최종 경로 준비
+    destination = tmp_path / "weights.pt"
+    # 승인 바이트를 기록하고 정상 종료하는 자식 대역 주입
+    monkeypatch.setattr(
+        weights,
+        'boundedDownload',
+        _child_writing(approved),
+        raising=False,
+    )
+    # 다른 바이트를 먼저 공개한 동시 기록자 대역 주입
+    monkeypatch.setattr(weights.os, "link", _racing_link(other))
+
+    # 파일 해시 불일치 발생 기대
+    with pytest.raises(ValueError) as caught:
+        # 승인 명세 항목 내려받기 실행
+        weights.entryDownload(destination, "role", model["files"][0])
+
+    # 고정 사유의 기대 자료 일치 확인
+    assert str(caught.value) == "OBSERVER_MODEL_HASH_MISMATCH: weights.pt"
+    # 경쟁 기록자의 파일이 덮어써지지 않았는지 확인
+    assert destination.read_bytes() == other
+    # 임시 파일이 남지 않았는지 확인
+    assert not list(tmp_path.glob(".*.download-*"))
+
+# 임시 파일 검증 뒤 저장소 표식이 나타나면 공개하지 않고 거부하는 것 확인
+def test_entry_download_rechecks_the_repository_boundary_right_before_publishing(
+    monkeypatch,
+    tmp_path,
+):
+    # 승인된 바이트 자료 준비
+    approved = b"approved-bytes"
+    # 고정 시험 모델 생성
+    model = _test_model(("weights.pt", approved))
+    # 최종 경로 준비
+    destination = tmp_path / "weights.pt"
+    # 승인 바이트를 기록하고 정상 종료하는 자식 대역 주입
+    monkeypatch.setattr(
+        weights,
+        'boundedDownload',
+        _child_writing(approved),
+        raising=False,
+    )
+    # 원래 항목 검증 함수 저장
+    original = weights.entryValidation
+
+    # 임시 파일 검증을 마친 직후 저장소 표식을 만드는 검증 대역 실행
+    def validate_then_mark(path, entry, model_key):
+        # 원래 항목 검증 실행
+        original(path, entry, model_key)
+        # 임시 파일 검증인지 확인
+        if path.name.startswith(".weights.pt.download-"):
+            # 저장소 표식 폴더 생성
+            (tmp_path / ".git").mkdir()
+
+    # 항목 검증 대역 주입
+    monkeypatch.setattr(weights, 'entryValidation', validate_then_mark)
+
+    # 파일 경로 오류 발생 기대
+    with pytest.raises(ValueError) as caught:
+        # 승인 명세 항목 내려받기 실행
+        weights.entryDownload(destination, "role", model["files"][0])
+
+    # 저장소 내부 경로 사유의 기대 자료 일치 확인
+    assert str(caught.value).startswith("OBSERVER_MODEL_PATH_IN_REPOSITORY: ")
+    # 저장소 안쪽에 파일이 공개되지 않았는지 확인
+    assert not destination.exists()
+    # 임시 파일이 남지 않았는지 확인
+    assert not list(tmp_path.glob(".*.download-*"))
+
+# 연결은 성공했으나 공개된 내용이 승인과 다르면 성공으로 알리지 않는 것 확인
+def test_entry_download_rejects_a_published_file_that_no_longer_matches_the_approved_content(
+    monkeypatch,
+    tmp_path,
+):
+    # 승인된 바이트 자료 준비
+    approved = b"approved-bytes"
+    # 고정 시험 모델 생성
+    model = _test_model(("weights.pt", approved))
+    # 최종 경로 준비
+    destination = tmp_path / "weights.pt"
+    # 승인 바이트를 기록하고 정상 종료하는 자식 대역 주입
+    monkeypatch.setattr(
+        weights,
+        'boundedDownload',
+        _child_writing(approved),
+        raising=False,
+    )
+    # 원래 연결 함수 저장
+    original = weights.os.link
+
+    # 연결 직후 같은 파일 실체를 변조하는 연결 대역 실행
+    def tampering_link(source, target):
+        # 원래 연결 실행
+        original(source, target)
+        # 연결된 파일 실체에 다른 바이트 기록
+        Path(target).write_bytes(b"tampered-bytes")
+
+    # 연결 대역 주입
+    monkeypatch.setattr(weights.os, "link", tampering_link)
+
+    # 파일 해시 불일치 발생 기대
+    with pytest.raises(ValueError) as caught:
+        # 승인 명세 항목 내려받기 실행
+        weights.entryDownload(destination, "role", model["files"][0])
+
+    # 고정 사유의 기대 자료 일치 확인
+    assert str(caught.value) == "OBSERVER_MODEL_HASH_MISMATCH: weights.pt"
+    # 임시 파일이 남지 않았는지 확인
+    assert not list(tmp_path.glob(".*.download-*"))
+
 # 선택한 모델만 준비하는 가져오기 명령 확인
 @pytest.mark.parametrize("model_key", ["role", "pose"])
 def test_fetch_cli_prepares_only_the_selected_model(monkeypatch, tmp_path, capsys, model_key):
