@@ -1,6 +1,6 @@
 // 마이그레이션 파일 테스트
 import { describe, expect, it } from "vitest";
-import { migrations } from "../../../../scripts/database/migrations.mjs";
+import { migrations } from "../../../../scripts/database/catalog.mjs";
 
 describe("migration discovery", () => {
     it("loads every SQL migration in filename order with a checksum", async () => {

@@ -23,7 +23,6 @@ const LAYERS = [
     "app",
     "views",
     "components",
-    "constant",
     "assets",
     "styles"
 ] as const;
@@ -85,8 +84,7 @@ const POLICY: Readonly<Record<Layer, Policy>> = {
             "rules/engine",
             "application",
             "database",
-            "adapters",
-            "constant"
+            "adapters"
         ],
         types: ["apis"],
         packages: ["@aws-sdk/client-s3", "node:"]
@@ -95,18 +93,16 @@ const POLICY: Readonly<Record<Layer, Policy>> = {
     app: { runtime: ["views", "apis", "bootstrap"], types: [], packages: ["next", "react"] },
     // 페이지 조립은 화면 부품과 서버 계약 형식만 앎
     views: {
-        runtime: ["components", "assets", "constant"],
+        runtime: ["components", "assets"],
         types: ["shared", "application"],
         packages: ["next", "react"]
     },
-    // 화면 부품은 상수와 자원 및 서버 계약 형식만 앎
+    // 화면 부품은 자원 및 서버 계약 형식만 앎
     components: {
-        runtime: ["constant", "assets"],
+        runtime: ["assets"],
         types: ["shared", "application"],
         packages: ["next", "react"]
     },
-    // 화면 상수는 서버 계약 형식만 앎
-    constant: { runtime: [], types: ["shared", "application"], packages: [] },
     // 이미지 자원은 다른 계층을 모름
     assets: { runtime: [], types: [], packages: [] },
     // 전역 스타일은 다른 계층을 모름
@@ -124,8 +120,8 @@ const OUTSIDE: ReadonlyMap<string, readonly string[]> = new Map([
     [
         "apps/web/src/rules/engine/admission.ts",
         [
-            "experiments/perception/src/replay_perception/model-manifest.json",
-            "experiments/perception/src/replay_perception/observer-models.json"
+            "packages/perception/src/replay_perception/model-manifest.json",
+            "packages/perception/src/replay_perception/observer-models.json"
         ]
     ]
 ]);
@@ -585,6 +581,21 @@ const PROBES: ReadonlyMap<string, string> = new Map([
 const opens = opener(SOURCES, PROBES);
 
 describe("web architecture", () => {
+    it("keeps server policy and review state with their owning modules", () => {
+        // 서버 정책과 화면 모델의 소유 위치 확인
+        expect(existsSync(join(ROOT, "bootstrap/media.ts"))).toBe(true);
+        expect(existsSync(join(ROOT, "components/FactPanel/model.ts"))).toBe(true);
+        expect(existsSync(join(ROOT, "constant/media.ts"))).toBe(false);
+        expect(existsSync(join(ROOT, "constant/review.ts"))).toBe(false);
+    });
+
+    it("keeps server tests outside production source directories", () => {
+        // 서버 원본 계층에 시험 파일이 남지 않음 확인
+        for (const name of ["apis", "application"]) {
+            expect(modules(join(ROOT, name)).filter((file) => file.endsWith(".test.ts"))).toEqual([]);
+        }
+    });
+
     it("scans every source layer through the real tsconfig aliases", () => {
         // 계층 밖 원본 파일 없음 확인
         expect(SOURCES.filter((file) => !layer(file)).map(local)).toEqual([]);
@@ -677,7 +688,7 @@ describe("web architecture", () => {
         ["application/probe.ts", "../components/Header/style.css", false, "RESOURCE"],
         [
             "rules/engine/probe.ts",
-            "../../../../../experiments/perception/src/replay_perception/model-manifest.json",
+            "../../../../../packages/perception/src/replay_perception/model-manifest.json",
             false,
             "OUTSIDE"
         ],
@@ -696,7 +707,7 @@ describe("web architecture", () => {
         ["app/probe.tsx", "../components/Header/style.css", false],
         [
             "rules/engine/admission.ts",
-            "../../../../../experiments/perception/src/replay_perception/observer-models.json",
+            "../../../../../packages/perception/src/replay_perception/observer-models.json",
             false
         ],
         ["application/use-cases/probe.ts", "./incidents/plan", false]

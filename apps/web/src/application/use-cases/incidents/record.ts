@@ -135,12 +135,23 @@ export function incidentRecord(input: unknown): Conversion {
     const context = Object.fromEntries(INCIDENT_CONTEXT_KEYS.map((name) =>
         [name, assertion(`context:${name}`)]
     )) as IncidentContext;
+    // 관측 사실별로 연결된 독립 가설 지정
+    const hypotheses = {
+        actionObserved: observation.actionType,
+        directionObserved: observation.direction
+    };
+    // 해당 사실을 뒷받침한 독립 가설의 생산 방법 조회
+    const producer = (name: string) => {
+        // 해당 이름에 연결된 독립 가설 조회
+        const source = hypotheses[name as keyof typeof hypotheses];
+        // 가설 상태일 때만 생산 방법 반환
+        return source?.state === "HYPOTHESIS" ? source.method : undefined;
+    };
     const observations = Object.fromEntries(INCIDENT_OBSERVATION_KEYS.HOLDING_MOTION.map((name) =>
         [name, assertion(
             `observation:${name}`,
-            name === "actionObserved" && observation.actionType.state === "HYPOTHESIS"
-                ? observation.actionType.method : undefined,
-            name === "actionObserved" ? evidence.map((e) => e.id) : []
+            producer(name),
+            name in hypotheses ? evidence.map((e) => e.id) : []
         )]
     )) as Extract<IncidentRecordV1["actions"][number], { type: "HOLDING_MOTION" }>["observations"];
     // 독립 방향 가설에 따라 행위 주체와 대상만 배치

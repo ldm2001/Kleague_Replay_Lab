@@ -401,7 +401,7 @@ print(json.dumps({'payload':payload,'ack':ack}))`;
                                 PYTHONDONTWRITEBYTECODE: "1",
                                 PYTHONPATH: [
                                     resolve("apps/video-worker/src"),
-                                    resolve("experiments/perception/src")
+                                    resolve("packages/perception/src")
                                 ].join(delimiter),
                                 REPLAY_TEST_API: `http://127.0.0.1:${address.port}`,
                                 REPLAY_TEST_KEY: key,

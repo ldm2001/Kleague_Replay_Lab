@@ -315,6 +315,82 @@ describe("holding question-specific conclusions", () => {
         }
     );
 
+    it.each([
+        ["UNADMITTED", "HOLDING_DIRECTION_UNDETERMINED"],
+        ["UNKNOWN", "HOLDING_DIRECTION_UNDETERMINED"],
+        ["REFUTED", "HOLDING_DIRECTION_CONFLICT"]
+    ])("withholds the holding subject when the direction fact is %s", (mode, reason) => {
+        // 기록 및 동작 시험용 시험자료 결과 준비
+        const record = fixture(),
+            action = holding(record);
+        // 모드 비교 조건에 따른 처리 경로 분기
+        if (mode !== "UNADMITTED")
+            // 변경 결과 처리 수행
+            change(action.observations.directionObserved, mode as IncidentAssertion["state"]);
+        // 수용결과 시험용 시험자료 결과 준비
+        const admission = admit(record);
+        // 모드 비교 조건에 따른 처리 경로 분기
+        if (mode === "UNADMITTED")
+            // 수용결과 사실 식별자목록 결과 처리 수행
+            admission.factIds.delete(action.observations.directionObserved.id);
+        // 결과 시험용 잡기 판단 결과 준비
+        const result = holdingVerdict(record, action.id, {
+            rules: ruleSet("ifab-2025-26")!,
+            admission
+        });
+        // 미확정 조건을 포함한 기대 결과 일치 확인
+        expect(result.conclusions.offence).toMatchObject({
+            status: "UNDETERMINED",
+            value: null,
+            reasonCodes: [reason],
+            missingFacts: [action.observations.directionObserved.id]
+        });
+        // 결과가 미확정 상태로 유지됨 확인
+        expect(result.conclusions.restart.status).toBe("UNDETERMINED");
+        // 사건 공개 결과 결론목록의 0개 항목 목록 기준 구조 일치 확인
+        expect(incidentPublic(result).conclusions).toEqual([]);
+        // 사건 공개 결과 미판단목록의 반칙과 재개 포함 확인
+        expect(incidentPublic(result).notAssessed).toEqual(
+            expect.arrayContaining(["offence", "restart"])
+        );
+    });
+
+    it("keeps the refuted contact conclusion without an admitted direction", () => {
+        // 기록 및 동작 시험용 시험자료 결과 준비
+        const record = fixture(),
+            action = holding(record);
+        // 변경 결과 처리 수행
+        change(action.observations.bodyOrEquipmentContact, "REFUTED");
+        // 변경 결과 처리 수행
+        change(action.observations.movementImpeded, "UNKNOWN");
+        // 변경 결과 처리 수행
+        change(action.observations.directionObserved, "UNKNOWN");
+        // 결과 시험용 평가 결과 준비
+        const result = evaluate(record);
+        // 잡기 반칙 아님 조건을 포함한 기대 결과 일치 확인
+        expect(result.conclusions.offence).toMatchObject({
+            status: "COMPLETED",
+            value: "NO_HOLDING_OFFENCE"
+        });
+        // 결과가 적용 대상 아님 상태로 유지됨 확인
+        expect(result.conclusions.restart.status).toBe("NOT_APPLICABLE");
+    });
+
+    it("cites the admitted direction fact in the established holding offence", () => {
+        // 결과 시험용 평가 결과 준비
+        const result = evaluate();
+        // 잡기 반칙 조건을 포함한 기대 결과 일치 확인
+        expect(result.conclusions.offence).toMatchObject({
+            status: "COMPLETED",
+            value: "HOLDING_OFFENCE"
+        });
+        // 결과 결론목록 반칙 사실 식별자목록의 방향 사실 포함 확인
+        expect(result.conclusions.offence).toHaveProperty(
+            "factIds",
+            expect.arrayContaining(["action-1.observations.directionObserved"])
+        );
+    });
+
     it.each(["movementImpeded", "insideOwnPenaltyArea"] as const)(
         "retains %s diagnostics beyond context checks",
         (key) => {

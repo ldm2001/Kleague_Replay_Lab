@@ -19,7 +19,7 @@ import type { AnalysisCandidate } from "../../ports/repositories/job-store";
 import { pushFactsData } from "./facts";
 
 // 서버가 확인한 자동 평가 증거 참조 정의
-export type AutomaticReference = Readonly<{
+type AutomaticReference = Readonly<{
     // 제출 목록에서 증거를 찾는 순번
     evidenceIndex: number; candidateIndex: number; kind: "FRAME" | "CLIP";
     // 원본 영상 기준 구간 시작 밀리초
@@ -27,7 +27,7 @@ export type AutomaticReference = Readonly<{
 }>;
 
 // 자동 검토 입력 계약 정의
-export type AutomaticReviewInput = Readonly<{
+type AutomaticReviewInput = Readonly<{
     // 분석 기록의 식별자
     analysisId: string; jobId: string; jobRevision: number; durationMs: number;
     // 분석한 원본 영상의 내용 해시
@@ -39,7 +39,7 @@ export type AutomaticReviewInput = Readonly<{
 }>;
 
 // 지원 여부와 검증 출처를 포함한 규정 사실 생산 결과 정의
-export type AutomaticFacts =
+type AutomaticFacts =
     | Readonly<{ kind: "UNSUPPORTED"; reasons: readonly string[] }>
     | Readonly<{
           // 처리 분기 또는 자료 종류를 구별하는 값
@@ -53,7 +53,7 @@ export type AutomaticFacts =
       }>;
 
 // 자동 검토 의존 기능 계약 정의
-export type AutomaticReviewDependencies = Readonly<{
+type AutomaticReviewDependencies = Readonly<{
     // 검증된 사실 생산 방법의 등록 목록
     registry: readonly AutomaticProducer[];
     // 관측에서 지원 가능한 규정 사실을 생산하는 기능

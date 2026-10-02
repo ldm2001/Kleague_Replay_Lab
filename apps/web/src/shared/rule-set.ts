@@ -39,7 +39,7 @@ export type VarCategoryRule = {
 };
 
 // 시간 창 예외 규칙
-export type TimeWindowExceptions = {
+type TimeWindowExceptions = {
     // 선수 신원 오인 여부
     mistakenIdentity: boolean;
     // 퇴장 관련 검토 범주 목록

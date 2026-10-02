@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { claim, evidence, progress, result, type JobApiDependencies } from "./job";
+import { claim, evidence, progress, result, type JobApiDependencies } from "../../src/apis/job";
 
 // 시험자료 시험용 4개 항목 목록 준비
 const routes = [

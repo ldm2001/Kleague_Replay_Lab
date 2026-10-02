@@ -45,7 +45,7 @@ export type PerceptionIncident = Readonly<{
 }>;
 
 // 시각 인식 실행 계약의 자료 구조 정의
-export type PerceptionRunV1 = Readonly<{
+type PerceptionRunV1 = Readonly<{
     // 전송 자료의 구조 버전
     schemaVersion: "perception-run-v1";
     // 원본 영상의 내용 해시
@@ -102,7 +102,7 @@ export type PerceptionRunV1 = Readonly<{
 }>;
 
 // 시각과 음향을 함께 보존하는 인식 계약의 자료 구조 정의
-export type PerceptionRunV2 = Omit<PerceptionRunV1, "schemaVersion"> & Readonly<{
+type PerceptionRunV2 = Omit<PerceptionRunV1, "schemaVersion"> & Readonly<{
     // 전송 자료의 구조 버전
     schemaVersion: "perception-run-v2";
     // 시각 관측과 분리된 음향 관측
@@ -113,7 +113,7 @@ export type PerceptionRunV2 = Omit<PerceptionRunV1, "schemaVersion"> & Readonly<
 export type PerceptionRun = PerceptionRunV1 | PerceptionRunV2;
 
 // 인식과 연결할 후보 구간의 자료 구조 정의
-export type PerceptionCandidateReference = Readonly<{
+type PerceptionCandidateReference = Readonly<{
     // 목록 순서
     index: number;
     // 원본 기준 시작 시각
@@ -123,7 +123,7 @@ export type PerceptionCandidateReference = Readonly<{
 }>;
 
 // 인식과 연결할 증거 구간의 자료 구조 정의
-export type PerceptionEvidenceReference = Readonly<{
+type PerceptionEvidenceReference = Readonly<{
     // 기존 영상 후보의 순서
     candidateIndex: number;
     // 결과 종류

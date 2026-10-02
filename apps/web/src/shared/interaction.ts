@@ -10,7 +10,7 @@ import { incidentRecordData } from "./incident-schema";
 // 미확인 상태와 사유의 자료 구조 정의
 type Unknown = { state: "UNKNOWN"; value: null; reasons: readonly string[] };
 // 유형과 방향의 독립 가설의 자료 구조 정의
-export type InteractionHypothesis<T> = Unknown | {
+type InteractionHypothesis<T> = Unknown | {
     // 현재 확인 상태
     state: "HYPOTHESIS"; value: T; reasons: readonly string[];
     // 관측 또는 검사 방법

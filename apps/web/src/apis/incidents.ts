@@ -2,7 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { WORKER_PROTOCOL } from "@replay/shared-types";
 
 // 내부 조회에 허용하는 식별자와 제한된 페이지 계약
-export interface IncidentQueryInput {
+interface IncidentQueryInput {
     analysisId: string;
     anonymousSessionId: string;
     after: string | null;

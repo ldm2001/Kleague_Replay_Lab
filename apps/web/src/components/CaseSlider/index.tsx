@@ -4,7 +4,7 @@
 import * as React from "react";
 
 // 검토 범위 카드 한 건의 읽기 전용 자료 형식 정의
-export type CaseItem = Readonly<{
+type CaseItem = Readonly<{
     // 카드 제목 형식 정의
     title: string;
     // 카드 설명 형식 정의

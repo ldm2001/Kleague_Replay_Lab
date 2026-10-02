@@ -6,7 +6,8 @@ import { incidentAdmission, incidentEvaluation } from "../../src/application/use
 const method = {
     id: "fixture-observer", version: "1", validationReportSha256: "c".repeat(64),
     factKeys: ["context.actorIsPlayer", "context.targetIsPlayer", "context.opponents", "context.ballInPlay",
-        "observations.actionObserved", "observations.bodyOrEquipmentContact", "observations.movementImpeded"]
+        "observations.actionObserved", "observations.directionObserved",
+        "observations.bodyOrEquipmentContact", "observations.movementImpeded"]
 };
 
 describe("incident fact admission", () => {
@@ -19,7 +20,7 @@ describe("incident fact admission", () => {
     it("admits only specific fact keys with matching methods and real evidence", () => {
         const record = incidentFixture();
         const result = incidentAdmission(record, new Map([["e1", "b".repeat(64)]]), [method]);
-        expect(result.factIds.size).toBe(7);
+        expect(result.factIds.size).toBe(8);
         expect(result.factIds.has("action-1.context.onField")).toBe(false);
         expect(result.factIds.has("action-1.observations.gripMaintained")).toBe(false);
         expect(incidentAdmission(record, new Map(), [method]).factIds.size).toBe(0);
@@ -48,5 +49,21 @@ describe("incident fact admission", () => {
         expect(verified.evaluations[0]!.conclusions.disciplinary.status).toBe("UNSUPPORTED");
         expect(verified.publicResults).toHaveLength(1);
         expect(JSON.stringify(verified.publicResults)).not.toContain("factDiagnostics");
+    });
+
+    it("withholds the offence when the method never approved the direction fact", () => {
+        const record = incidentFixture();
+        record.match.ifabVersionId = "ifab-2025-26";
+        const partial = {
+            ...method,
+            factKeys: method.factKeys.filter((key) => key !== "observations.directionObserved")
+        };
+        const result = incidentEvaluation(record, new Map([["e1", "b".repeat(64)]]), [partial]);
+        expect(result.evaluations[0]!.conclusions.offence).toMatchObject({
+            status: "UNDETERMINED",
+            value: null,
+            reasonCodes: ["HOLDING_DIRECTION_UNDETERMINED"]
+        });
+        expect(result.publicResults).toEqual([]);
     });
 });

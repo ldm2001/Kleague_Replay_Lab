@@ -1,7 +1,7 @@
 import pytest
 from replay_video.domain.ball import BallCandidate
 from replay_video.domain.paths import BallPaths
-from replay_video.application.track import CandidateTracker
+from replay_video.application.tracker import CandidateTracker
 
 # 시험용 공 후보 반환
 def p(x, y=50):

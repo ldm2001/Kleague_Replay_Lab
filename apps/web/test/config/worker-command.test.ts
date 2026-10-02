@@ -35,7 +35,10 @@ describe("worker command", () => {
             expect(validation.WORKER_ID).not.toBe(analysis.WORKER_ID);
             expect(validation.WORKER_TEMP_DIR).not.toBe(analysis.WORKER_TEMP_DIR);
             expect(validation.PYTHONPATH).toContain("apps/video-worker/src");
-            expect(validation.PYTHONPATH).toContain("experiments/perception/src");
+            expect(validation.PYTHONPATH).toContain("packages/perception/src");
+            expect(validation.PYTHONPATH).not.toContain("experiments/perception/src");
+            expect(analysis.PYTHONPATH).toContain("packages/perception/src");
+            expect(analysis.PYTHONPATH).not.toContain("experiments/perception/src");
             // 잘못된 실행 역할의 자식 생성 이전 거부 확인
             vi.resetModules();
             process.argv = [process.execPath, "scripts/worker.mjs", "purge"];
@@ -130,7 +133,7 @@ describe("worker command", () => {
         // 실행기의 경로해결 저장소 영상 작업자 포함 확인
         expect(launcher).toContain('resolve(repository, "apps/video-worker/src")');
         // 실행기의 인식 포함 확인
-        expect(launcher).toContain("experiments/perception/src");
+        expect(launcher).toContain("packages/perception/src");
         // 실행기의 작업자 오류 포함 확인
         expect(launcher).toContain('worker.on("error"');
         // 실행기의 작업자 포함 확인

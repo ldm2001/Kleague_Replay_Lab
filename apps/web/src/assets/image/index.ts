@@ -12,7 +12,7 @@ import hero from "./hero/kleague-ball.jpg";
 
 // 이미지 자산 경로
 // 이미지 자산 타입
-export type Asset = string | { src: string };
+type Asset = string | { src: string };
 
 // 자산 경로 변환
 // 이미지 자산 주소 변환

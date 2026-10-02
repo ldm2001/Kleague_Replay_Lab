@@ -268,6 +268,8 @@ export const holdingVerdict = (
     const grip = claimState(action.observations.gripMaintained, true);
     // 당김의 검증된 관측 상태 확인
     const pulling = claimState(action.observations.pulling, true);
+    // 행위 주체와 대상 배치를 뒷받침한 방향 관측의 확인 상태 확인
+    const direction = claimState(action.observations.directionObserved);
     // 동일 대상에 대한 해당 행위의 접촉 관측
     // 잡기 필수 조건이 아닌 선택적 보조 근거
     const conflicting = [impeded, grip, pulling].filter((item) => item.state === "CONFIRMED");
@@ -306,6 +308,16 @@ export const holdingVerdict = (
         // 현재까지 계산한 결과 반환
         return result;
     }
+    // 방향 관측 미확인 또는 상충 시 반칙 주체를 확정하지 않고 성립과 재개 보류
+    if (direction.state !== "CONFIRMED") {
+        // 방향 관측의 확인 상태에 따라 분리한 사유와 함께 결과 반환
+        return pendingPair(
+            direction.state === "REFUTED"
+                ? "HOLDING_DIRECTION_CONFLICT"
+                : "HOLDING_DIRECTION_UNDETERMINED",
+            [action.observations.directionObserved.id]
+        );
+    }
     // 접촉 또는 이동 방해 미확인 시 성립과 재개 보류
     if (contact.state !== "CONFIRMED" || impeded.state !== "CONFIRMED") {
         // 접촉 또는 이동 방해 미확인 사유와 함께 결과 반환
@@ -317,7 +329,7 @@ export const holdingVerdict = (
         ]);
     }
     // 잡기 성립 판단에 사용한 사실 구성
-    const offenceReads = [...applicable, contact, impeded];
+    const offenceReads = [...applicable, direction, contact, impeded];
     // 해당 유형의 반칙 성립 결론 갱신
     result.conclusions.offence = completed("HOLDING_OFFENCE", offenceReads, offenceCitations);
     // 한 사건에서 관찰한 여러 행위 및 고유 식별자의 조건에 따라 처리 분기

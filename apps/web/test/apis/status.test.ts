@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { media, recent, type StatusApiDependencies } from "./status.js";
+import { media, recent, type StatusApiDependencies } from "../../src/apis/status.js";
 import type { MediaView } from "@replay/application";
 
 // 화면자료 시험 입력으로 영상 자산 식별자 11111111 1111 4111 8111 111111111111 및 영상 상태 유효 및 오류객체 코드 빈 값 및 분석 빈 값 자료 생성

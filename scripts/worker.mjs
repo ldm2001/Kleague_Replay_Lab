@@ -31,7 +31,7 @@ if (!configuredPython && !existsSync(defaultPython)) {
     // 작업자가 읽을 소스 폴더 목록 구성
     const sourcePaths = [
         resolve(repository, "apps/video-worker/src"),
-        resolve(repository, "experiments/perception/src")
+        resolve(repository, "packages/perception/src")
     ];
     // 실행 환경 변수의 조건에 따라 처리 분기
     if (process.env.PYTHONPATH) sourcePaths.push(process.env.PYTHONPATH);

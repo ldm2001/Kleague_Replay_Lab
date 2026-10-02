@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { observationData } from "@replay/shared-types";
-import { reviewFacts, reviewValues } from "../../src/constant/review";
+import { reviewFacts, reviewValues } from "../../src/components/FactPanel/model";
 import { judgment } from "../fixtures/result";
 
 describe("영상 관찰 계약", () => {

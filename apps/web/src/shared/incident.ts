@@ -19,7 +19,7 @@ export interface IncidentAssertion {
     reasons: readonly string[];
 }
 /** 추정 경기 시계가 아닌 원본 표시 시각 */
-export interface IncidentSegment {
+interface IncidentSegment {
     // 구간 식별자와 샷·카메라 정보 및 시작·종료 시각
     id: string; shotId: string; cameraId: string | null; startMs: number; endMs: number;
     // 해당 영상 구간의 재생 속도
@@ -45,7 +45,7 @@ export interface IncidentEvidence {
     contentSha256: string;
 }
 // 인물과 구간별 추적 연결의 자료 구조 정의
-export interface IncidentActor {
+interface IncidentActor {
     // 고유 식별자
     id: string;
     // 인물을 구간별 추적 조각으로 연결한 목록
@@ -54,7 +54,7 @@ export interface IncidentActor {
     teamId: string | null; teamAssignment: IncidentAssertion;
 }
 // 사건과 영상 구간의 연결의 자료 구조 정의
-export interface IncidentLink {
+interface IncidentLink {
     // 연결 식별자와 두 원본 구간 식별자
     id: string; firstSegmentId: string; secondSegmentId: string;
     // 두 구간이나 관측 사이의 관계
@@ -111,6 +111,7 @@ export const INCIDENT_OBSERVATION_KEYS = {
     // 해당 관찰 유형에 필요한 특징 목록 지정
     HOLDING_MOTION: [
         "actionObserved",
+        "directionObserved",
         "bodyOrEquipmentContact",
         "gripMaintained",
         "pulling",
@@ -160,7 +161,7 @@ export type IncidentAction = { [T in IncidentActionType]: {
     measurements: readonly IncidentMeasurement[];
 } }[IncidentActionType];
 // 실제 주심 판정의 시점별 관측의 자료 구조 정의
-export interface RefereeDecisionObservation {
+interface RefereeDecisionObservation {
     // 고유 식별자
     id: string;
     // 원심 변경 전후의 판정 단계

@@ -28,11 +28,12 @@ ffprobe 메타데이터 확인
 
 ```sh
 npm run audit:incidents -- /absolute/source.mp4 /absolute/output/perception/interaction-observations.jsonl.gz
-PYTHONPATH=apps/video-worker/src "$TEST_PYTHON" -m replay_video.validation /absolute/development-labels.json
+PYTHONPATH=apps/video-worker/src "$TEST_PYTHON" -m replay_video.validation /absolute/labels.json /absolute/predictions.json
 ```
 
 첫 명령은 실제 원본·산출물·미디어 해시를 확인하고 측정과 미생성 사유를 집계하며 모델 재추론이나 사실 승인을 하지 않는다
-둘째 명령은 개발자가 제공한 사실별 라벨과 예측을 평가하며 입력 계약은 `datasets/labeled-cases/holding.schema.json`을 따른다
+둘째 명령은 개발자가 제공한 정답과 예측 파일을 따로 읽는다. 입력 계약은 `datasets/labeled-cases/holding-labels.schema.json`과 `datasets/labeled-cases/holding-predictions.schema.json`을 따른다
+`holding-validation-report-v2` 보고서는 정답과 예측의 해시를 각각 기록하며 지표가 계산돼도 `semanticValidation`은 `NOT_APPROVED`다
 원본 upstream 압축 해시와 행 출처는 별도 미검증 주장으로 보존하며 새 압축 파일의 해시 검증과 혼동하지 않는다
 
 운영 포트의 `private_observations`는 증거 추출 이후 원본 `perception.jsonl.gz`를 검증·재처리한다. 원본 파일은 보존하고, `interaction-observations.jsonl.gz`에 원시 기록과 `INTERACTION_OBSERVATION` 및 요약을 저장한다. report의 기존 비공개 artifact 참조만 새 파일의 경로·해시·크기로 교체하며 runner의 기존 비공개 업로드 경로를 사용한다. 새 DB 마이그레이션이나 공개 응답 필드는 없다.
@@ -139,15 +140,15 @@ PYTHONPATH=src python3 -m replay_video.cli \
 
 ```sh
 python3.11 -m venv experiments/perception/.venv-referee
-experiments/perception/.venv-referee/bin/python -m pip install -r experiments/perception/requirements-referee.txt
-experiments/perception/.venv-referee/bin/python -m pip install -e experiments/perception -e apps/video-worker
-PYTHONPATH=experiments/perception/src experiments/perception/.venv-referee/bin/python -m replay_perception.cache
-PYTHONPATH=experiments/perception/src experiments/perception/.venv-referee/bin/python -m replay_perception.observercache
+experiments/perception/.venv-referee/bin/python -m pip install -r packages/perception/requirements-referee.txt
+experiments/perception/.venv-referee/bin/python -m pip install -e packages/perception -e apps/video-worker
+PYTHONPATH=packages/perception/src experiments/perception/.venv-referee/bin/python -m replay_perception.cache
+PYTHONPATH=packages/perception/src experiments/perception/.venv-referee/bin/python -m replay_perception.observercache
 ```
 
 준비 명령만 고정된 모델 자산을 다운로드하며 운영 추론은 검증된 로컬 캐시만 읽는다
 Gemma·Ollama·생성형 모델·외부 추론·추가 학습과 새 가중치는 사용하지 않는다
-세 모델의 출처와 라이선스 및 가중치 해시는 `experiments/perception`의 manifest에 고정돼 있다
+세 모델의 출처와 라이선스 및 가중치 해시는 `packages/perception`의 manifest에 고정돼 있다
 공개 서비스 배포의 라이선스 검토나 클라우드 성능 검증이 끝났다는 의미는 아니다
 
 ```bash

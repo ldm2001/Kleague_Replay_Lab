@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { reviewFacts, reviewValues } from "../../src/constant/review";
+import { reviewFacts, reviewValues } from "../../src/components/FactPanel/model";
 import { judgment } from "../fixtures/result";
 
 describe("legacy review nullable observations", () => {

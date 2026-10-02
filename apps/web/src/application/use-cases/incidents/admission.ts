@@ -3,7 +3,7 @@ import { holdingVerdict, incidentDigest, incidentPublic, type IncidentAdmission 
 import { incidentRecordData, type IncidentAssertion, type IncidentRecordV1 } from "@replay/shared-types";
 
 // 서버 코드에서만 등록하는 사실별 검증 방법 계약
-export interface IncidentMethod {
+interface IncidentMethod {
     id: string;
     version: string;
     validationReportSha256: string;
