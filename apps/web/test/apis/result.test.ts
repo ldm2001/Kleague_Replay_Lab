@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { analysis, type ResultApiDependencies } from "./result";
+import { analysis, type ResultApiDependencies } from "../../src/apis/result";
 
 // 분석 시험용 22222222 2222 4222 8222 222222222222 준비
 const ANALYSIS = "22222222-2222-4222-8222-222222222222";

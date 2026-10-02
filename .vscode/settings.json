@@ -1,7 +1,7 @@
 {
   "python.analysis.extraPaths": [
     "${workspaceFolder}/apps/video-worker/src",
-    "${workspaceFolder}/experiments/perception/src"
+    "${workspaceFolder}/packages/perception/src"
   ],
   "python.defaultInterpreterPath": "${workspaceFolder}/experiments/perception/.venv-referee/bin/python",
   "python.analysis.typeCheckingMode": "off",

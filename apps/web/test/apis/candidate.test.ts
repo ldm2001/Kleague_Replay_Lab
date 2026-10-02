@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decision, facts, type EvaluationApiDependencies } from "./candidate";
+import { decision, facts, type EvaluationApiDependencies } from "../../src/apis/candidate";
 
 // 세션 시험 입력으로 세션 식별자 11111111 1111 4111 8111 111111111111 자료 생성
 const session = { sessionId: "11111111-1111-4111-8111-111111111111" };

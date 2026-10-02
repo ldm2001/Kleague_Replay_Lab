@@ -96,6 +96,9 @@ export function incidentFixture(): IncidentRecordV1 {
                 },
                 observations: {
                     actionObserved: incidentAssertion("action-1.observations.actionObserved"),
+                    directionObserved: incidentAssertion(
+                        "action-1.observations.directionObserved"
+                    ),
                     bodyOrEquipmentContact: incidentAssertion(
                         "action-1.observations.bodyOrEquipmentContact"
                     ),

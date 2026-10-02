@@ -5,9 +5,9 @@ import type {
     PerceptionRun
 } from "@replay/shared-types";
 // 검출 모델의 고정 명세 가져오기
-import detectorManifest from "../../../../../experiments/perception/src/replay_perception/model-manifest.json";
+import detectorManifest from "../../../../../packages/perception/src/replay_perception/model-manifest.json";
 // 역할과 포즈 모델의 고정 명세 가져오기
-import observerManifest from "../../../../../experiments/perception/src/replay_perception/observer-models.json";
+import observerManifest from "../../../../../packages/perception/src/replay_perception/observer-models.json";
 
 // 서버에서 확인한 영상 근거 참조의 자료 구조 정의
 export type VerifiedPerceptionReference = Readonly<{

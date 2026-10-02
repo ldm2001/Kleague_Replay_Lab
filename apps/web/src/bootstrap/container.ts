@@ -10,7 +10,7 @@ import { completion, record, session, upload } from "@replay/application";
 // 영상 업로드의 허가와 완료 계약 가져옴
 import type { UploadApiDependencies } from "../apis/upload";
 // 업로드와 보존 기간의 서비스 정책 가져옴
-import { mediaPolicy, sessionPolicy } from "../constant/media";
+import { mediaPolicy, sessionPolicy } from "./media";
 // 원본과 증거 파일 저장 기능 가져옴
 import { storage as objectStorage } from "./storage";
 // 프로세스 공용 시계와 데이터베이스 연결 가져옴

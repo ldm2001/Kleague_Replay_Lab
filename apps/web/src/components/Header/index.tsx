@@ -5,7 +5,7 @@ import * as React from "react";
 import { images, path } from "../../assets/image";
 
 // 랜딩과 분석 화면을 구분할 헤더 모드 정의
-export type HeaderMode = "landing" | "analysis";
+type HeaderMode = "landing" | "analysis";
 
 // 화면 구성에 필요한 읽기 전용 입력 속성 형식 정의
 type Props = Readonly<{ mode: HeaderMode }>;

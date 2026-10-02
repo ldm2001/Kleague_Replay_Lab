@@ -95,6 +95,24 @@ describe("interaction incident adapter", () => {
         expect(action.targetActorId).toBe(record.actors[0]!.id);
     });
 
+    it("links the independent direction hypothesis to its own unapproved fact", () => {
+        const { record } = generated();
+        const action = record.actions[0]!;
+        if (action.type !== "HOLDING_MOTION") throw new Error("Expected holding action");
+        expect(action.observations.directionObserved).toMatchObject({
+            state: "UNKNOWN",
+            origin: "MODEL_ESTIMATE",
+            method: { id: "independent-direction", version: "1" },
+            evidenceIds: [record.evidence[0]!.id],
+            reasons: ["HYPOTHESIS_NOT_VERIFIED"]
+        });
+        expect(action.observations.actionObserved.method.id).toBe("independent-actionType");
+        expect(action.observations.movementImpeded).toMatchObject({
+            method: { id: "interaction-holding-adapter", version: "1" },
+            evidenceIds: []
+        });
+    });
+
     it("retains measured values with covering media without inventing approved facts", () => {
         const row = fixture();
         const before = JSON.stringify(row);

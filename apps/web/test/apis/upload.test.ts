@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { completion, upload, type UploadApiDependencies } from "./upload.js";
+import { completion, upload, type UploadApiDependencies } from "../../src/apis/upload.js";
 
 // 세션 식별자 시험용 11111111 1111 4111 8111 111111111111 준비
 const SESSION_ID = "11111111-1111-4111-8111-111111111111";

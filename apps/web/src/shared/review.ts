@@ -88,7 +88,7 @@ export type AutomaticReviewBatch = Readonly<{
 }>;
 
 // 공개에는 객체 키와 비공개 관측을 포함 제외
-export type AutomaticPublicResult = Pick<EvaluationResult,
+type AutomaticPublicResult = Pick<EvaluationResult,
     "decision" | "severity" | "restart" | "disciplinary" | "confidence" | "inconclusiveReason" |
     "varAssessment" | "citations" | "decisionMatch" | "factSignature">;
 

@@ -24,7 +24,7 @@ const completeResult = (result: EvaluationResult | null): result is EvaluationRe
     result.citations.length > 0;
 
 // 자동 평가의 원본 작업 규정 및 증거 대조 문맥 정의
-export type AutomaticBindingContext = Readonly<{
+type AutomaticBindingContext = Readonly<{
     // 분석 기록의 식별자
     analysisId: string;
     // 처리 작업의 식별자
@@ -44,7 +44,7 @@ export type AutomaticBindingContext = Readonly<{
 }>;
 
 // 자동 평가 근거 확인
-export function automaticProof(
+function automaticProof(
     item: AnalysisEvidence,
     context: Pick<AutomaticBindingContext, "analysisId" | "jobId" | "jobRevision">
 ): boolean {
@@ -59,7 +59,7 @@ export function automaticProof(
 }
 
 // 검증된 경기와 규정 판본의 일치 확인
-export function sameAutomaticRule(
+function sameAutomaticRule(
     a: AutomaticRuleContext | null,
     b: AutomaticRuleContext | null
 ): boolean {

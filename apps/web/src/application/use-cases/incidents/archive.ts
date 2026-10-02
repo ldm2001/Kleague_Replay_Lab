@@ -17,7 +17,7 @@ const OBSERVATION_LINE = 65_536;
 const TIMEOUT = 60_000;
 
 // 원본과 실제 객체 해시에 결합된 비공개 수신 문맥 정의
-export interface IncidentArchiveContext {
+interface IncidentArchiveContext {
     sourceSha256: string;
     artifactSha256: string;
     artifactSizeBytes: number;

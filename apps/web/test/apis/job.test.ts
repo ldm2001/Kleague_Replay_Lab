@@ -5,7 +5,7 @@ import {
     progress,
     result as jobResult,
     type JobApiDependencies
-} from "./job.js";
+} from "../../src/apis/job.js";
 import type { EvidenceResult, JobClaim, JobProgress, JobResult } from "@replay/application";
 import { WORKER_PROTOCOL } from "@replay/shared-types";
 

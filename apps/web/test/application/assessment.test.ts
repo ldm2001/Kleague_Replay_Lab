@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 import type { CompetitionOptions, ObservedDecision, PushFacts, VarFacts } from "@replay/shared-types";
 import { competitionSet, ruleSet } from "@replay/rule-data";
 import { pushResult, varResult } from "@replay/rule-engine";
-import { assessment } from "./assessment.js";
-import { context } from "../../../../test/fixtures/push-context";
+import { assessment } from "../../src/application/use-cases/evaluation/assessment.js";
+import { context } from "../fixtures/push-context";
 
 // 추가 시험 입력으로 접촉감지여부 및 강도 및 상대이동 및 페널티구역내부여부 자료 생성
 const push: PushFacts = {

@@ -3,7 +3,7 @@
 // 화면 구성에 필요한 기능과 공유 자료 형식 읽음
 import * as React from "react";
 import type { CandidateView } from "@replay/application";
-import { reviewFacts, reviewFields, reviewValues } from "../../constant/review";
+import { reviewFacts, reviewFields, reviewValues } from "./model";
 
 // 현재 결과 화면에는 연결하지 않는 과거 수동 검토 경로
 // 기존 이력과 테스트 호환을 위해 파일을 보존

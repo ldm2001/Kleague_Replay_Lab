@@ -1,12 +1,21 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "title": "개발용 잡기 사실 단위 정답",
+    "title": "개발용 잡기 사실 단위 방법 예측",
     "type": "object",
     "additionalProperties": false,
-    "required": ["schemaVersion", "cases"],
+    "required": ["schemaVersion", "producer", "predictions"],
     "properties": {
-        "schemaVersion": {"const": "holding-labels-v1"},
-        "cases": {"type": "array", "items": {"$ref": "#/$defs/case"}}
+        "schemaVersion": {"const": "holding-predictions-v1"},
+        "producer": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "version"],
+            "properties": {
+                "id": {"$ref": "#/$defs/identifier"},
+                "version": {"$ref": "#/$defs/identifier"}
+            }
+        },
+        "predictions": {"type": "array", "items": {"$ref": "#/$defs/prediction"}}
     },
     "$defs": {
         "identifier": {"type": "string", "minLength": 1, "pattern": "^\\S(?:[\\s\\S]*\\S)?$", "not": {"pattern": "\\s$"}},
@@ -20,37 +29,24 @@
                 "observations.pulling", "observations.movementImpeded"
             ]
         },
-        "case": {
+        "prediction": {
             "type": "object",
             "additionalProperties": false,
             "required": [
-                "id", "sourceSha256", "matchId", "eventId", "split", "actorId",
-                "targetId", "startMs", "endMs", "factKey", "expected", "provenance"
+                "sourceSha256", "eventId", "actorId", "targetId",
+                "startMs", "endMs", "factKey", "predicted"
             ],
             "properties": {
-                "id": {"$ref": "#/$defs/identifier"},
                 "sourceSha256": {"$ref": "#/$defs/hash"},
-                "matchId": {"$ref": "#/$defs/identifier"},
                 "eventId": {"$ref": "#/$defs/identifier"},
-                "split": {"enum": ["DEVELOPMENT", "EVALUATION"]},
                 "actorId": {"$ref": "#/$defs/identifier"},
                 "targetId": {"$ref": "#/$defs/identifier"},
                 "startMs": {"$ref": "#/$defs/time"},
                 "endMs": {"$ref": "#/$defs/time"},
                 "factKey": {"$ref": "#/$defs/fact"},
-                "expected": {"$ref": "#/$defs/state"},
-                "provenance": {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "required": ["origin", "reviewer", "evidenceSha256"],
-                    "properties": {
-                        "origin": {"const": "DEVELOPMENT_REVIEW"},
-                        "reviewer": {"$ref": "#/$defs/identifier"},
-                        "evidenceSha256": {"$ref": "#/$defs/hash"}
-                    }
-                }
+                "predicted": {"$ref": "#/$defs/state"}
             },
-            "$comment": "추가 실행 검사에서 정수 토큰과 endMs > startMs와 actorId != targetId 및 사례 ID와 동일 명제 중복과 원본 경기 사건의 분할 누수 확인"
+            "$comment": "경기 ID와 분할과 출처는 정답이 소유하므로 예측에 두지 않고 추가 실행 검사에서 정답에 없는 예측과 동일 명제 중복 거부"
         }
     }
 }

@@ -81,7 +81,7 @@ def test_editor_source_paths():
     # 작업자 소스가 편집기 모듈 탐색 경로에 포함되는지 확인
     assert "${workspaceFolder}/apps/video-worker/src" in settings["python.analysis.extraPaths"]
     # 격리 인식 소스도 편집기 모듈 탐색 경로에 포함되는지 확인
-    assert "${workspaceFolder}/experiments/perception/src" in settings["python.analysis.extraPaths"]
+    assert "${workspaceFolder}/packages/perception/src" in settings["python.analysis.extraPaths"]
     # 편집기 전용 실행 환경 경로가 예상 계약과 일치하는지 확인
     assert settings["python.defaultInterpreterPath"] == (
         "${workspaceFolder}/experiments/perception/.venv-referee/bin/python"

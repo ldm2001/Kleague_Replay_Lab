@@ -1,5 +1,5 @@
 // 원본 해시로 검증된 경기 정보 정의
-export type KnownVideoSource = Readonly<{
+type KnownVideoSource = Readonly<{
     // 분석한 원본 영상의 내용 해시
     sourceSha256: string;
     // 등록 원본과 경기 정보를 연결하는 키

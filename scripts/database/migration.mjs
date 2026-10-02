@@ -1,7 +1,7 @@
 // 데이터베이스 연결 도구 가져오기
 import postgres from "postgres";
 // 마이그레이션 파일 읽기 기능 가져오기
-import { migrations } from "./migrations.mjs";
+import { migrations } from "./catalog.mjs";
 
 // 데이터베이스 연결 주소 참조
 const databaseUrl = process.env.DATABASE_URL;

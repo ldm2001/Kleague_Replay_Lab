@@ -4,7 +4,7 @@ import * as React from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { candidate, judgment } from "../../../test/fixtures/result";
-import { reviewFields, reviewValues } from "../../constant/review";
+import { reviewFields, reviewValues } from "./model";
 import { FactPanel } from "./index";
 
 // 실제 샷 형식의 테스트 근거

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evidence, type EvidenceApiDependencies } from "./evidence.js";
+import { evidence, type EvidenceApiDependencies } from "../../src/apis/evidence.js";
 
 // 의존성 시험 입력으로 경로해결 및 자산 및 본문 자료 생성
 const dependencies: EvidenceApiDependencies = {

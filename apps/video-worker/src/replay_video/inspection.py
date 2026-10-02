@@ -21,7 +21,7 @@ from .infrastructure.probe import probe
 # 색상 분포 계산 함수 가져옴
 from .infrastructure.signals import histogram
 # 후보 경로와 보정 움직임 조립 추적기 가져옴
-from .application.track import CandidateTracker
+from .application.tracker import CandidateTracker
 # 밝은 원형 물체 후보 추출 함수 가져옴
 from .infrastructure.ball import ballCandidates
 # 코너 출발 영상 패턴 관측기 가져옴

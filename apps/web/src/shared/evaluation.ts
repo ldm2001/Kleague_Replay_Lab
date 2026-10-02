@@ -88,7 +88,7 @@ export type EvaluationResult = {
 
 // 입력 부족 오류 결과
 // 규정 평가 실패 모델
-export type EvaluationFailure = {
+type EvaluationFailure = {
     // 검사 조건 충족 여부
     ok: false;
     // 처리 중 발생한 오류

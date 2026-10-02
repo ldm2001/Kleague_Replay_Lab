@@ -24,7 +24,7 @@ const REFERENCE = new Set([
 const CAPACITY = new Set(["INCIDENT_ARCHIVE_LINE_LIMIT", "INCIDENT_ARCHIVE_RAW_LIMIT", "INCIDENT_ARCHIVE_INDEX_LIMIT"]);
 
 // 비공개 색인 저장 명령 또는 기존 공개 거부 결과
-export type Observations = PrivateIndex | Readonly<{ kind: "INVALID_RESULT"; reason: "ARTIFACT" | "REFERENCE" | "STORAGE" }>;
+type Observations = PrivateIndex | Readonly<{ kind: "INVALID_RESULT"; reason: "ARTIFACT" | "REFERENCE" | "STORAGE" }>;
 
 // 실제 저장소 호출 실패를 산출물 오류와 구분하는 내부 표시
 class StorageFailure extends Error {}
