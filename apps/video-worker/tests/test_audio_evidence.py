@@ -673,7 +673,9 @@ def test_evidence_attaches_audio_omission_status_to_clip_only(tmp_path, monkeypa
     # 변화 구간과 대표 시각을 가진 시험 후보 생성
     candidate = Candidate(1, "OTHER", 0, 800, 400, 0.9, "UNKNOWN", (), ())
     # 증거 생성 경로를 통제하도록 프레임·클립 처리 대역 연결
-    monkeypatch.setattr(evidence, "frame", lambda _source, target, _ms: target.write_bytes(b"jpeg"))
+    monkeypatch.setattr(
+        evidence, "frame", lambda _source, target, ms: (target.write_bytes(b"jpeg"), ms)[1]
+    )
     # 증거 생성 경로를 통제하도록 프레임·클립 처리 대역 연결
     monkeypatch.setattr(
         evidence,

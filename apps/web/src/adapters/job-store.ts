@@ -593,6 +593,12 @@ export class JobStore implements JobPort, ProgressPort, ResultPort, EvidencePort
         } else if (command.payload.kind === "ANALYZED") {
             // 영상 분석 결과와 증거 저장
             const payload = command.payload;
+            // 신규 프레임 증거를 디코딩한 한 시각으로 제한
+            if ((payload.evidence ?? []).some((item) =>
+                item.kind === "FRAME" && item.startMs !== item.endMs
+            )) {
+                return { kind: "INVALID_RESULT", reason: "CONTEXT" };
+            }
             // 승인된 로컬 관측 처리 버전인지 확인
             const localPipeline = [
                 "video-local-observers-v1",

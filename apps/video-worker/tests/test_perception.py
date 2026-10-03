@@ -210,7 +210,7 @@ def test_observation_candidates_always_receive_temporal_clip_even_over_legacy_bu
     # 증거 생성 경로를 통제하도록 프레임·클립 처리 대역 연결
     monkeypatch.setattr(
         "replay_video.infrastructure.evidence.frame",
-        lambda source, path, ms: path.write_bytes(b"frame"),
+        lambda source, path, ms: (path.write_bytes(b"frame"), ms)[1],
     )
 
     # 저장된 클립 반환
@@ -259,8 +259,8 @@ def test_pipeline_observes_before_evidence_and_binds_only_actual_temporal_clips(
                 "FRAME",
                 target / "frame.jpg",
                 3000,
-                candidate.start_ms,
-                candidate.end_ms,
+                3000,
+                3000,
             ),
             Evidence(
                 candidate.index,

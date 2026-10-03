@@ -2,8 +2,8 @@ from __future__ import annotations
 import subprocess
 import time
 from pathlib import Path
-import cv2
 from ..domain.models import Candidate, Evidence, VideoMetadata
+from .frames import frame
 from .streams import ClipAudioResult, clipStreams, outputStreams
 
 # 생성된 음향의 전체 디코딩과 실제 표본 출력 확인
@@ -34,32 +34,6 @@ def audioOutput(path: Path, timeout: float) -> bool:
     # 검증 불가 출력은 보존 성공으로 승격하지 않음
     except (OSError, subprocess.TimeoutExpired, KeyError, ValueError):
         return False
-
-# 증거 프레임 생성
-def frame(source: Path, destination: Path, timestamp_ms: int) -> None:
-    # 영상 캡처 열기
-    capture = cv2.VideoCapture(str(source))
-    # 원본 영상 디코더가 정상적으로 열렸는지 확인
-    if not capture.isOpened():
-        # 원본을 열 수 없으면 증거 생성 중단
-        raise RuntimeError("video-open-failed")
-    try:
-        # 프레임 위치 이동
-        capture.set(cv2.CAP_PROP_POS_MSEC, timestamp_ms)
-        # 프레임 읽기
-        ok, image = capture.read()
-        # 지정 시각의 화면을 실제로 읽었는지 확인
-        if not ok:
-            # 읽지 못한 프레임을 증거로 저장하지 않도록 중단
-            raise RuntimeError("frame-read-failed")
-        # 프레임 파일 기록
-        if not cv2.imwrite(str(destination), image, [cv2.IMWRITE_JPEG_QUALITY, 92]):
-            # 정지 프레임 파일 저장 실패 알림
-            raise RuntimeError("frame-write-failed")
-    # 프레임 생성 성공 여부와 무관하게 영상 자원 정리
-    finally:
-        # 영상 디코더와 연결된 원본 파일 자원 해제
-        capture.release()
 
 # 증거 클립 생성
 def clip(source: Path, destination: Path, start_ms: int, end_ms: int) -> ClipAudioResult:
@@ -279,17 +253,25 @@ def evidence(
     for candidate in targets:
         # 프레임 파일 경로 구성
         destination = frame_root / f"candidate-{candidate.index:04d}-frame-01.jpg"
-        # 프레임 저장
-        frame(source_path, destination, candidate.anchor_ms)
+        # 프레임 저장과 실제 디코딩 시각 읽음
+        actual_ms = frame(source_path, destination, candidate.anchor_ms)
+        if type(actual_ms) is not int:
+            raise RuntimeError("frame-timestamp-invalid")
+        if not (
+            0 <= actual_ms <= metadata.duration_ms
+            and candidate.start_ms <= actual_ms <= candidate.end_ms
+            and candidate.anchor_ms <= actual_ms
+        ):
+            raise RuntimeError("frame-timestamp-out-of-bounds")
         # 프레임 결과 추가
         result.append(
             Evidence(
                 candidate.index,
                 "FRAME",
                 destination,
-                candidate.anchor_ms,
-                candidate.start_ms,
-                candidate.end_ms,
+                actual_ms,
+                actual_ms,
+                actual_ms,
             )
         )
 

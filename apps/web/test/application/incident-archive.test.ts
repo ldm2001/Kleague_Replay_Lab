@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
+import { Readable } from "node:stream";
 import { execFileSync } from "node:child_process";
 import { delimiter, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -39,6 +40,29 @@ async function* chunks(body: Buffer) {
 }
 
 describe("private incident archive", () => {
+    it("rejects a FRAME reference whose timestamp is outside its media interval", async () => {
+        const row = observation();
+        row.evidence = [{
+            evidenceIndex: 0, kind: "FRAME", path: "frames/frame.jpg",
+            timestampMs: row.endMs, startMs: row.endMs + 1, endMs: row.endMs + 2,
+            contentSha256: "d".repeat(64), coversMeasurementWindow: false
+        }];
+        const data = fixture([
+            { kind: "HEADER", sourceSha256: row.sourceSha256 },
+            {
+                kind: "INTERACTION_OBSERVATION_HEADER",
+                schemaVersion: "interaction-observation-v1", sourceSha256: row.sourceSha256
+            },
+            row,
+            {
+                kind: "INTERACTION_OBSERVATION_SUMMARY",
+                sourceSha256: row.sourceSha256, observationCount: 1
+            }
+        ]);
+        await expect(incidentArchive(Readable.from([data.body]), data.context))
+            .rejects.toThrow("INCIDENT_ARCHIVE_OBSERVATION_INVALID");
+    });
+
     it.each(["truncated", "utf8", "line"])("rejects %s archive content", async (kind) => {
         const data = fixture([{ kind: "HEADER", sourceSha256: "a".repeat(64) }]);
         if (kind === "truncated") data.body = data.body.subarray(0, data.body.length - 4);

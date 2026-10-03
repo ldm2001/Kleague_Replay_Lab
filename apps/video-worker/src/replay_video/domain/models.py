@@ -8,6 +8,15 @@ LOCAL_OBSERVER_PIPELINE_VERSION = "video-local-observers-v1"
 # 시각·음향 결합 관측 실행 계약의 판본 정의
 AV_OBSERVER_PIPELINE_VERSION = "video-local-observers-av-v1"
 
+# 실측 프레임의 정수 시각과 점 구간 일치 확인
+def frameTime(timestamp: object, start: object, end: object) -> bool:
+    return (
+        type(timestamp) is int
+        and type(start) is int
+        and type(end) is int
+        and timestamp >= 0
+        and timestamp == start == end
+    )
 
 @dataclass(frozen=True, slots=True)
 class VideoMetadata:

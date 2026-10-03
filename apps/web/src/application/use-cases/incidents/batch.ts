@@ -22,8 +22,15 @@ export async function incidentBatch(
     for (const observation of archive.observations) {
         for (const reference of observation.evidence) {
             const entry = payload.evidence?.[reference.evidenceIndex];
-            if (!entry || entry.kind !== reference.kind || entry.startMs !== reference.startMs
-                || entry.endMs !== reference.endMs || entry.contentSha256 !== reference.contentSha256) {
+            if (
+                !entry
+                || entry.kind !== reference.kind
+                || entry.startMs !== reference.startMs
+                || entry.endMs !== reference.endMs
+                || entry.contentSha256 !== reference.contentSha256
+                || (entry.kind === "FRAME"
+                    && (entry.startMs !== entry.endMs || reference.timestampMs !== entry.startMs))
+            ) {
                 throw new Error("INCIDENT_EVIDENCE_REFERENCE_MISMATCH");
             }
             // 다른 작업과 다른 판본의 파일을 근거로 승인하지 않음

@@ -62,6 +62,15 @@ function generated(row = fixture()) {
 }
 
 describe("interaction incident adapter", () => {
+    it("rejects an out-of-range FRAME instead of rewriting its timestamp during conversion", () => {
+        const row = fixture();
+        row.evidence[0] = {
+            ...row.evidence[0], kind: "FRAME", path: "evidence/frame.jpg",
+            startMs: 0, endMs: 0, coversMeasurementWindow: false
+        };
+        expect(() => incidentRecord(row)).toThrow("Invalid interaction observation contract");
+    });
+
     it.each(["actionType", "direction"])("preserves unknown %s without inference", (key) => {
         const row = fixture();
         row[key] = { state: "UNKNOWN", value: null, reasons: ["NO_HYPOTHESIS"] };

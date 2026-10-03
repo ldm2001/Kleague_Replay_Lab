@@ -426,6 +426,8 @@ export function interactionData(value: unknown): value is InteractionObservation
                 !time(e.timestampMs) ||
                 (e.kind === "FRAME"
                     ? e.timestampMs !== v.endMs
+                        || e.timestampMs < e.startMs
+                        || e.timestampMs > e.endMs
                     : e.kind !== "CLIP" || e.startMs > v.endMs || e.endMs < v.endMs) ||
                 e.coversMeasurementWindow !==
                     (e.kind === "CLIP" && e.startMs <= earliest && e.endMs >= v.endMs)

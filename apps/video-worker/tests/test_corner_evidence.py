@@ -53,7 +53,7 @@ def test_all_corner_sequences_keep_clips_within_remaining_generic_budget(
     # 남은 예산으로 선택할 일반 변화 후보 목록 생성
     generic = tuple(candidate(index, corner=False) for index in range(20, 30))
     # 실제 프레임 추출 대신 호출을 기록할 대역 생성
-    frame_writer = Mock()
+    frame_writer = Mock(side_effect=lambda _source, _target, timestamp: timestamp)
     # 실제 클립 인코딩 대신 호출을 기록할 대역 생성
     clip_writer = Mock()
     # 증거 생성 경로를 통제하도록 프레임·클립 처리 대역 연결
@@ -107,7 +107,10 @@ def test_goal_graphic_clip_is_not_lost_behind_corner_or_motion_candidates(monkey
         },
     )
     # 증거 생성 경로를 통제하도록 프레임·클립 처리 대역 연결
-    monkeypatch.setattr("replay_video.infrastructure.evidence.frame", Mock())
+    monkeypatch.setattr(
+        "replay_video.infrastructure.evidence.frame",
+        Mock(side_effect=lambda _source, _target, timestamp: timestamp),
+    )
     # 증거 생성 경로를 통제하도록 프레임·클립 처리 대역 연결
     monkeypatch.setattr("replay_video.infrastructure.evidence.clip", Mock())
     # 변화 후보의 프레임과 클립 증거 생성

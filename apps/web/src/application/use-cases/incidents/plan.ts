@@ -101,7 +101,9 @@ const sameEvidence = (observation: InteractionObservationV1, evidence: readonly 
             && actual.kind === reference.kind
             && actual.contentSha256 === reference.contentSha256
             && actual.startMs === reference.startMs
-            && actual.endMs === reference.endMs;
+            && actual.endMs === reference.endMs
+            && (actual.kind !== "FRAME"
+                || (actual.startMs === actual.endMs && reference.timestampMs === actual.startMs));
     });
 
 // 사건 원본과 내용 해시 및 관측 계보를 서버 재계산과 대조한 저장 계보 반환

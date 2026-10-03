@@ -100,7 +100,7 @@ def test_json_sends_current_worker_protocol() -> None:
     # 대소문자와 무관하게 비교하도록 요청 헤더 이름 정규화
     headers = {key.lower(): value for key, value in opener.requests[0].header_items()}
     # 현재 관측 계약 판본이 작업자 프로토콜 헤더에 실리는지 확인
-    assert headers["x-worker-protocol"] == "video-observations-v5"
+    assert headers["x-worker-protocol"] == "video-observations-v6"
 
 # 작업 결과 요청 확인
 def test_result() -> None:
@@ -457,6 +457,7 @@ def test_artifacts_use_the_real_http_client_for_immutable_media(tmp_path: Path) 
                 "path": "frame.jpg",
                 "candidate_index": 0,
                 "kind": "FRAME",
+                "timestamp_ms": 100,
                 "start_ms": 100,
                 "end_ms": 100,
             }

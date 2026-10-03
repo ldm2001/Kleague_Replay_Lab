@@ -91,6 +91,7 @@ const evidence = (value: AnalysisEvidence): boolean =>
     value.startMs >= 0 &&
     Number.isSafeInteger(value.endMs) &&
     value.endMs >= value.startMs &&
+    (value.kind !== "FRAME" || value.startMs === value.endMs) &&
     (value.width === null || (Number.isSafeInteger(value.width) && value.width > 0)) &&
     (value.height === null || (Number.isSafeInteger(value.height) && value.height > 0));
 

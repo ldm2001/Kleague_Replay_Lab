@@ -2,6 +2,7 @@ import base64
 import gzip
 import hashlib
 import json
+from dataclasses import replace
 from pathlib import Path
 import pytest
 from replay_video.domain.models import Evidence, Shot
@@ -39,6 +40,43 @@ def enrich(tmp_path, artifact, evidence):
     return interactions.enrichment(
         tmp_path, artifact, "a" * 64, (Shot(0, 0, 1000),), evidence
     )
+
+# 신규 프레임은 실측 점 시각과 같은 관측에만 연결됨 확인
+def test_measured_frame_time_matches_observation(tmp_path):
+    # 관측 두 시각 중 뒤 시각의 실제 프레임 생성
+    artifact, _, _ = setup(tmp_path)
+    image = tmp_path / "frame.jpg"
+    image.write_bytes(b"measured frame")
+    result = enrich(tmp_path, artifact, (Evidence(0, "FRAME", image, 100, 100, 100),))
+    rows = published(tmp_path, result)
+    observations = [row for row in rows if row["kind"] == "INTERACTION_OBSERVATION"]
+    # 다른 시각에는 연결하지 않고 점 시각만 보존함 확인
+    assert observations[0]["evidence"] == []
+    reference = observations[1]["evidence"][0]
+    assert reference["timestampMs"] == reference["startMs"] == reference["endMs"] == 100
+    assert reference["coversMeasurementWindow"] is False
+
+# 신규 프레임의 구간형 시각이나 시각 불일치 확장 거부 확인
+@pytest.mark.parametrize("change", [
+    {"timestamp_ms": None},
+    {"timestamp_ms": True},
+    {"timestamp_ms": "100"},
+    {"timestamp_ms": -1},
+    {"start_ms": 0, "end_ms": 200},
+    {"start_ms": 0, "end_ms": 0},
+    {"start_ms": 100.0},
+    {"end_ms": True},
+])
+def test_invalid_frame_time_is_rejected_before_enrichment(tmp_path, change):
+    # 한 필드만 바꾼 프레임과 정상 원시 관측 준비
+    artifact, _, _ = setup(tmp_path)
+    image = tmp_path / "frame.jpg"
+    image.write_bytes(b"measured frame")
+    value = replace(Evidence(0, "FRAME", image, 100, 100, 100), **change)
+    # 잘못된 시각으로 확장 산출물을 게시하지 않음 확인
+    with pytest.raises(ValueError, match="OBSERVATION_MEDIA_INVALID"):
+        enrich(tmp_path, artifact, (value,))
+    assert not (tmp_path / "interaction-observations.jsonl.gz").exists()
 
 # 검증된 실제 증거와 측정값 저장 및 입력 보존 확인
 def test_persists_measurements_with_verified_actual_evidence_and_preserves_input(tmp_path):

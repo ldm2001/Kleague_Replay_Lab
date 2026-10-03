@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import tempfile
 from ..domain.interactions import InteractionObservations, METHOD
+from ..domain.models import frameTime
 
 # 압축 해제된 전체 관측 자료의 바이트 상한 정의
 MAX_RAW_BYTES = 512 * 1024 * 1024
@@ -79,6 +80,11 @@ def enrichment(root, artifact, source_sha256, shots, evidence, check_cancelled=N
         # 지원하는 증거 종류와 원본 시간 범위 확인
         if item.kind not in ("FRAME", "CLIP") or not 0 <= item.start_ms <= item.end_ms:
             # 잘못된 종류 또는 시간 범위의 미디어 근거 거부
+            raise ValueError("OBSERVATION_MEDIA_INVALID")
+        # 프레임의 실측 시각과 점 구간이 같은 정수인지 확인
+        if item.kind == "FRAME" and not frameTime(
+            item.timestamp_ms, item.start_ms, item.end_ms
+        ):
             raise ValueError("OBSERVATION_MEDIA_INVALID")
         # 증거의 시간 범위와 파일 내용 해시를 검증 목록에 보존
         media.append(

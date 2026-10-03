@@ -13,7 +13,11 @@ from pathlib import Path
 from typing import Callable, Mapping, Protocol
 from .http import Api, HttpError, Rejection
 from .worker import job
-from .domain.models import AV_OBSERVER_PIPELINE_VERSION, LOCAL_OBSERVER_PIPELINE_VERSION
+from .domain.models import (
+    AV_OBSERVER_PIPELINE_VERSION,
+    LOCAL_OBSERVER_PIPELINE_VERSION,
+    frameTime,
+)
 
 # 작업 선점·임대·제출 실패를 기록할 실행 모듈 로그 생성
 logger = logging.getLogger(__name__)
@@ -447,6 +451,11 @@ def artifacts(
         if entry.get("kind") != expected_kind:
             # 미디어 형식과 맞지 않는 증거 종류 거부
             raise RuntimeError("evidence-kind-invalid")
+        # 업로드 권한 발급 전에 프레임 실측 시각과 점 구간 일치 확인
+        if expected_kind == "FRAME" and not frameTime(
+            entry.get("timestamp_ms"), entry.get("start_ms"), entry.get("end_ms")
+        ):
+            raise RuntimeError("evidence-frame-time-invalid")
         # 같은 이름으로 업로드할 증거 중복 확인
         if path.name in names:
             # 저장소 권한 대응이 모호한 중복 파일 이름 거부
