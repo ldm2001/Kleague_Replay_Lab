@@ -328,6 +328,26 @@ class ResultStorage {
 }
 
 describe("result", () => {
+    it("rejects a newly submitted FRAME interval before preflight or storage reads", async () => {
+        const repository = new PerceptionResultStore();
+        const storage = new ResultStorage();
+        const payload = perceptionPayload();
+        const changed = {
+            ...payload,
+            evidence: payload.evidence!.map((entry) => ({ ...entry, startMs: 500, endMs: 1500 }))
+        };
+        await expect(result({
+            clock, storage, repository,
+            hasher: { sha256: async () => new Uint8Array(32) }
+        })({
+            jobId: PERCEPTION_JOB_ID, workerId: "worker-1", jobRevision: 2,
+            leaseToken: "private-token", payload: changed
+        })).resolves.toEqual({ kind: "INVALID_INPUT", reason: "PAYLOAD" });
+        expect(repository.preflightCommands).toEqual([]);
+        expect(repository.commands).toEqual([]);
+        expect(storage.calls).toEqual([]);
+    });
+
     it.each(["ARTIFACT", "REFERENCE"])("does not record a normal %s rejection as an exception", async (reason) => {
         // 정상 파일 검증 거부와 진단 수집 준비
         const storage = new ResultStorage();

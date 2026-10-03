@@ -863,6 +863,7 @@ def local_analysis_job(*, perception: bool = False):
                     "path": "frame.jpg",
                     "candidate_index": 0,
                     "kind": "FRAME",
+                    "timestamp_ms": 0,
                     "start_ms": 0,
                     "end_ms": 0,
                 }

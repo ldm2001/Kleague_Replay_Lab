@@ -44,6 +44,32 @@ const hypothesis = (value: string) => ({
 });
 
 describe("private interaction observations", () => {
+    it.each([[0, 0], [1001, 1100]])(
+        "rejects a FRAME timestamp outside its interval [%i %i]",
+        (startMs, endMs) => {
+            const row = fixture();
+            row.evidence = [{
+                evidenceIndex: 0, kind: "FRAME", path: "frames/frame.jpg",
+                timestampMs: row.endMs, startMs, endMs,
+                contentSha256: "d".repeat(64), coversMeasurementWindow: false
+            }];
+            expect(interactionData(row)).toBe(false);
+        }
+    );
+
+    it.each([[1000, 1000], [0, 1100]])(
+        "preserves an in-range FRAME timestamp in [%i %i] for historical reads",
+        (startMs, endMs) => {
+            const row = fixture();
+            row.evidence = [{
+                evidenceIndex: 0, kind: "FRAME", path: "frames/frame.jpg",
+                timestampMs: row.endMs, startMs, endMs,
+                contentSha256: "d".repeat(64), coversMeasurementWindow: false
+            }];
+            expect(interactionData(row)).toBe(true);
+        }
+    );
+
     it("accepts actual Python producer output without admitting contact", () => {
         // 행 시험용 시험자료 결과 준비
         const row = fixture();

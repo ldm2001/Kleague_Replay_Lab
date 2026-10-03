@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { interactionFixture } from "../fixtures/interaction";
 import { incidentBatch } from "../../src/application/use-cases/incidents/batch";
 import { incidentEvaluation } from "../../src/application/use-cases/incidents/admission";
+import { interactionData } from "../../src/shared/interaction";
 import type { AnalysisPayload } from "../../src/application/ports/repositories/job-store";
 
 // 실제 관측과 해당 작업의 증거 객체 참조를 함께 구성
@@ -20,7 +21,53 @@ const fixture = () => {
     return { observation, context, payload, archive, storage };
 };
 
+// 관측 시각과 제출 시각을 별도로 정한 프레임 증거 생성
+const frame = (startMs = 100, endMs = startMs) => {
+    const f = fixture();
+    f.observation.evidence = [{
+        ...f.observation.evidence[0]!, kind: "FRAME", path: "frames/frame.jpg",
+        startMs, endMs, coversMeasurementWindow: false
+    }];
+    f.payload = { ...f.payload, evidence: [{
+        ...f.payload.evidence![0]!, kind: "FRAME",
+        objectKey: `evidence/analysis/job/1/${"d".repeat(64)}/frame.jpg`, startMs, endMs
+    }] };
+    return f;
+};
+
 describe("private incident batch", () => {
+    it("preserves a verified FRAME point without admitting facts", async () => {
+        const f = frame();
+        const batch = await incidentBatch(f.archive, f.payload, f.context, f.storage);
+        expect(batch.rows[0]!.observation.evidence[0]).toMatchObject({
+            kind: "FRAME", timestampMs: 100, startMs: 100, endMs: 100
+        });
+        expect(batch.rows[0]!.record).toBeNull();
+        expect(f.storage.head).toHaveBeenCalledOnce();
+    });
+
+    it.each([[0, 0], [101, 300], [0, 300]])(
+        "rejects a newly submitted FRAME interval [%i %i] before storage access",
+        async (startMs, endMs) => {
+            const f = frame(startMs, endMs);
+            if (startMs === 0 && endMs === 300) expect(interactionData(f.observation)).toBe(true);
+            await expect(incidentBatch(f.archive, f.payload, f.context, f.storage))
+                .rejects.toThrow("INCIDENT_EVIDENCE_REFERENCE_MISMATCH");
+            expect(f.storage.head).not.toHaveBeenCalled();
+        }
+    );
+
+    it("rejects a FRAME timestamp inside a wider reference that differs from the submitted point", async () => {
+        const f = frame(0, 300);
+        f.payload = { ...f.payload, evidence: f.payload.evidence!.map((entry) => ({
+            ...entry, startMs: 200, endMs: 200
+        })) };
+        expect(interactionData(f.observation)).toBe(true);
+        await expect(incidentBatch(f.archive, f.payload, f.context, f.storage))
+            .rejects.toThrow("INCIDENT_EVIDENCE_REFERENCE_MISMATCH");
+        expect(f.storage.head).not.toHaveBeenCalled();
+    });
+
     it("evaluates a typed record only with server-supplied rule context while facts stay unapproved", async () => {
         const f = fixture();
         const provenance = { state: "HYPOTHESIS" as const, reasons: ["METHOD_UNVALIDATED"],

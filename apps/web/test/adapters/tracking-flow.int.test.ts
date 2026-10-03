@@ -125,8 +125,8 @@ describe.skipIf(!databaseUrl)("Worker tracking -> API -> PostgreSQL -> rules", (
                     kind: "FRAME",
                     objectKey: `evidence/${analysisId}/${jobId}/frame.jpg`,
                     contentSha256: "ab".repeat(32),
-                    startMs: 500,
-                    endMs: 1500,
+                    startMs: 1000,
+                    endMs: 1000,
                     width: 640,
                     height: 360
                 }

@@ -84,9 +84,61 @@ def evidence_entry(path: str, candidate: int, kind: str) -> dict[str, object]:
         "candidate_index": candidate,
         "kind": kind,
         "timestamp_ms": 100,
-        "start_ms": 50,
-        "end_ms": 150,
+        "start_ms": 100 if kind == "FRAME" else 50,
+        "end_ms": 100 if kind == "FRAME" else 150,
     }
+
+# 실측 프레임 시각이 업로드와 전송 구간에 동일하게 보존됨 확인
+def test_measured_frame_time_is_preserved_in_payload(tmp_path: Path) -> None:
+    # 실측 점 시각을 가진 미디어 항목 생성
+    image = tmp_path / "measured.jpg"
+    image.write_bytes(b"frame")
+    entry = {**evidence_entry(image.name, 0, "FRAME"), "start_ms": 100, "end_ms": 100}
+    api = TransportApi()
+    # 실제 시각과 같은 전송 구간 확인
+    result = artifacts(api, CLAIM, tmp_path, [entry])
+    assert result[0]["startMs"] == result[0]["endMs"] == entry["timestamp_ms"]
+    assert len(api.uploads) == 1
+
+# 잘못된 프레임 시각의 권한 요청 이전 거부 확인
+@pytest.mark.parametrize("change", [
+    {"timestamp_ms": None},
+    {"timestamp_ms": True},
+    {"timestamp_ms": "100"},
+    {"timestamp_ms": -1},
+    {"start_ms": 50, "end_ms": 150},
+    {"start_ms": 0, "end_ms": 0},
+    {"start_ms": 100.0},
+    {"end_ms": True},
+])
+def test_invalid_frame_time_is_rejected_before_upload(tmp_path: Path, change) -> None:
+    # 정상 점 근거에서 지정한 시각만 변조
+    image = tmp_path / "invalid.jpg"
+    image.write_bytes(b"frame")
+    entry = {
+        **evidence_entry(image.name, 0, "FRAME"),
+        "start_ms": 100, "end_ms": 100, **change
+    }
+    api = TransportApi()
+    # 시각 오류가 파일 전송으로 진행되지 않음 확인
+    with pytest.raises(RuntimeError, match="evidence-frame-time-invalid"):
+        artifacts(api, CLAIM, tmp_path, [entry])
+    assert api.requests == []
+    assert api.uploads == []
+
+# 프레임의 실측 시각 누락을 요청 구간으로 대체하지 않음 확인
+def test_missing_frame_time_is_rejected_before_upload(tmp_path: Path) -> None:
+    # 실측 시각 필드가 없는 프레임 항목 생성
+    image = tmp_path / "missing.jpg"
+    image.write_bytes(b"frame")
+    entry = {**evidence_entry(image.name, 0, "FRAME"), "start_ms": 100, "end_ms": 100}
+    del entry["timestamp_ms"]
+    api = TransportApi()
+    # 값 추정 없이 전송 전 거부 확인
+    with pytest.raises(RuntimeError, match="evidence-frame-time-invalid"):
+        artifacts(api, CLAIM, tmp_path, [entry])
+    assert api.requests == []
+    assert api.uploads == []
 
 # 해시 결합 권한과 최초 기록 헤더 전송 확인
 def test_media_requests_hash_bound_grants_and_sends_first_write_headers(tmp_path: Path) -> None:

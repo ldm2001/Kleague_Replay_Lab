@@ -73,6 +73,32 @@ const database = (rows: unknown[]) => ({
 
 // 작업 저장소 테스트
 describe("JobStore", () => {
+    it("rejects newly submitted FRAME intervals before opening a transaction", async () => {
+        let transactions = 0;
+        const repository = new JobStore({
+            db: {
+                transaction: async () => {
+                    transactions += 1;
+                    return [{ kind: "ACCEPTED" }];
+                }
+            }
+        } as never);
+        await expect(repository.result({
+            ...result,
+            payload: {
+                kind: "ANALYZED", pipelineVersion: "video-baseline-v1",
+                limitations: [], shots: [], candidates: [],
+                evidence: [{
+                    candidateIndex: 0, kind: "FRAME",
+                    objectKey: `evidence/analysis/job/frame.jpg`,
+                    contentSha256: "d".repeat(64), startMs: 0, endMs: 100,
+                    width: 1920, height: 1080
+                }]
+            }
+        })).resolves.toEqual({ kind: "INVALID_RESULT", reason: "CONTEXT" });
+        expect(transactions).toBe(0);
+    });
+
     it.each([
         ["rule-lock", "lease"],
         ["last-write", "lease"],

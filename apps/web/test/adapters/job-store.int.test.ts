@@ -1,7 +1,7 @@
 // 작업 저장소 통합 테스트
 import { createHash as digest, randomUUID } from "node:crypto";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { jobStore } from "@replay/adapters";
+import { jobStore, statusStore } from "@replay/adapters";
 import { client } from "@replay/database";
 
 // 데이터베이스 주소 시험용 실행환경 환경설정 데이터베이스 주소 준비
@@ -23,6 +23,54 @@ describeDatabase("PostgreSQL job result repository", () => {
     const repository = jobStore(database);
     // 세션목록 시험용 0개 항목 목록 준비
     const sessions: string[] = [];
+
+    // 임대가 유효한 분석 작업 시험 자료 생성
+    const fixture = async () => {
+        const sessionId = randomUUID();
+        const assetId = randomUUID();
+        const analysisId = randomUUID();
+        const jobId = randomUUID();
+        const token = digest("sha256").update(jobId).digest();
+        sessions.push(sessionId);
+        await database.sql`
+            insert into anonymous_sessions (id, token_hash, created_at, expires_at)
+            values (
+                ${sessionId}, ${Buffer.from(randomUUID())},
+                '2029-01-01T00:00:00.000Z', '2031-01-01T00:00:00.000Z'
+            )
+        `;
+        await database.sql`
+            insert into video_assets (
+                id, anonymous_session_id, object_key, content_sha256, content_type,
+                size_bytes, status, state_version, rights_confirmed_at, created_at, expires_at,
+                duration_ms, width, height
+            ) values (
+                ${assetId}, ${sessionId}, ${`tests/${assetId}.mp4`}, ${Buffer.from([1])},
+                'video/mp4', 100, 'VALID', 1, ${NOW}, ${NOW}, '2031-01-01T00:00:00.000Z',
+                4000, 1920, 1080
+            )
+        `;
+        await database.sql`
+            insert into analyses (
+                id, anonymous_session_id, video_asset_id, status, retention_class,
+                state_version, created_at, expires_at
+            ) values (
+                ${analysisId}, ${sessionId}, ${assetId}, 'QUEUED', 'TEMPORARY', 0,
+                ${NOW}, '2030-01-02T12:00:00.000Z'
+            )
+        `;
+        await database.sql`
+            insert into processing_jobs (
+                id, analysis_id, job_type, status, payload_version, job_revision, attempt,
+                max_attempts, lease_owner, lease_token_hash, lease_until, stage,
+                created_at, updated_at
+            ) values (
+                ${jobId}, ${analysisId}, 'ANALYZE_VIDEO', 'PROCESSING', 1, 1, 1, 3,
+                'worker-1', ${token}, ${LEASE}, 'SEGMENTING', ${NOW}, ${NOW}
+            )
+        `;
+        return { sessionId, assetId, analysisId, jobId, token };
+    };
 
     beforeAll(async () => {
         // 시험 데이터베이스 자료 조회
@@ -214,8 +262,8 @@ describeDatabase("PostgreSQL job result repository", () => {
                             kind: "FRAME" as const,
                             objectKey: `evidence/${analysis!.id}/${analysisTarget!.id}/candidate-0001.jpg`,
                             contentSha256: "01".repeat(32),
-                            startMs: 500,
-                            endMs: 1500,
+                            startMs: 1000,
+                            endMs: 1000,
                             width: 1920,
                             height: 1080
                         }
@@ -236,13 +284,20 @@ describeDatabase("PostgreSQL job result repository", () => {
     `;
         // 인식 후보 사건 조회
         const storedCandidates = await database.sql<
-            { candidate_index: number; detection_confidence: number }[]
+            {
+                candidate_index: number;
+                detection_confidence: number;
+                start_ms: number;
+                end_ms: number;
+            }[]
         >`
-      select candidate_index, detection_confidence from incident_candidates where analysis_id = ${analysis!.id}
+      select candidate_index, detection_confidence, start_ms, end_ms from incident_candidates where analysis_id = ${analysis!.id}
     `;
         // 근거 자산 조회
-        const storedEvidence = await database.sql<{ kind: string; object_key: string }[]>`
-      select kind, object_key from evidence_assets where analysis_id = ${analysis!.id}
+        const storedEvidence = await database.sql<
+            { kind: string; object_key: string; start_ms: number; end_ms: number }[]
+        >`
+      select kind, object_key, start_ms, end_ms from evidence_assets where analysis_id = ${analysis!.id}
     `;
         // 완료 상태의 기대값 완료 일치 확인
         expect(completed?.status).toBe("COMPLETED");
@@ -253,12 +308,167 @@ describeDatabase("PostgreSQL job result repository", () => {
         // 저장값 샷목록의 1개 항목 목록 기준 구조 일치 확인
         expect(storedShots).toEqual([{ shot_index: 0 }]);
         // 저장값 후보목록의 1개 항목 목록 기준 구조 일치 확인
-        expect(storedCandidates).toEqual([{ candidate_index: 1, detection_confidence: 0.42 }]);
+        expect(storedCandidates).toEqual([
+            { candidate_index: 1, detection_confidence: 0.42, start_ms: 500, end_ms: 1500 }
+        ]);
         // 저장값 근거의 1개 항목 목록 기준 구조 일치 확인
         expect(storedEvidence).toEqual([
             {
                 kind: "FRAME",
-                object_key: `evidence/${analysis!.id}/${analysisTarget!.id}/candidate-0001.jpg`
+                object_key: `evidence/${analysis!.id}/${analysisTarget!.id}/candidate-0001.jpg`,
+                start_ms: 1000,
+                end_ms: 1000
+            }
+        ]);
+        const result = await statusStore(database).analysis({
+            anonymousSessionId: sessionId,
+            analysisId: analysis!.id,
+            now: "2030-01-01T12:00:40.000Z"
+        });
+
+        expect(result?.analysis?.evidence).toEqual([
+            {
+                evidenceId: expect.any(String),
+                candidateIndex: 1,
+                kind: "FRAME",
+                startMs: 1000,
+                endMs: 1000,
+                objectKey: `evidence/${analysis!.id}/${analysisTarget!.id}/candidate-0001.jpg`,
+                contentSha256: "01".repeat(32)
+            }
+        ]);
+    });
+
+    // 구간형 FRAME 신규 제출 거부와 전체 저장 상태 보존 확인
+    it("rejects a new FRAME interval without partial writes", async () => {
+        const { analysisId, jobId, token } = await fixture();
+
+        await expect(
+            repository.result({
+                jobId,
+                workerId: "worker-1",
+                jobRevision: 1,
+                leaseTokenHash: token,
+                now: "2030-01-01T12:00:10.000Z",
+                payload: {
+                    kind: "ANALYZED",
+                    pipelineVersion: "video-baseline-v1",
+                    limitations: ["incident_category_classification_pending"],
+                    shots: [
+                        {
+                            index: 0,
+                            startMs: 0,
+                            endMs: 4000,
+                            playbackSpeed: "UNKNOWN",
+                            isReplay: false,
+                            cameraAngle: null
+                        }
+                    ],
+                    candidates: [
+                        {
+                            index: 1,
+                            category: "OTHER",
+                            startMs: 500,
+                            endMs: 1500,
+                            anchorMs: 1000,
+                            confidence: 0.42,
+                            cameraSufficiency: "MEDIUM",
+                            reasons: ["motion-spike"],
+                            shotIndices: [0]
+                        }
+                    ],
+                    evidence: [
+                        {
+                            candidateIndex: 1,
+                            kind: "FRAME",
+                            objectKey: `evidence/${analysisId}/${jobId}/candidate-0001.jpg`,
+                            contentSha256: "01".repeat(32),
+                            startMs: 500,
+                            endMs: 1500,
+                            width: 1920,
+                            height: 1080
+                        }
+                    ]
+                }
+            })
+        ).resolves.toEqual({ kind: "INVALID_RESULT", reason: "CONTEXT" });
+
+        const [analysis] = await database.sql<
+            { status: string; pipeline_version: string | null; completed_at: string | null }[]
+        >`
+            select status, pipeline_version, completed_at
+            from analyses where id = ${analysisId}
+        `;
+        const [job] = await database.sql<
+            { status: string; stage: string; job_revision: number; lease_owner: string }[]
+        >`
+            select status, stage, job_revision, lease_owner
+            from processing_jobs where id = ${jobId}
+        `;
+        const [counts] = await database.sql<
+            { shots: number; candidates: number; evidence: number; events: number }[]
+        >`
+            select
+                (select count(*)::int from shots where analysis_id = ${analysisId}) as shots,
+                (select count(*)::int from incident_candidates where analysis_id = ${analysisId}) as candidates,
+                (select count(*)::int from evidence_assets where analysis_id = ${analysisId}) as evidence,
+                (select count(*)::int from processing_job_events where job_id = ${jobId}) as events
+        `;
+
+        expect(analysis).toEqual({ status: "QUEUED", pipeline_version: null, completed_at: null });
+        expect(job).toEqual({
+            status: "PROCESSING",
+            stage: "SEGMENTING",
+            job_revision: 1,
+            lease_owner: "worker-1"
+        });
+        expect(counts).toEqual({ shots: 0, candidates: 0, evidence: 0, events: 0 });
+    });
+
+    // 과거 구간형 FRAME 자료의 기존 조회 계약 보존 확인
+    it("reads a historical FRAME interval without changing its timestamps", async () => {
+        const { sessionId, analysisId } = await fixture();
+        const candidateId = randomUUID();
+        const evidenceId = randomUUID();
+        const objectKey = `evidence/${analysisId}/legacy-frame.jpg`;
+        await database.sql`
+            update analyses set status = 'CANDIDATES_READY' where id = ${analysisId}
+        `;
+        await database.sql`
+            insert into incident_candidates (
+                id, analysis_id, candidate_index, review_scenario,
+                start_ms, end_ms, camera_sufficiency, review_status
+            ) values (
+                ${candidateId}, ${analysisId}, 1, 'OTHER',
+                500, 1500, 'MEDIUM', 'UNREVIEWED'
+            )
+        `;
+        await database.sql`
+            insert into evidence_assets (
+                id, analysis_id, incident_candidate_id, kind, object_key,
+                content_sha256, start_ms, end_ms, created_at, expires_at
+            ) values (
+                ${evidenceId}, ${analysisId}, ${candidateId}, 'FRAME', ${objectKey},
+                ${Buffer.from("01".repeat(32), "hex")}, 500, 1500,
+                ${NOW}, '2030-01-02T12:00:00.000Z'
+            )
+        `;
+
+        const result = await statusStore(database).analysis({
+            anonymousSessionId: sessionId,
+            analysisId,
+            now: NOW
+        });
+
+        expect(result?.analysis?.evidence).toEqual([
+            {
+                evidenceId,
+                candidateIndex: 1,
+                kind: "FRAME",
+                startMs: 500,
+                endMs: 1500,
+                objectKey,
+                contentSha256: "01".repeat(32)
             }
         ]);
     });

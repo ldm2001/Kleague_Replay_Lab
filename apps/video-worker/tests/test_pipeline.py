@@ -283,7 +283,7 @@ def test_evidence(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     # 증거 생성 경로를 통제하도록 프레임·클립 처리 대역 연결
     monkeypatch.setattr(
         "replay_video.infrastructure.evidence.frame",
-        lambda _source, destination, _timestamp: destination.write_bytes(b"frame"),
+        lambda _source, destination, timestamp: (destination.write_bytes(b"frame"), timestamp)[1],
     )
     # 증거 생성 경로를 통제하도록 프레임·클립 처리 대역 연결
     monkeypatch.setattr(

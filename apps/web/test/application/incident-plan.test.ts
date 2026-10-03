@@ -10,6 +10,8 @@ import {
     type PrivateIncidentRow
 } from "@replay/shared-types";
 import { boundedBatch, incidentPlan } from "../../src/application/use-cases/incidents/plan";
+import { observationDigest } from "../../src/application/use-cases/incidents/batch";
+import { incidentRecord } from "../../src/application/use-cases/incidents/record";
 import {
     declaredMatch,
     lockedMatch,
@@ -19,6 +21,73 @@ import {
 } from "../fixtures/private-incident";
 
 describe("incident plan", () => {
+    it("preserves an exact FRAME point at the final storage boundary", async () => {
+        const batch = await privateBatch(true);
+        const original = batch.rows[0]!;
+        const observation = {
+            ...original.observation,
+            evidence: [{
+                ...original.observation.evidence[0]!, kind: "FRAME" as const,
+                path: "frames/frame.jpg", startMs: 100, endMs: 100,
+                coversMeasurementWindow: false
+            }]
+        };
+        const conversion = incidentRecord(observation);
+        if (conversion.kind !== "GENERATED") throw new Error("Expected generated point record");
+        const row = {
+            ...original, observation, observationSha256: observationDigest(observation),
+            record: conversion.record, recordSha256: incidentDigest(conversion.record),
+            link: conversion.link
+        };
+        const evidence = storedEvidence.map((entry) => ({
+            ...entry, kind: "FRAME" as const, startMs: 100, endMs: 100
+        }));
+        const plan = await incidentPlan(
+            { ...batch, rows: [row] }, { ...planContext, evidence }, async () => lockedMatch
+        );
+        expect(plan[0]!.record!.value.evidence[0]).toMatchObject({
+            kind: "FRAME", startMs: 100, endMs: 100
+        });
+        expect(plan[0]!.record!.factIds).toEqual([]);
+    });
+
+    it.each([
+        [0, 0, 0, 0, "INCIDENT_ROW_INVALID"],
+        [101, 300, 101, 300, "INCIDENT_ROW_INVALID"],
+        [0, 300, 0, 300, "INCIDENT_ROW_EVIDENCE_MISMATCH"],
+        [0, 300, 200, 200, "INCIDENT_ROW_EVIDENCE_MISMATCH"]
+    ])(
+        "rejects an already constructed FRAME batch with reference [%i %i] and payload [%i %i]",
+        async (startMs, endMs, actualStart, actualEnd, error) => {
+            const batch = await privateBatch(true);
+            const original = batch.rows[0]!;
+            const point = {
+                ...original.observation,
+                evidence: [{
+                    ...original.observation.evidence[0]!, kind: "FRAME" as const,
+                    path: "frames/frame.jpg", startMs: 100, endMs: 100,
+                    coversMeasurementWindow: false
+                }]
+            };
+            const conversion = incidentRecord(point);
+            if (conversion.kind !== "GENERATED") throw new Error("Expected generated point record");
+            const observation = {
+                ...point, evidence: point.evidence.map((entry) => ({ ...entry, startMs, endMs }))
+            };
+            const row = {
+                ...original, observation, observationSha256: observationDigest(observation),
+                record: conversion.record, recordSha256: incidentDigest(conversion.record),
+                link: conversion.link
+            };
+            const evidence = storedEvidence.map((entry) => ({
+                ...entry, kind: "FRAME" as const, startMs: actualStart, endMs: actualEnd
+            }));
+            await expect(incidentPlan(
+                { ...batch, rows: [row] }, { ...planContext, evidence }, async () => lockedMatch
+            )).rejects.toThrow(error);
+        }
+    );
+
     it("plans an observation without a typed record and skips the rule context read", async () => {
         // 유형별 사건 없는 배치 생성
         const batch = await privateBatch(false);

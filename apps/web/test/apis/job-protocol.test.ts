@@ -30,13 +30,16 @@ const dependencies = () => ({
     evidence: vi.fn(async () => ({ kind: "NOT_FOUND" as const })),
 });
 
-it("does not let a valid legacy claim consume a queued job", async () => {
+it.each([undefined, "video-observations-v5"])("does not let a valid legacy claim consume a queued job: %s", async (protocol) => {
     // 의존경계 시험용 의존성 결과 준비
     const ports = dependencies();
     // 작업선점 결과를 응답에 저장
     const response = await claim(new Request("http://web.test/internal/jobs/claim", {
         method: "POST",
-        headers: { "content-type": "application/json", "x-worker-key": "worker-secret" },
+        headers: {
+            "content-type": "application/json", "x-worker-key": "worker-secret",
+            ...(protocol ? { "x-worker-protocol": protocol } : {})
+        },
         body: JSON.stringify({ workerId: "video-worker-1", jobType: "ANALYZE_VIDEO" }),
     }), ports);
     // 응답 상태의 기대값 409 일치 확인
@@ -53,6 +56,7 @@ describe.each(routes)("worker protocol at %s", (_name, invoke) => {
         "video-observations-v2",
         "video-observations-v3",
         "video-observations-v4",
+        "video-observations-v5",
         "video-observations-v99"
     ])(
         "rejects an incompatible worker before parsing its body or touching a job: %s",
@@ -64,24 +68,22 @@ describe.each(routes)("worker protocol at %s", (_name, invoke) => {
             // 시험자료 비교 조건에 따른 처리 경로 분기
             if (protocol !== undefined) headers["x-worker-protocol"] = protocol;
             // 시험자료 결과를 응답에 저장
-            const response = await invoke(
-                new Request("http://web.test/internal", {
-                    method: "POST",
-                    headers,
-                    body: "not-json"
-                }),
-                ports
-            );
+            const request = new Request("http://web.test/internal", {
+                method: "POST", headers, body: "not-json"
+            });
+            const parsed = vi.spyOn(request, "json");
+            const response = await invoke(request, ports);
 
             // 응답 상태의 기대값 409 일치 확인
             expect(response.status).toBe(409);
             // 지원하지 않는 작업자 통신 버전 내용을 포함한 기대 결과 일치 확인
             expect(await response.json()).toEqual({
                 kind: "UNSUPPORTED_WORKER_PROTOCOL",
-                requiredProtocol: "video-observations-v5"
+                requiredProtocol: "video-observations-v6"
             });
             // 응답 응답헤더 조회 결과의 기대값 저장소 일치 확인
             expect(response.headers.get("cache-control")).toBe("no-store");
+            expect(parsed).not.toHaveBeenCalled();
             // 4개 항목 목록의 각 사례 순회
             for (const port of [ports.claim, ports.progress, ports.result, ports.evidence]) {
                 // 경계의 미호출 확인
@@ -89,6 +91,19 @@ describe.each(routes)("worker protocol at %s", (_name, invoke) => {
             }
         }
     );
+
+    it("accepts v6 before validating the handler body", async () => {
+        const ports = dependencies();
+        const request = new Request("http://web.test/internal", {
+            method: "POST",
+            headers: { "x-worker-key": "worker-secret", "x-worker-protocol": "video-observations-v6" },
+            body: "not-json"
+        });
+        const parsed = vi.spyOn(request, "json");
+        const response = await invoke(request, ports);
+        expect(response.status).toBe(400);
+        expect(parsed).toHaveBeenCalledOnce();
+    });
 
     it("authenticates before disclosing protocol requirements", async () => {
         // 의존경계 시험용 의존성 결과 준비
