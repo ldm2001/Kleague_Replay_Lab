@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 import pytest
 from replay_video.infrastructure.context import frameContext
-from replay_video.inspection import inspection
+from replay_video.infrastructure.inspection import inspection
 
 # 시험용 경기장 반환
 def pitch():

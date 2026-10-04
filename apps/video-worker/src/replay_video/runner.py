@@ -11,7 +11,7 @@ import logging
 import re
 from pathlib import Path
 from typing import Callable, Mapping, Protocol
-from .http import Api, HttpError, Rejection
+from .http import Api, HttpError, Rejection, Transient
 from .worker import job
 from .domain.models import (
     AV_OBSERVER_PIPELINE_VERSION,
@@ -33,8 +33,14 @@ class WorkerApi(Protocol):
     # 서버 지정 작업 선점
     def claim(self, kind: str) -> dict[str, object] | None: ...
 
-    # 원본 영상 파일을 지정한 로컬 경로로 내려받음
-    def media(self, url: str, target: Path) -> None: ...
+    # 작업 취소를 확인하며 원본 영상 파일을 지정한 로컬 경로로 내려받음
+    def media(
+        self,
+        url: str,
+        target: Path,
+        *,
+        check_cancelled: Callable[[], None] | None = None,
+    ) -> None: ...
 
     # 현재 단계와 처리량을 진행 상태 수신자에게 전달
     def progress(
@@ -789,6 +795,19 @@ def report(
     # 검증과 전송이 끝난 결과 자료 반환
     return result
 
+# 실패 예외의 서버 실패 결과 변환
+def fault(error: BaseException) -> dict[str, object]:
+    # 같은 제출을 다시 보내도 바뀌지 않는 서버 결과 거부 분기
+    if isinstance(error, Rejection):
+        # 재시도하지 않는 결정적 거부 결과 반환
+        return {"kind": "FAILED", "failureCode": "WORKER_RESULT_REJECTED", "retryable": False}
+    # 호출 안 재시도를 소진한 원본 다운로드와 증거 업로드 및 서버 요청의 일시 장애 분기
+    if isinstance(error, Transient):
+        # 서버가 남은 시도 안에서 다시 대기시킬 일시 장애 결과 반환
+        return {"kind": "FAILED", "failureCode": "WORKER_TRANSIENT_ERROR", "retryable": True}
+    # 같은 입력으로 다시 실행해도 바뀌지 않는 처리 실패 결과 반환
+    return {"kind": "FAILED", "failureCode": "WORKER_ERROR", "retryable": False}
+
 # 작업 한 건 처리
 def cycle(api: WorkerApi, kind: str, root: Path) -> bool:
     # 처리할 작업 선점
@@ -823,8 +842,8 @@ def cycle(api: WorkerApi, kind: str, root: Path) -> bool:
                     if not isinstance(source_url, str) or not source_url:
                         # 원본 다운로드 위치를 알 수 없는 작업 입력 거부
                         raise ValueError("source-url-invalid")
-                    # 원본 영상 다운로드
-                    api.media(source_url, source)
+                    # 임대 상실 시 청크 경계에서 멈추는 원본 영상 다운로드
+                    api.media(source_url, source, check_cancelled=pulse.check)
                     # 비용이 큰 다음 처리 또는 제출 전에 임대 유지 확인
                     pulse.check()
                     # 로컬 파이프라인 실행
@@ -869,16 +888,14 @@ def cycle(api: WorkerApi, kind: str, root: Path) -> bool:
                         pulse.check()
                         # 소유권을 확인하지 못한 작업의 일반 실패 제출 금지
                         raise
-                    # 서버의 결정적 결과 거부 여부 확인
-                    rejected = isinstance(error, Rejection)
-                    # 결과 거부 분기
-                    if rejected:
-                        # 거부 종류와 사유 부호만 기록
-                        logger.warning("worker-result-rejected %s", error)
-                    # 결과 거부와 일반 처리 오류를 구분한 실패 부호 선택
-                    code = "WORKER_RESULT_REJECTED" if rejected else "WORKER_ERROR"
-                    # 소유권이 확인된 작업에만 재시도 없는 최종 실패 결과 제출
-                    pulse.submission({"kind": "FAILED", "failureCode": code, "retryable": False})
+                    # 예외 분류에 맞는 실패 결과 생성
+                    failure = fault(error)
+                    # 통신 계층이 고정 부호로 만든 결정적 거부와 일시 장애 분기
+                    if failure["failureCode"] != "WORKER_ERROR":
+                        # 원본 주소 없이 분류와 상태 부호만 기록
+                        logger.warning("worker-failure code=%s %s", failure["failureCode"], error)
+                    # 소유권이 확인된 작업에만 분류된 실패 결과 제출
+                    pulse.submission(failure)
             # 작업 완료 반환
             return True
     except PulseStopped as error:
@@ -886,14 +903,12 @@ def cycle(api: WorkerApi, kind: str, root: Path) -> bool:
         logger.warning("worker-stopped code=%s", error)
         # 중단된 선점 작업을 이미 처리한 시도로 표시하여 반환
         return True
-    except Exception:
+    except Exception as error:
         # 처리 실패 결과 전송
         if pulse is None:
             try:
-                # 선점한 작업에 처리 실패 결과 제출 시도
-                api.result(
-                    item, {"kind": "FAILED", "failureCode": "WORKER_ERROR", "retryable": False}
-                )
+                # 선점한 작업에 예외 분류에 맞는 실패 결과 제출 시도
+                api.result(item, fault(error))
             except Exception:
                 # 실패 결과 전송 오류 무시
                 pass

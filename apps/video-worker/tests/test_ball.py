@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 from replay_video.domain.ball import BallCandidate, BallTracker
 from replay_video.infrastructure.ball import ballCandidates
-from replay_video.inspection import inspection
+from replay_video.infrastructure.inspection import inspection
 from test_context import pitch
 
 

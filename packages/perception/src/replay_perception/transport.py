@@ -257,7 +257,7 @@ def responseStatus(response: Any) -> int:
 def safeUrl(url: str, filename: str, model_key: str, *, status: int = 302) -> None:
     # 해석한에 주소 요소 분리 처리 결과 저장
     parsed = urlsplit(url)
-    # 이동 주소의 암호화 방식과 자격 정보 또는 전달받은 시간 한도의 안전 조건 확인
+    # 주소의 암호화 통신 방식과 호스트 존재 및 자격 정보 부재 확인
     if (
         parsed.scheme.lower() != "https"
         or not parsed.hostname
@@ -363,7 +363,7 @@ def boundedDownload(
     if not isinstance(descriptor, int) or isinstance(descriptor, bool) or descriptor < 0:
         # 모델 내려받기 파일 핸들 번호 유효하지 않음 오류 알림
         raise ValueError(f"{prefix}_DOWNLOAD_DESCRIPTOR_INVALID")
-    # 이동 주소의 암호화 방식과 자격 정보 또는 전달받은 시간 한도의 안전 조건 확인
+    # 모델 내려받기 제한 시간의 자료 형식과 유한한 양수 조건 확인
     if (
         not isinstance(timeout_seconds, (int, float))
         or isinstance(timeout_seconds, bool)

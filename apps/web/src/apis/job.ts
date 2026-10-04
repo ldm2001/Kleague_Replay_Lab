@@ -165,8 +165,8 @@ const resultInput = (value: Record<string, unknown>, jobId: string): ResultInput
         jobRevision: value.jobRevision,
         // 현재 작업 임대를 증명하는 비밀 토큰
         leaseToken: value.leaseToken,
-        // 작업에 전달하거나 제출하는 자료
-        payload: value.payload as ResultInput["payload"],
+        // 유스케이스가 형식을 검증할 작업 결과 자료
+        payload: value.payload,
     };
 };
 

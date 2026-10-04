@@ -2,6 +2,7 @@ from __future__ import annotations
 import subprocess
 import time
 from pathlib import Path
+from typing import Callable
 from ..domain.models import Candidate, Evidence, VideoMetadata
 from .frames import frame
 from .streams import ClipAudioResult, clipStreams, outputStreams
@@ -212,6 +213,7 @@ def evidence(
     candidate_list: tuple[Candidate, ...],
     *,
     max_clips: int = 8,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> tuple[Evidence, ...]:
     # 입력 경로 정규화
     source_path = Path(source).resolve()
@@ -251,6 +253,10 @@ def evidence(
     )
     # 후보별 증거 생성
     for candidate in targets:
+        # 후보 프레임 추출 전 작업 취소 확인
+        if check_cancelled is not None:
+            # 임대 상실 시 남은 후보의 외부 추출 중단
+            check_cancelled()
         # 프레임 파일 경로 구성
         destination = frame_root / f"candidate-{candidate.index:04d}-frame-01.jpg"
         # 프레임 저장과 실제 디코딩 시각 읽음
@@ -277,6 +283,10 @@ def evidence(
 
         # 현재 후보가 영상 클립 확보 대상으로 선정되었는지 확인
         if candidate.index in clips:
+            # 클립 인코딩 전 작업 취소 확인
+            if check_cancelled is not None:
+                # 임대 상실 시 클립 인코딩 시작 중단
+                check_cancelled()
             # 클립 파일 경로 구성
             clip_destination = clip_root / f"candidate-{candidate.index:04d}.mp4"
             # 클립 저장

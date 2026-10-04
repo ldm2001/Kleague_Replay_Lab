@@ -1,7 +1,7 @@
 from __future__ import annotations
 from pathlib import Path
 from ..domain.models import Shot, VideoMetadata
-from .signals import signals
+from .signals import Sampling, signals
 
 # 샷 경계 생성
 def shots(
@@ -10,13 +10,14 @@ def shots(
     *,
     cut_threshold: float = 0.45,
     sample_fps: float = 2.0,
+    sampler: Sampling | None = None,
 ) -> tuple[Shot, ...]:
     # 첫 샷 시작점 초기화
     boundaries = [0]
     # 프레임 시간 간격 계산
     frame_ms = max(1, round(1000 / metadata.fps))
-    # 변화 신호 순회
-    for signal in signals(source, metadata, sample_fps):
+    # 작업 단위 재사용기 또는 직접 수집한 변화 신호 순회
+    for signal in (sampler or signals)(source, metadata, sample_fps):
         # 샷 경계 조건 확인
         if signal.score >= cut_threshold and signal.timestamp_ms - boundaries[-1] >= 300:
             # 경계 시각 추가

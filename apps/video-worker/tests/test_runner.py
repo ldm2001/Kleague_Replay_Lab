@@ -9,8 +9,8 @@ from threading import Event, Thread
 from types import SimpleNamespace
 import pytest
 from test_pipeline import fixture
-from replay_video.runner import Pulse, cycle, loop
-from replay_video.http import HttpError, Rejection
+from replay_video.runner import Pulse, cycle, fault, loop
+from replay_video.http import HttpError, Rejection, Transient
 from replay_video.infrastructure.ports import media
 from replay_video.worker import job as real_job
 
@@ -41,7 +41,7 @@ class ApiFake:
         }
 
     # 시험용 미디어 반환
-    def media(self, _url: str, target: Path) -> None:
+    def media(self, _url: str, target: Path, *, check_cancelled=None) -> None:
         # 진행 보고 후 원본 복사
         assert self.progresses
         # 가짜 저장소의 원본 바이트를 작업 디렉터리로 복사
@@ -377,7 +377,7 @@ def test_stale_start_stops_before_download_or_result(tmp_path: Path) -> None:
             return {"kind": "STALE_LEASE"}
 
         # 시험용 미디어 반환
-        def media(self, _url: str, _target: Path) -> None:
+        def media(self, _url: str, _target: Path, *, check_cancelled=None) -> None:
             # 다운로드 함수에 도달했는지 기록
             self.downloaded = True
 
@@ -444,6 +444,79 @@ def test_transient_heartbeat_failure_stops_job_without_submitting_result(
     assert api.results == []
     # 주기적 갱신 실패 사유가 실행 로그에 보존되는지 확인
     assert "WORKER_HEARTBEAT_FAILED" in caplog.text
+
+# 원본 다운로드 중 임대 갱신 실패 시 남은 수신과 분석 중단 확인
+def test_heartbeat_failure_during_download_stops_before_analysis(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # 주기적 임대 갱신 실패 발생 신호 생성
+    failed = Event()
+    # 끝까지 받은 원본 기록 목록 준비
+    completed: list[Path] = []
+    # 분석 단계 시작 기록 목록 준비
+    started: list[object] = []
+
+    # 긴 원본 수신 도중 주기적 임대 갱신이 실패하는 서버 대역
+    class SlowDownload(ApiFake):
+
+        # 진행률 보고 모형
+        def progress(self, item, stage, percent, message=None):
+            # 주기적 갱신 호출에서만 통신 실패 발생
+            if message == "worker-heartbeat":
+                # 갱신 실패 발생 기록
+                failed.set()
+                # 임대 갱신 통신 실패 재현
+                raise HttpError("http-unavailable")
+            # 일반 진행 보고는 정상 가짜 통신 처리 유지
+            return super().progress(item, stage, percent, message)
+
+        # 청크 경계마다 작업 취소를 확인하는 긴 원본 수신 모형
+        def media(self, _url: str, target: Path, *, check_cancelled=None) -> None:
+            # 수신 중인 원본 파일 열기
+            with target.open("wb") as output:
+                # 갱신 주기보다 충분히 긴 청크 수신 반복
+                for _ in range(200):
+                    # 작업 취소 함수가 전달된 경우만 청크 경계 확인
+                    if check_cancelled is not None:
+                        # 임대 상실 시 남은 원본 수신 중단
+                        check_cancelled()
+                    # 다음 청크 기록
+                    output.write(b"chunk")
+                    # 느린 저장소 응답 재현
+                    time.sleep(0.005)
+            # 끝까지 받은 원본 기록
+            completed.append(target)
+
+    # 분석 단계 시작을 기록하는 작업 대역
+    def analysis(value, *, progress=None, check_cancelled=None, ports=None):
+        # 분석 단계 시작 기록
+        started.append(value)
+        # 다운로드 단계에서 멈추지 않은 경우의 실패 경로 재현
+        raise AssertionError("analysis started after lease failure")
+
+    # 입력 영상을 시험용 기준 경로에서 구성
+    source = tmp_path / "sample.mp4"
+    # 입력 영상에 시험 내용을 기록
+    source.write_bytes(b"video")
+    # 수신 중 갱신 실패를 재현하는 통신 대역 생성
+    api = SlowDownload(source)
+    # 작업별 임시 폴더를 담을 실행 루트 구성
+    root = tmp_path / "work"
+    # 갱신 실패를 빠르게 재현하도록 시험 갱신 주기 축소
+    monkeypatch.setattr("replay_video.runner.Pulse", partial(Pulse, interval=0.001))
+    # 실제 분석 대신 시작 여부를 기록하는 작업 대역 연결
+    monkeypatch.setattr("replay_video.runner.job", analysis)
+
+    # 임대 중단을 처리한 작업 시도로 반환하는지 확인
+    assert cycle(api, "ANALYZE_VIDEO", root) is True
+    # 갱신 실패 뒤 원본 수신을 끝내지 않고 분석과 결과 제출도 하지 않았는지 확인
+    assert (failed.is_set(), completed, started, api.results) == (True, [], [], [])
+    # 중단된 부분 원본을 포함한 작업별 임시 폴더 정리 확인
+    assert list(root.iterdir()) == []
+    # 갱신 실패 사유가 작업 중단 로그에 보존되는지 확인
+    assert "worker-stopped code=WORKER_HEARTBEAT_FAILED" in caplog.text
 
 # 최종 결과 요청 지연 중 상태 갱신 지속 확인
 def test_heartbeat_continues_while_final_result_request_is_blocked(
@@ -972,4 +1045,99 @@ def test_storage_put_409_remains_an_ordinary_processing_failure(
     # 작업 선점부터 결과 제출까지 한 차례 결과이 참인지 확인
     assert cycle(api, "ANALYZE_VIDEO", tmp_path / "work") is True
     # 제출 결과 이력이 예상 계약과 일치하는지 확인
+    assert api.results == [{"kind": "FAILED", "failureCode": "WORKER_ERROR", "retryable": False}]
+
+# 실패 예외의 서버 실패 결과 분류 확인
+@pytest.mark.parametrize(
+    ("error", "code", "retryable"),
+    [
+        (
+            Rejection("result-rejected kind=INVALID_RESULT reason=ARTIFACT"),
+            "WORKER_RESULT_REJECTED",
+            False,
+        ),
+        (Transient("media-503"), "WORKER_TRANSIENT_ERROR", True),
+        (Transient("evidence-unavailable"), "WORKER_TRANSIENT_ERROR", True),
+        (HttpError("evidence-409"), "WORKER_ERROR", False),
+        (ValueError("source-url-invalid"), "WORKER_ERROR", False),
+    ],
+)
+def test_fault_retries_only_exhausted_transient_failures(
+    error: Exception,
+    code: str,
+    retryable: bool,
+) -> None:
+    # 실패 부호와 재시도 가능 여부가 예외 분류와 일치하는지 확인
+    assert fault(error) == {"kind": "FAILED", "failureCode": code, "retryable": retryable}
+
+# 호출 안 재시도를 소진한 다운로드와 업로드 일시 장애의 재시도 가능 실패 제출 확인
+@pytest.mark.parametrize(
+    ("point", "error"),
+    [("media", Transient("media-503")), ("put", Transient("evidence-unavailable"))],
+)
+def test_exhausted_transient_failure_is_submitted_as_retryable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    point: str,
+    error: Exception,
+) -> None:
+
+    # 지정 지점에서 일시 장애를 내는 서버 대역
+    class Outage(ApiFake):
+
+        # 원본 다운로드 모형
+        def media(self, url: str, target: Path, *, check_cancelled=None) -> None:
+            # 다운로드 지점의 일시 장애 주입
+            if point == "media":
+                raise error
+            # 그 밖의 지점에서는 원본 복사
+            super().media(url, target, check_cancelled=check_cancelled)
+
+        # 업로드 모형
+        def put(self, *args) -> None:
+            # 업로드 지점의 일시 장애 주입
+            if point == "put":
+                raise error
+            # 그 밖의 지점에서는 업로드 기록
+            super().put(*args)
+
+    # 입력 영상을 시험용 기준 경로에서 구성
+    source = tmp_path / "sample.mp4"
+    # 입력 영상에 시험 내용을 기록
+    source.write_bytes(b"video")
+    # 지정 지점의 일시 장애를 주입할 통신 대역 생성
+    api = Outage(source)
+    # 증거 업로드까지 도달하도록 로컬 증거 생성 작업 대역 연결
+    monkeypatch.setattr("replay_video.runner.job", local_analysis_job())
+
+    # 작업 선점부터 실패 제출까지 한 차례 처리 확인
+    assert cycle(api, "ANALYZE_VIDEO", tmp_path / "work") is True
+    # 서버가 남은 시도 안에서 다시 대기시킬 실패 결과 한 건만 제출 확인
+    assert api.results == [
+        {"kind": "FAILED", "failureCode": "WORKER_TRANSIENT_ERROR", "retryable": True}
+    ]
+
+# 임대 관리 시작 전 실패의 같은 분류 결과 제출 확인
+def test_failure_before_lease_pulse_uses_the_same_classification(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+
+    # 작업 폴더 생성 실패 모형
+    def unavailable(*_args, **_kwargs):
+        # 작업 폴더를 만들 수 없는 환경 오류 발생
+        raise OSError("disk full")
+
+    # 입력 영상을 시험용 기준 경로에서 구성
+    source = tmp_path / "sample.mp4"
+    # 입력 영상에 시험 내용을 기록
+    source.write_bytes(b"video")
+    # 서버 호출을 이력에 남기는 가짜 통신 객체 생성
+    api = ApiFake(source)
+    # 임대 관리 생성 전에 작업 폴더 생성이 실패하도록 연결
+    monkeypatch.setattr("replay_video.runner.tempfile.TemporaryDirectory", unavailable)
+
+    # 작업 선점 뒤 실패 제출까지 한 차례 처리 확인
+    assert cycle(api, "VALIDATE_VIDEO", tmp_path / "work") is True
+    # 환경 오류를 재시도 없는 일반 처리 실패로 제출 확인
     assert api.results == [{"kind": "FAILED", "failureCode": "WORKER_ERROR", "retryable": False}]

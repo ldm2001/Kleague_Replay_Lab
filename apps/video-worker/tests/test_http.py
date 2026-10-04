@@ -3,11 +3,13 @@ import io
 import base64
 import hashlib
 import json
+from http.client import HTTPException
 from pathlib import Path
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 import pytest
 from replay_video.http import Api, HttpError, Rejection, Transient
-from replay_video.runner import artifacts
+from replay_video.runner import PulseStopped, artifacts
+from fixtures.cancel import Cancel
 
 
 # 웹 통신 응답 모형
@@ -49,11 +51,15 @@ class Open:
         self.bodies: list[bytes | None] = []
         # 업로드가 메모리 일괄 전송인지 스트리밍인지 기록할 목록 준비
         self.streaming: list[bool] = []
+        # 요청별 제한 시간 기록 목록 준비
+        self.timeouts: list[float] = []
 
     # 시험 호출 결과 반환
     def __call__(self, request: object, timeout: float = 0) -> Reply:
         # 요청 기록
         self.requests.append(request)
+        # 요청에 적용된 제한 시간 기록
+        self.timeouts.append(timeout)
         # 요청 객체에서 전송 본문을 선택적으로 읽음
         data = getattr(request, "data", None)
         # 본문에 읽기 함수가 있는지 기록하여 스트리밍 여부 판별
@@ -68,6 +74,51 @@ class Open:
             raise reply
         # 지정 순서에 맞는 정상 모의 응답 반환
         return reply
+
+
+# 재시도 대기와 응답 지연을 누적하는 가짜 단조 시계
+class Clock:
+
+    # 시작 시각 구성
+    def __init__(self) -> None:
+        # 현재 가짜 시각 초 초기화
+        self.now = 0.0
+
+    # 현재 시각 읽음
+    def __call__(self) -> float:
+        # 누적된 가짜 시각 반환
+        return self.now
+
+    # 지정 초만큼 시각 진행
+    def advance(self, seconds: float) -> None:
+        # 대기 또는 응답 지연 누적
+        self.now += seconds
+
+
+# 응답 지연과 요청 제한 시간을 가짜 시계에 반영하는 웹 통신 호출 모형
+class Delayed(Open):
+
+    # 응답별 지연 초와 공유 시계 구성
+    def __init__(self, replies: list[tuple[float, Reply | Exception]], clock: Clock) -> None:
+        # 응답 순서를 기본 호출 모형에 전달
+        super().__init__([reply for _, reply in replies])
+        # 응답별 지연 초 보관
+        self.latencies = [latency for latency, _ in replies]
+        # 요청과 대기가 공유하는 가짜 시계 보관
+        self.clock = clock
+
+    # 제한 시간 안 응답 또는 시간 초과 반환
+    def __call__(self, request: object, timeout: float = 0) -> Reply:
+        # 다음 응답 지연 꺼냄
+        latency = self.latencies.pop(0)
+        # 응답 지연과 제한 시간 중 먼저 끝나는 시각까지 시계 진행
+        self.clock.advance(min(latency, timeout))
+        # 제한 시간 안에 오지 않는 응답 여부 확인
+        if latency > timeout:
+            # 늦은 응답 대신 소켓 시간 초과로 교체
+            self.replies[0] = TimeoutError("timed out")
+        # 요청 기록과 응답 반환을 기본 호출 모형에 위임
+        return super().__call__(request, timeout)
 
 # 작업 선점 응답 확인
 def test_claim() -> None:
@@ -276,7 +327,8 @@ def test_result_retries_lost_response_until_already_finished() -> None:
     # 첫 시도가 30초 걸린 시계를 쓰는 작업자 통신 객체 생성
     api = Api(
         "http://web.test", "secret", "worker-1",
-        opener=opener, sleep=sleeps.append, jitter=lambda: 0.0, clock=iter([0.0, 30.0]).__next__,
+        opener=opener, sleep=sleeps.append, jitter=lambda: 0.0,
+        clock=iter([0.0, 30.0, 30.0]).__next__,
     )
 
     # 먼저 처리된 결과를 이미 완료 상태로 수락하는지 확인
@@ -304,6 +356,77 @@ def test_progress_stops_retrying_after_lease_window() -> None:
         api.progress(JOB, "SEGMENTING", 40)
     # 한 번만 보냈고 대기하지 않았는지 확인
     assert (len(opener.requests), sleeps) == (1, [])
+
+# 첫 실패 19초와 늦은 다음 응답에서 각 요청 제한 시간의 임대 기한 안 축소 확인
+def test_progress_caps_each_request_to_lease_window() -> None:
+    # 요청 지연과 재시도 대기를 함께 재는 가짜 시계 생성
+    clock = Clock()
+    # 19초 뒤 일시 장애와 29초 뒤 갱신 응답을 내줄 전송 대역 생성
+    opener = Delayed([
+        (19.0, HTTPError("http://web.test", 503, "busy", {}, None)),
+        (29.0, Reply(200, b'{"kind":"UPDATED"}')),
+    ], clock)
+    # 가짜 시계로 대기와 경과를 재는 작업자 통신 객체 생성
+    api = Api(
+        "http://web.test", "secret", "worker-1",
+        opener=opener, sleep=clock.advance, jitter=lambda: 0.5, clock=clock,
+    )
+
+    # 임대 기한 뒤의 늦은 갱신 응답 대신 연결 불가 오류 전달 확인
+    with pytest.raises(Transient, match="http-unavailable"):
+        # 진행 보고 실행
+        api.progress(JOB, "SEGMENTING", 40)
+    # 첫 요청과 재요청의 제한 시간이 남은 기한으로 줄었는지 확인
+    assert opener.timeouts == [20.0, 0.75]
+    # 진행 보고가 임대 갱신 시간 상한에서 끝났는지 확인
+    assert clock.now == 20.0
+
+# 재시도 대기 지연으로 기한을 넘긴 진행 보고의 재요청 차단 확인
+def test_progress_stops_when_backoff_overshoots_lease_window() -> None:
+    # 요청 지연과 재시도 대기를 함께 재는 가짜 시계 생성
+    clock = Clock()
+    # 19초 뒤 일시 장애와 즉시 갱신 응답을 내줄 전송 대역 생성
+    opener = Delayed([
+        (19.0, HTTPError("http://web.test", 503, "busy", {}, None)),
+        (0.0, Reply(200, b'{"kind":"UPDATED"}')),
+    ], clock)
+    # 요청한 대기보다 1초 더 잠드는 작업자 통신 객체 생성
+    api = Api(
+        "http://web.test", "secret", "worker-1",
+        opener=opener, sleep=lambda seconds: clock.advance(seconds + 1.0),
+        jitter=lambda: 0.5, clock=clock,
+    )
+
+    # 기한을 넘긴 재요청 대신 마지막 일시 장애 전달 확인
+    with pytest.raises(Transient, match="http-503"):
+        # 진행 보고 실행
+        api.progress(JOB, "SEGMENTING", 40)
+    # 기한을 넘긴 뒤 요청을 다시 보내지 않았는지 확인
+    assert len(opener.requests) == 1
+
+# 시간 상한 없는 결과·증거 권한·원본 재시도의 기본 제한 시간 유지 확인
+def test_unbounded_retries_keep_request_timeout(tmp_path: Path) -> None:
+    # 세 요청이 각각 한 번 일시 장애 뒤 성공하는 전송 대역 생성
+    opener = Open([
+        HTTPError("http://web.test", 503, "busy", {}, None),
+        Reply(200, b'{"kind":"ACCEPTED"}'),
+        HTTPError("http://web.test", 503, "busy", {}, None),
+        Reply(200, b'{"items":[]}'),
+        HTTPError("http://storage/video", 503, "busy", {}, None),
+        Reply(200, b"video"),
+    ])
+    # 대기 없이 재시도하는 작업자 통신 객체 생성
+    api = Api("http://web.test", "secret", "worker-1", opener=opener, sleep=lambda _: None)
+
+    # 결과 제출 실행
+    api.result(JOB, {"kind": "VALIDATED"})
+    # 증거 업로드 권한 요청 실행
+    api.evidence(JOB, [])
+    # 원본 영상 저장
+    api.media("http://storage/video", tmp_path / "source.mp4")
+
+    # 모든 요청이 기본 30초 제한 시간을 썼는지 확인
+    assert opener.timeouts == [30.0] * 6
 
 # 시도 횟수 상한 뒤 마지막 일시 장애 전달 확인
 def test_retry_gives_up_after_attempt_limit() -> None:
@@ -387,6 +510,46 @@ def test_media_retries_transient_download_failure(tmp_path: Path) -> None:
 
     # 두 번째 시도의 원본 바이트 저장 확인
     assert (len(opener.requests), target.read_bytes()) == (2, b"video")
+
+# 청크 경계 작업 취소 시 남은 원본 수신과 재시도 중단 확인
+def test_media_stops_between_chunks_without_retry(tmp_path: Path) -> None:
+    # 1메비바이트 청크 두 개와 꼬리 바이트로 된 원본 본문 구성
+    first, second = b"a" * 1024 * 1024, b"b" * 1024 * 1024
+    # 한 번의 정상 응답만 내주는 원본 전송 대역 생성
+    opener = Open([Reply(200, first + second + b"c")])
+    # 대기 없이 재시도하는 작업자 통신 객체 생성
+    api = Api("http://web.test", "secret", "worker-1", opener=opener, sleep=lambda _: None)
+    # 내려받은 원본을 저장할 임시 파일 경로 구성
+    target = tmp_path / "source.mp4"
+    # 연결 전과 첫 청크 확인 뒤 두 번째 청크에서 임대 상실을 알리는 작업 취소 대역 생성
+    cancel = Cancel(3)
+
+    # 중단 신호가 재시도로 바뀌지 않고 다운로드 밖으로 전달되는지 확인
+    with pytest.raises(PulseStopped):
+        # 작업 취소를 전달한 원본 영상 저장
+        api.media("http://storage/video", target, check_cancelled=cancel)
+
+    # 한 번의 요청에서 첫 청크만 기록하고 두 번째 청크 기록 전에 멈췄는지 확인
+    assert (len(opener.requests), target.read_bytes(), cancel.count) == (1, first, 3)
+
+# 재시도 대기 뒤 작업 취소 시 새 원본 요청 생략 확인
+def test_media_skips_retry_after_cancellation(tmp_path: Path) -> None:
+    # 저장소 일시 장애 뒤 원본을 내주는 전송 대역 생성
+    opener = Open([HTTPError("http://storage/video", 503, "busy", {}, None), Reply(200, b"video")])
+    # 대기 없이 재시도하는 작업자 통신 객체 생성
+    api = Api("http://web.test", "secret", "worker-1", opener=opener, sleep=lambda _: None)
+    # 내려받은 원본을 저장할 임시 파일 경로 구성
+    target = tmp_path / "source.mp4"
+    # 두 번째 시도의 연결 전 확인에서 임대 상실을 알리는 작업 취소 대역 생성
+    cancel = Cancel(2)
+
+    # 중단 신호가 다운로드 재시도 밖으로 전달되는지 확인
+    with pytest.raises(PulseStopped):
+        # 작업 취소를 전달한 원본 영상 저장
+        api.media("http://storage/video", target, check_cancelled=cancel)
+
+    # 첫 장애 요청 뒤 새 요청 없이 멈추고 원본 파일을 만들지 않았는지 확인
+    assert (len(opener.requests), target.exists(), cancel.count) == (1, False, 2)
 
 # 증거 업로드 요청 확인
 @pytest.mark.parametrize("content_type", ["image/jpeg", "video/mp4"])
@@ -630,6 +793,64 @@ def test_put_rejects_oversize_before_opening_network(tmp_path: Path) -> None:
         api.put("http://storage.test/candidate.mp4", source, "video/mp4")
     # 요청 이력이 빈 값으로 유지되는지 확인
     assert opener.requests == []
+
+# 증거 저장소 일시 장애의 재실행 가능 오류 구분과 단일 전송 확인
+@pytest.mark.parametrize(
+    ("reply", "message"),
+    [
+        (HTTPError("http://storage.test/frame.jpg", 503, "busy", {}, None), "evidence-503"),
+        (HTTPError("http://storage.test/frame.jpg", 429, "slow down", {}, None), "evidence-429"),
+        (Reply(500), "evidence-500"),
+        (URLError("refused"), "evidence-unavailable"),
+        (TimeoutError("timed out"), "evidence-unavailable"),
+        (ConnectionResetError("reset"), "evidence-unavailable"),
+        (HTTPException("bad status"), "evidence-unavailable"),
+    ],
+)
+def test_put_marks_storage_outages_transient_without_resending(
+    tmp_path: Path, reply: Reply | Exception, message: str
+) -> None:
+    # 업로드할 증거 파일을 시험용 기준 경로에서 구성
+    source = tmp_path / "frame.jpg"
+    # 증거 파일에 시험 내용을 기록
+    source.write_bytes(b"frame")
+    # 지정 장애를 한 번 주입할 전송 대역 생성
+    opener = Open([reply])
+    # 대기 없이 재시도할 수 있는 통신 객체 생성
+    api = Api("http://web.test", "secret", "worker-1", opener=opener, sleep=lambda _: None)
+
+    # 일시 장애를 재실행 가능한 오류로 전달 확인
+    with pytest.raises(Transient, match=message):
+        # 증거 업로드 실행
+        api.put("http://storage.test/frame.jpg", source, "image/jpeg")
+    # 최초 기록 조건의 모호한 반복 없이 한 번만 전송 확인
+    assert len(opener.requests) == 1
+
+# 증거 저장소의 결정적 거부가 재실행 불가 오류로 남음 확인
+@pytest.mark.parametrize(
+    ("reply", "message"),
+    [
+        (HTTPError("http://storage.test/frame.jpg", 412, "exists", {}, None), "evidence-412"),
+        (HTTPError("http://storage.test/frame.jpg", 403, "denied", {}, None), "evidence-403"),
+        (Reply(404), "evidence-404"),
+    ],
+)
+def test_put_keeps_deterministic_storage_failures_final(
+    tmp_path: Path, reply: Reply | Exception, message: str
+) -> None:
+    # 업로드할 증거 파일을 시험용 기준 경로에서 구성
+    source = tmp_path / "frame.jpg"
+    # 증거 파일에 시험 내용을 기록
+    source.write_bytes(b"frame")
+    # 지정 거부를 한 번 주입할 통신 객체 생성
+    api = Api("http://web.test", "secret", "worker-1", opener=Open([reply]))
+
+    # 결정적 거부를 기존 업로드 오류로 전달 확인
+    with pytest.raises(HttpError, match=message) as caught:
+        # 증거 업로드 실행
+        api.put("http://storage.test/frame.jpg", source, "image/jpeg")
+    # 재실행 대상 일시 장애로 분류되지 않음 확인
+    assert not isinstance(caught.value, Transient)
 
 # 전제 조건 실패의 업로드 실패 처리 확인
 def test_put_treats_precondition_failure_as_upload_failure(tmp_path: Path) -> None:

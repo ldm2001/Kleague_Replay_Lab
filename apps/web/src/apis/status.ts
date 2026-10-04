@@ -6,6 +6,8 @@ import type {
     StatusInput,
     StatusResult
 } from "@replay/application";
+// 세션 쿠키 해석 기능 가져옴
+import { token } from "./cookie";
 
 // 상태 요청 처리 의존 기능 계약 정의
 export type StatusApiDependencies = Readonly<{
@@ -30,23 +32,6 @@ const json = (body: unknown, status: number): Response =>
             "content-type": "application/json; charset=utf-8",
         },
     });
-
-// 세션 쿠키 추출
-const token = (request: Request): string | null => {
-    // 요청 쿠키 헤더 조회
-    const value = request.headers.get("cookie");
-    // 쿠키가 없으면 빈 결과 반환
-    if (!value) return null;
-    // 세션 쿠키 항목 탐색
-    for (const item of value.split(";")) {
-        // 쿠키 이름과 값 분리
-        const [name, ...parts] = item.trim().split("=");
-        // 세션 토큰 반환
-        if (name === "replay_session") return decodeURIComponent(parts.join("="));
-    }
-    // 세션 토큰 없음 반환
-    return null;
-};
 
 // 저장된 미디어의 접근 정보 조회
 export const media = async (

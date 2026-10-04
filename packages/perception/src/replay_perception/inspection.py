@@ -8,22 +8,14 @@ import hashlib
 import json
 # 파일 핸들과 환경 변수를 다룰 운영체제 도구 읽음
 import os
-# 재현을 위한 실행 플랫폼 조회 도구 읽음
-import platform
-# 식별자와 해시 문자열 형식을 검사할 도구 읽음
-import re
 # 실행 경로와 표준 입출력을 다룰 도구 읽음
 import sys
 # 실행 시간과 제한 시간을 측정할 도구 읽음
 import time
-# 설치 라이브러리 버전 조회 도구 읽음
-from importlib.metadata import PackageNotFoundError, version
 # 파일 경로를 운영체제에 맞춰 다룰 도구 읽음
 from pathlib import Path
 # 입출력 자료형과 호출 규약 읽음
-from typing import Any, Callable, Protocol
-# 영상과 모델 결과를 배열로 다룰 수치 도구 읽음
-import numpy as np
+from typing import Any, Callable
 # 모델 자산 관련 함수와 자료형 읽음
 from .assets import directory
 # 연속 구간 관련 함수와 자료형 읽음
@@ -32,12 +24,14 @@ from .continuity import AppearanceContinuity
 from .detector import RtdetrDetector
 # 영상 읽기 관련 함수와 자료형 읽음
 from .media import VideoReader
-# 모델 목록 관련 함수와 자료형 읽음
-from .models import Detection
+# 모델 실행 규약 관련 자료형 읽음
+from .ports import Detector
 # 보고서 관련 함수와 자료형 읽음
 from .report import ReportWriter
 # 추적 관련 함수와 자료형 읽음
 from .tracking import TrackAssociator
+# 실행 기록 공용 도구 읽음
+from .runtime import failureReason, fingerprint, peakMemory, versions
 
 
 # 최댓값 실행 환경 초를 1800 값으로 설정
@@ -45,76 +39,6 @@ MAX_RUNTIME_SECONDS = 1800
 # 최댓값 처리된 프레임 목록을 30000 값으로 설정
 MAX_PROCESSED_FRAMES = 30_000
 
-
-# 검출기의 필드와 동작을 묶을 자료형 선언
-class Detector(Protocol):
-    # 출처 정보를 보관할 자료형 선언
-    provenance: dict[str, Any]
-
-    # 고정된 로컬 모델로 현재 삼원색 표본의 관측을 추론
-    def predict(self, rgb: np.ndarray) -> tuple[Detection, ...]: ...
-
-# 파일의 상태 정보를 수집해 처리 중 변경 여부를 비교
-def fingerprint(path: Path) -> tuple[int, int, int, int]:
-    # 파일 상태에 현재 파일 상태 저장
-    stat = path.stat()
-    # 여러 값을 순서대로 모은 자료 반환
-    return stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns
-
-# 진단용 설치 라이브러리 버전 수집
-def versions() -> dict[str, str | None]:
-    # 버전 목록을 다음 항목으로 구성
-    versions = {
-        # 파이썬 필드 기록
-        "python": platform.python_version(),
-        # 실행 플랫폼 필드 기록
-        "platform": platform.platform(),
-        # 장치 구조 필드 기록
-        "machine": platform.machine(),
-    }
-    # 여러 값을 순서대로 모은 자료에서 이름을 하나씩 읽음
-    for name in (
-        "torch",
-        "torchvision",
-        "transformers",
-        "trackers",
-        "supervision",
-        "av",
-        "numpy",
-        "opencv-python",
-    ):
-        # 실패 시 아래 예외 처리로 정리할 작업 시작
-        try:
-            # 버전 목록의 선택 항목에 버전 처리 결과 저장
-            versions[name] = version(name)
-        # 발생한 예외를 받아 원인 보존과 후속 처리 수행
-        except PackageNotFoundError:
-            # 버전 목록의 선택 항목을 아직 없는 상태로 초기화
-            versions[name] = None
-    # 버전 목록 반환
-    return versions
-
-# 현재 프로세스의 최대 메모리 사용량을 바이트로 반환
-def peakMemory() -> int | None:
-    # 실패 시 아래 예외 처리로 정리할 작업 시작
-    try:
-        # 현재 프로세스의 자원 사용량 조회 도구 읽음
-        import resource
-    # 발생한 예외를 받아 원인 보존과 후속 처리 수행
-    except ImportError:
-        # 없음 반환
-        return None
-    # 최대에 프로세스 자원 사용량 처리 결과의 프로세스 자원 최대 상주 메모리 저장
-    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-    # 조건에 따라 선택한 최대의 정수 변환 결과 반환
-    return int(peak if sys.platform == "darwin" else peak * 1024)
-
-# 예외를 진단 계약에서 사용하는 실패 사유로 정리
-def failureReason(error: Exception) -> str:
-    # 문자열에 오류의 문자열 변환 결과 저장
-    text = str(error)
-    # 조건에 따라 선택한 문자열 반환
-    return text if re.fullmatch(r"[A-Z][A-Z0-9_]{0,100}", text) else type(error).__name__
 
 # 원본 영상을 검출·추적해 판정과 분리된 개발 진단을 저장
 def inspection(

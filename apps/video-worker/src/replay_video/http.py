@@ -114,17 +114,19 @@ class Api:
         # 재시도 시간 상한 측정 시계 저장
         self.clock = clock
 
-    # 일시 장애의 제한 재시도 요청
-    def retry(self, call: Callable[[], T], budget: float = float("inf")) -> T:
-        # 첫 요청 시작 시각 기록
-        start = self.clock()
+    # 일시 장애의 절대 기한 안 제한 재시도 요청
+    def retry(self, call: Callable[[float], T], budget: float = float("inf")) -> T:
+        # 첫 요청 시작 시각 기준의 재시도 종료 시각 계산
+        deadline = self.clock() + budget
+        # 첫 요청에 줄 남은 기한 초기화
+        remaining = budget
         # 현재 시도 순번 초기화
         attempt = 1
         # 성공 또는 재시도 불가 판단까지 같은 요청 반복
         while True:
             try:
-                # 같은 본문의 요청 결과 반환
-                return call()
+                # 남은 기한 안으로 줄인 제한 시간에서 같은 본문의 요청 결과 반환
+                return call(min(self.timeout, remaining))
             # 다시 보내면 성공할 수 있는 장애 분기
             except Transient as error:
                 # 서버 대기 요구 우선 사용 후 지수 증가 전체 흔들림 대기 계산
@@ -133,16 +135,22 @@ class Api:
                     if error.wait is not None
                     else self.jitter() * min(CEILING, BASE * 2 ** (attempt - 1))
                 )
-                # 마지막 시도와 상한 초과 대기 및 시간 상한 소진 여부 확인
+                # 마지막 시도와 상한 초과 대기 및 대기 뒤 남을 기한 부재 여부 확인
                 if (
                     attempt >= self.attempts
                     or wait > CEILING
-                    or self.clock() - start + wait > budget
+                    or wait >= deadline - self.clock()
                 ):
                     # 마지막 일시 장애 오류 전달
                     raise
-            # 다음 시도 전 대기
-            self.sleep(wait)
+                # 다음 시도 전 대기
+                self.sleep(wait)
+                # 실제 대기 뒤 종료 시각까지 남은 기한 계산
+                remaining = deadline - self.clock()
+                # 대기 지연으로 종료 시각을 넘겼는지 확인
+                if remaining <= 0:
+                    # 다음 요청 없이 마지막 일시 장애 오류 전달
+                    raise
             # 다음 시도 순번 증가
             attempt += 1
 
@@ -152,6 +160,7 @@ class Api:
         path: str,
         payload: Mapping[str, object],
         allowed_errors: tuple[int, ...] = (),
+        timeout: float | None = None,
     ) -> dict[str, object] | None:
         # 직렬화 자료 요청 객체 구성
         request = Request(
@@ -169,8 +178,10 @@ class Api:
         )
         # 요청 전송과 허용된 오류 응답 읽기 시도
         try:
-            # 제한 시간 안에 요청을 보내고 응답 자원 관리
-            with self.opener(request, timeout=self.timeout) as response:
+            # 지정 제한 시간 또는 기본 제한 시간 안에 요청을 보내고 응답 자원 관리
+            with self.opener(
+                request, timeout=self.timeout if timeout is None else timeout
+            ) as response:
                 # 응답 상태 코드 읽음
                 status = int(getattr(response, "status", 200))
                 # 내용 없는 성공 응답 여부 확인
@@ -229,9 +240,11 @@ class Api:
         return value
 
     # 일반 직렬화 자료 요청
-    def json(self, path: str, payload: Mapping[str, object]) -> dict[str, object] | None:
+    def json(
+        self, path: str, payload: Mapping[str, object], timeout: float | None = None
+    ) -> dict[str, object] | None:
         # 일반 요청 결과를 그대로 반환
-        return self.request(path, payload)
+        return self.request(path, payload, timeout=timeout)
 
     # 작업 선점
     def claim(self, kind: str) -> dict[str, object] | None:
@@ -263,9 +276,11 @@ class Api:
         if message:
             # 진행 설명을 본문에 추가
             payload["message"] = message
-        # 임대 기한 안에서만 재시도한 해당 작업의 진행 보고 요청 결과 반환
+        # 각 요청 제한 시간까지 임대 기한 안으로 줄여 재시도한 진행 보고 요청 결과 반환
         return self.retry(
-            lambda: self.json(f"/api/internal/jobs/{job['jobId']}/progress", payload),
+            lambda limit: self.json(
+                f"/api/internal/jobs/{job['jobId']}/progress", payload, limit
+            ),
             RENEWAL,
         )
 
@@ -286,7 +301,9 @@ class Api:
         }
         # 결과 제출의 거부와 충돌 응답까지 해석하며 일시 장애 시 같은 본문 재전송
         response = self.retry(
-            lambda: self.request(f"/api/internal/jobs/{job['jobId']}/result", body, (400, 409))
+            lambda limit: self.request(
+                f"/api/internal/jobs/{job['jobId']}/result", body, (400, 409), limit
+            )
         )
         # 결과 접수 또는 이미 완료된 응답인지 확인
         if response and response.get("kind") in {"ACCEPTED", "ALREADY_FINISHED"}:
@@ -328,7 +345,7 @@ class Api:
         }
         # 서명 주소만 발급하는 권한 요청을 일시 장애 시 재전송한 결과 반환
         return self.retry(
-            lambda: self.json(f"/api/internal/jobs/{job['jobId']}/evidence", body)
+            lambda limit: self.json(f"/api/internal/jobs/{job['jobId']}/evidence", body, limit)
         )
 
     # 증거 파일 전송
@@ -389,7 +406,7 @@ class Api:
             raise HttpError("evidence-size-invalid")
         # 형식과 실제 파일 크기를 전송 헤더에 조립
         request_headers = {"content-type": content_type, "content-length": str(size), **forwarded}
-        # 증거 파일 전송과 응답 확인 시도
+        # 최초 기록 조건의 반복 결과가 모호해 호출 안 재시도 없이 일시 장애만 구분해 작업 재실행으로 넘김
         try:
             # 파일 객체 전달로 요청 본문 전체의 메모리 적재 방지
             with source.open("rb") as stream:
@@ -401,36 +418,71 @@ class Api:
                     status = int(getattr(response, "status", 200))
         # 업로드 서버 오류 응답 분기
         except HTTPError as error:
+            # 저장소 일시 장애 상태 확인
+            if error.code in TRANSIENT:
+                # 재실행하면 성공할 수 있는 업로드 상태 오류 전달
+                raise Transient(f"evidence-{error.code}") from error
             # 증거 전송 상태 오류 전달
             raise HttpError(f"evidence-{error.code}") from error
         # 증거 업로드 연결 오류 분기
         except URLError as error:
-            # 증거 저장소 연결 불가 오류 전달
-            raise HttpError("evidence-unavailable") from error
+            # 재실행하면 성공할 수 있는 증거 저장소 연결 불가 오류 전달
+            raise Transient("evidence-unavailable") from error
+        # 업로드 도중 시간 초과와 연결 끊김 분기
+        except (TimeoutError, ConnectionError, HTTPException) as error:
+            # 기록 여부를 모르는 응답 유실을 재실행 가능한 연결 불가 오류로 전달
+            raise Transient("evidence-unavailable") from error
         # 업로드 응답의 성공 범위 확인
         if status < 200 or status >= 300:
+            # 일시 장애 상태 확인
+            if status in TRANSIENT:
+                # 재실행하면 성공할 수 있는 업로드 상태 오류 전달
+                raise Transient(f"evidence-{status}")
             # 증거 업로드 오류 변환
             raise HttpError(f"evidence-{status}")
 
     # 원본 다운로드
-    def media(self, url: str, target: Path) -> None:
+    def media(
+        self,
+        url: str,
+        target: Path,
+        *,
+        check_cancelled: Callable[[], None] | None = None,
+    ) -> None:
         # 안전한 조회 요청이므로 일시 장애 시 처음부터 다시 받음
-        self.retry(lambda: self.download(url, target))
+        self.retry(
+            lambda limit: self.download(url, target, limit, check_cancelled=check_cancelled)
+        )
 
     # 원본 한 번 받음
-    def download(self, url: str, target: Path) -> None:
+    def download(
+        self,
+        url: str,
+        target: Path,
+        timeout: float | None = None,
+        *,
+        check_cancelled: Callable[[], None] | None = None,
+    ) -> None:
+        # 재시도 대기 뒤 새 연결을 열기 전 작업 취소 확인
+        if check_cancelled is not None:
+            # 임대 상실 시 원본 요청 시작 중단
+            check_cancelled()
         # 원본 다운로드 요청 구성
         request = Request(url, method="GET")
         # 대상 폴더 생성
         target.parent.mkdir(parents=True, exist_ok=True)
         # 원본 다운로드와 파일 쓰기 시도
         try:
-            # 응답 스트림을 파일로 저장
-            with self.opener(request, timeout=self.timeout) as response, target.open(
-                "wb"
-            ) as output:
+            # 지정 제한 시간 또는 기본 제한 시간 안에 받은 응답 스트림을 파일로 저장
+            with self.opener(
+                request, timeout=self.timeout if timeout is None else timeout
+            ) as response, target.open("wb") as output:
                 # 원본 응답을 최대 1메비바이트 단위로 읽음
                 while chunk := response.read(1024 * 1024):
+                    # 청크 경계마다 작업 취소 확인
+                    if check_cancelled is not None:
+                        # 임대 상실 시 남은 원본 수신 중단
+                        check_cancelled()
                     # 다운로드 청크 기록
                     output.write(chunk)
         # 원본 다운로드 서버 오류 분기

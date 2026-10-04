@@ -44,7 +44,7 @@ export const jobStage = pgEnum(
 // 작업 이벤트 종류
 export const jobEventType = pgEnum(
     "job_event_type",
-    values(["CLAIMED", "PROGRESS", "HEARTBEAT", "SUCCEEDED", "FAILED"])
+    values(["CLAIMED", "PROGRESS", "HEARTBEAT", "SUCCEEDED", "FAILED", "REQUEUED"])
 );
 // 멱등 작업 종류
 export const idempotencyOperation = pgEnum(

@@ -13,6 +13,8 @@ from replay_video.infrastructure.shots import shots
 from replay_video.infrastructure.candidates import candidates
 from replay_video.infrastructure.evidence import evidence
 from replay_video.infrastructure.signals import Signal
+from replay_video.runner import PulseStopped
+from fixtures.cancel import Cancel
 
 # 테스트 영상 생성
 def fixture(path: Path) -> None:
@@ -302,3 +304,128 @@ def test_evidence(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     assert sum(item.kind == "FRAME" for item in result) == 12
     # 클립은 상위 신뢰도의 여덟 후보에만 생성되는지 확인
     assert sum(item.kind == "CLIP" for item in result) == 8
+
+# 같은 작업의 샷·후보 변화 신호 단일 디코딩과 작업 간 비공유 확인
+def test_media_ports_decode_signals_once_per_job(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # 입력 영상을 시험용 기준 경로에서 구성
+    source = tmp_path / "sample.mp4"
+    # 샷 전환과 움직임을 포함한 시험 영상 생성
+    fixture(source)
+    # 영상 메타데이터 조회
+    metadata = probe(source)
+    # 원본 디코더 생성 경로 기록 목록 준비
+    opened: list[str] = []
+    # 실제 디코더 생성 함수 보존
+    real = cv2.VideoCapture
+
+    # 원본 디코더 생성 경로를 기록하는 대역
+    def capture(path: str):
+        # 디코더 생성 경로 기록
+        opened.append(path)
+        # 실제 디코더 반환
+        return real(path)
+
+    # 변화 수집의 디코더 생성 횟수를 관측하도록 대역 연결
+    monkeypatch.setattr(cv2, "VideoCapture", capture)
+    # 첫 작업의 기본 미디어 포트 묶음 생성
+    first = media()
+    # 첫 작업의 샷 경계와 변화 후보 생성
+    first.candidates(source, metadata, first.shots(source, metadata))
+    # 같은 작업의 샷과 후보가 원본을 한 번만 디코딩했는지 확인
+    assert opened == [str(source)]
+    # 다음 작업의 샷 경계 생성
+    media().shots(source, metadata)
+    # 다음 작업이 이전 작업의 변화 결과를 재사용하지 않는지 확인
+    assert opened == [str(source)] * 2
+
+# 표본 경계 취소 시 변화 디코딩 중단과 미완료 결과 미보관 확인
+def test_media_ports_stop_signals_at_sample_boundary(tmp_path: Path) -> None:
+    # 입력 영상을 시험용 기준 경로에서 구성
+    source = tmp_path / "sample.mp4"
+    # 10fps 40프레임으로 2fps 표본 여덟 개를 가진 시험 영상 생성
+    fixture(source)
+    # 영상 메타데이터 조회
+    metadata = probe(source)
+    # 세 번째 표본에서만 임대 상실을 알리는 작업 취소 대역 생성
+    cancel = Cancel(3)
+    # 작업 취소를 공유하는 미디어 포트 묶음 생성
+    ports = media(check_cancelled=cancel)
+    # 중단 신호가 샷 경계 생성 밖으로 전달되는지 확인
+    with pytest.raises(PulseStopped):
+        # 세 번째 표본에서 멈출 샷 경계 생성
+        ports.shots(source, metadata)
+    # 남은 표본을 더 디코딩하지 않았는지 확인
+    assert cancel.count == 3
+    # 같은 포트로 샷 경계와 변화 후보 재생성
+    ports.candidates(source, metadata, ports.shots(source, metadata))
+    # 미완료 결과 대신 여덟 표본을 처음부터 한 번만 다시 디코딩했는지 확인
+    assert cancel.count == 3 + 8
+
+# 표본 경계 취소 시 추적 진단 중단과 요약 미생성 확인
+def test_media_ports_stop_tracking_at_sample_boundary(tmp_path: Path) -> None:
+    # 입력 영상을 시험용 기준 경로에서 구성
+    source = tmp_path / "sample.mp4"
+    # 샷 전환과 움직임을 포함한 시험 영상 생성
+    fixture(source)
+    # 영상 메타데이터 조회
+    metadata = probe(source)
+    # 추적 진단 출력 경로 구성
+    output = tmp_path / "result"
+    # 두 번째 표본에서 임대 상실을 알리는 작업 취소 대역 생성
+    cancel = Cancel(2)
+    # 중단 신호가 추적 단계 밖으로 전달되는지 확인
+    with pytest.raises(PulseStopped):
+        # 작업 취소를 공유하는 포트의 추적 단계 실행
+        media(check_cancelled=cancel).tracking(source, output, metadata, ())
+    # 남은 표본을 더 디코딩하지 않았는지 확인
+    assert cancel.count == 2
+    # 완료하지 않은 진단의 요약이 생성되지 않았는지 확인
+    assert not (output / "tracking" / "context-summary.json").exists()
+
+# 후보 경계 취소 시 남은 증거 외부 추출 중단 확인
+def test_media_ports_stop_evidence_between_candidates(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # 증거 생성용 입력 준비
+    source = tmp_path / "source.mp4"
+    # 입력 영상에 시험 내용을 기록
+    source.write_bytes(b"source")
+    # 영상 길이와 크기 및 시간축의 시험 메타데이터 생성
+    metadata = VideoMetadata(source, 60_000, 1920, 1080, 30.0, 1800, "h264")
+    # 두 후보 모두 프레임과 클립 대상인 시험 후보 목록 생성
+    items = tuple(
+        Candidate(
+            index,
+            "OTHER",
+            index * 1000,
+            index * 1000 + 800,
+            index * 1000 + 400,
+            0.5,
+            "MEDIUM",
+            ("motion_spike",),
+            (0,),
+        )
+        for index in (1, 2)
+    )
+    # 외부 추출 호출 순서 기록 목록 준비
+    calls: list[str] = []
+    # 프레임 추출 호출을 기록하고 대표 시각을 실제 시각으로 반환하는 대역 연결
+    monkeypatch.setattr(
+        "replay_video.infrastructure.evidence.frame",
+        lambda _source, _destination, timestamp: (calls.append("FRAME"), timestamp)[1],
+    )
+    # 클립 인코딩 호출을 기록하는 대역 연결
+    monkeypatch.setattr(
+        "replay_video.infrastructure.evidence.clip",
+        lambda *_args: calls.append("CLIP"),
+    )
+    # 첫 후보의 프레임과 클립 뒤 두 번째 후보 직전에 임대 상실을 알리는 작업 취소 대역 생성
+    cancel = Cancel(3)
+    # 중단 신호가 증거 단계 밖으로 전달되는지 확인
+    with pytest.raises(PulseStopped):
+        # 작업 취소를 공유하는 포트의 증거 단계 실행
+        media(check_cancelled=cancel).evidence(source, tmp_path / "result", metadata, items)
+    # 첫 후보의 프레임과 클립만 추출하고 두 번째 후보 추출 전에 멈췄는지 확인
+    assert (calls, cancel.count) == (["FRAME", "CLIP"], 3)

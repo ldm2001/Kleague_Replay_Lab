@@ -14,7 +14,7 @@ DEFERRED = {
     # 추론 시점에만 필요한 검출 모델 대형 실행 환경 분리
     ("src/replay_perception/detector.py", "runtimeBundle"),
     # 운영체제에 따라 없는 자원 사용량 조회 도구의 부재 처리
-    ("src/replay_perception/inspection.py", "peakMemory"),
+    ("src/replay_perception/runtime.py", "peakMemory"),
     # 복호화 도구 없는 환경에서도 영상 모듈을 읽는 선택 복호화 도구
     ("src/replay_perception/media.py", "VideoReader.__enter__"),
     # 추론 시점에만 필요한 자세 모델 대형 실행 환경 분리
@@ -26,6 +26,12 @@ DEFERRED = {
     # 가중치 검사 시점에만 필요한 텐서 실행 환경 내부 객체
     ("src/replay_perception/roles.py", "lockedCheckpoint"),
 }
+# 인식 실증 패키지 이름
+PACKAGE = "replay_perception"
+# 다른 원본 모듈이 가져오지 않는 사용자 명령행 진입 모듈
+COMMANDS = {"cache", "inspection", "observer", "observercache"}
+# 같은 모듈의 부모 처리가 띄우는 자식 프로세스 진입 모듈
+CHILDREN = {"transport"}
 
 # 뿌리 기준 경로별 원본과 시험 파일 원문 생성
 def sources():
@@ -143,6 +149,48 @@ def layout(text):
     # 줄 번호 순서의 위반 항목 반환
     return sorted(found, key=lambda item: item[1])
 
+# 함수 안까지 가져오는 패키지 안 모듈의 줄 번호와 이름 목록 생성
+def imported(text):
+    # 줄 번호와 모듈 이름
+    found = []
+    # 함수 안 가져오기까지 모든 노드 순회
+    for node in ast.walk(ast.parse(text)):
+        # 모듈 가져오기의 패키지 안 모듈 이름 기록
+        if isinstance(node, ast.Import):
+            found += [
+                (node.lineno, alias.name.split(".")[1])
+                for alias in node.names
+                if alias.name.startswith(f"{PACKAGE}.")
+            ]
+            continue
+        # 이름 가져오기가 아니거나 패키지 위로 올라가는 상대 경로 제외
+        if not isinstance(node, ast.ImportFrom) or node.level > 1:
+            continue
+        # 패키지 기준 모듈 경로
+        module = node.module or ""
+        # 절대 경로는 패키지 이름을 뗀 경로로 정리
+        if node.level == 0:
+            # 패키지 밖 가져오기 제외
+            if module != PACKAGE and not module.startswith(f"{PACKAGE}."):
+                continue
+            module = module[len(PACKAGE) + 1:]
+        # 모듈 경로가 없으면 대상 이름을 하위 모듈로 간주
+        names = [module.split(".")[0]] if module else [alias.name for alias in node.names]
+        found += [(node.lineno, name) for name in names]
+    # 줄 번호 순서의 가져오기 목록 반환
+    return sorted(found)
+
+# 최상위 직접 실행 분기의 존재 여부 확인
+def runnable(text):
+    # 모듈 이름을 비교하는 최상위 조건문 탐색
+    return any(
+        isinstance(node, ast.If)
+        and isinstance(node.test, ast.Compare)
+        and isinstance(node.test.left, ast.Name)
+        and node.test.left.id == "__name__"
+        for node in ast.parse(text).body
+    )
+
 # 원본과 시험 파일마다 선두 묶음에 한 번만 선언하는 가져오기 배치 확인
 def test_declares_every_import_once_in_the_leading_block():
     # 뿌리 기준 경로별 원문
@@ -223,3 +271,51 @@ def test_accepts_commented_imports_patch_aliases_and_optional_dependency_skips()
 
     # 모듈 별칭과 이름 가져오기의 역할 분리와 건너뛰기 호출 허용 확인
     assert layout(text) == []
+
+# 원본 모듈의 명령행 진입 모듈 가져오기 부재와 진입 모듈 분류 확인
+def test_shared_modules_never_import_command_modules():
+    # 패키지 바로 아래 원본 모듈 이름별 원문
+    modules = {
+        Path(name).stem: text
+        for name, text in sources().items()
+        if Path(name).parent == Path("src", PACKAGE)
+    }
+    # 명령행 진입 모듈을 가져오는 원본 위치
+    breaches = [
+        (name, line, target)
+        for name, text in modules.items()
+        for line, target in imported(text)
+        if target in COMMANDS
+    ]
+
+    # 직접 실행 분기를 둔 모듈과 진입 모듈 분류의 정확한 일치 확인
+    assert {name for name, text in modules.items() if runnable(text)} == COMMANDS | CHILDREN
+    # 원본 모듈의 명령행 진입 모듈 가져오기 없음 확인
+    assert breaches == []
+
+# 상대 경로와 절대 경로 및 패키지와 함수 안 가져오기의 모듈 이름 정리 확인
+def test_resolves_relative_absolute_package_and_nested_imports():
+    # 가져오기 형태별 원본 문자열
+    text = "\n".join(
+        [
+            "import json",
+            "from .runtime import versions",
+            "from replay_perception.observer import main",
+            "from . import cache, ports",
+            "import replay_perception.observercache as store",
+            "from numpy import ndarray",
+            "from ..outside import value",
+            "def load():",
+            "    from .inspection import inspection",
+        ]
+    )
+
+    # 패키지 안 모듈 이름만 줄 번호 순서로 기록 확인
+    assert imported(text) == [
+        (2, "runtime"),
+        (3, "observer"),
+        (4, "cache"),
+        (4, "ports"),
+        (5, "observercache"),
+        (9, "inspection"),
+    ]

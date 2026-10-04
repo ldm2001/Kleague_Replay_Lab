@@ -6,6 +6,8 @@ import type {
     FactResult,
     SessionRecord
 } from "@replay/application";
+// 세션 쿠키 해석 기능 가져옴
+import { token } from "./cookie";
 
 // 규정 평가 요청 처리 의존 기능 계약 정의
 export type EvaluationApiDependencies = Readonly<{
@@ -25,23 +27,6 @@ const json = (body: unknown, status: number): Response =>
         // 자료 형식과 캐시 및 보안을 전달하는 응답 헤더
         headers: { "cache-control": "no-store", "content-type": "application/json; charset=utf-8" },
     });
-
-// 세션 쿠키 추출
-const cookie = (request: Request): string | null => {
-    // 요청 쿠키 헤더 조회
-    const value = request.headers.get("cookie");
-    // 쿠키가 없으면 빈 결과 반환
-    if (!value) return null;
-    // 세션 쿠키 항목 탐색
-    for (const item of value.split(";")) {
-        // 쿠키 이름과 값 분리
-        const [name, ...parts] = item.trim().split("=");
-        // 세션 쿠키 반환
-        if (name === "replay_session") return decodeURIComponent(parts.join("="));
-    }
-    // 세션 쿠키 없음 반환
-    return null;
-};
 
 // 요청 본문 해석
 const body = async (request: Request): Promise<Record<string, unknown> | null> => {
@@ -148,7 +133,7 @@ export const facts = async (
     dependencies: EvaluationApiDependencies,
 ): Promise<Response> => {
     // 세션 쿠키로 익명 세션 조회
-    const session = await dependencies.resolve(cookie(request) ?? "");
+    const session = await dependencies.resolve(token(request) ?? "");
     // 세션이 없으면 사실 저장 차단
     if (!session) return json({ kind: "UNAUTHORIZED" }, 401);
     // 사실 요청 본문 조회
@@ -178,7 +163,7 @@ export const decision = async (
     dependencies: EvaluationApiDependencies,
 ): Promise<Response> => {
     // 세션 쿠키로 익명 세션 조회
-    const session = await dependencies.resolve(cookie(request) ?? "");
+    const session = await dependencies.resolve(token(request) ?? "");
     // 세션이 없으면 판정 저장 차단
     if (!session) return json({ kind: "UNAUTHORIZED" }, 401);
     // 판정 계산 유스케이스 호출

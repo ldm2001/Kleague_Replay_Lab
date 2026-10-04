@@ -59,6 +59,8 @@ export const container = (): UploadApiDependencies => {
         upload: uploadCase,
         // 업로드 완료와 후속 영상 검증 연결
         complete: completionCase,
+        // 세션 발급과 같은 유효 기간을 쿠키 보존 시간으로 쓰는 세션 정책
+        session: sessionPolicy,
     };
     // 의존성 묶음 반환
     return cached;

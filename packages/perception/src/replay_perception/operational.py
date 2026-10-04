@@ -11,14 +11,14 @@ from typing import Any, Callable
 from .continuity import AppearanceContinuity
 from .artifact import DiagnosticArtifact
 from .incidents import IncidentLinker, InteractionTracker
-from .inspection import Detector, failureReason, fingerprint, versions
+from .ports import Detector, PoseModel, RoleModel
 from .media import VideoReader
-from .observer import PoseModel, RoleModel
 from .observations import PoseObservation
 from .objects import OfficialObserver
 from .frames import RecordedFrame
 from .matching import assignments
 from .tracking import TrackAssociator
+from .runtime import failureReason, fingerprint, versions
 
 
 # 시각 전용 로컬 관측 실행 판본 정의

@@ -13,11 +13,7 @@ import { diagnostic as boundary, notice, type Diagnostic, type ResultDiagnostic 
 // 내용 동일성 확인에 필요한 해시 계약 가져옴
 import type { Hasher } from "../../ports/hashing/hasher";
 // 영상 작업의 임대와 결과 처리 계약 가져옴
-import type {
-    JobResult,
-    JobResultPayload,
-    JobResultStore
-} from "../../ports/repositories/job-store";
+import type { JobResult, JobResultStore } from "../../ports/repositories/job-store";
 // 영상 업로드의 허가와 완료 계약 가져옴
 import type { CompletionStorage } from "../../ports/storage/upload-storage";
 import type { EvidenceBodyStorage } from "../../ports/storage/evidence-storage";
@@ -36,8 +32,8 @@ export type ResultInput = Readonly<{
     jobRevision: number;
     // 현재 작업 임대를 증명하는 비밀 토큰
     leaseToken: string;
-    // 작업에 전달하거나 제출하는 자료
-    payload: JobResultPayload;
+    // 형식 검증 전 작업자가 제출한 결과 자료
+    payload: unknown;
 }>;
 
 // 결과 부적합 사유 정의
@@ -75,11 +71,21 @@ export type ResultDependencies = Readonly<{
     privateStorage?: EvidenceBodyStorage;
     // 원본 예외를 포함하지 않는 비공개 단계 진단 기능
     diagnostic?: Diagnostic;
+    // 재시도 가능한 실패를 다시 선점하기까지의 대기 밀리초이며 없으면 모든 실패를 최종 처리
+    retryMs?: number;
 }>;
 
 // 결과 처리
 export const result =
-    ({ clock, hasher, repository, storage, privateStorage, diagnostic }: ResultDependencies) =>
+    ({
+        clock,
+        hasher,
+        repository,
+        storage,
+        privateStorage,
+        diagnostic,
+        retryMs
+    }: ResultDependencies) =>
     async (input: ResultInput): Promise<ResultResult> => {
         // 작업 결과 검증
         if (!UUID.test(input.jobId)) {
@@ -107,8 +113,10 @@ export const result =
             return { kind: "INVALID_INPUT", reason: "LEASE" };
         }
 
+        // 신뢰 전 결과 본문 읽음
+        const body = input.payload;
         // 결과 종류별 자료 계약을 충족하지 못하면 거부
-        if (!payload(input.payload)) {
+        if (!payload(body)) {
             // 작업 결과 본문 형식 오류 반환
             return { kind: "INVALID_INPUT", reason: "PAYLOAD" };
         }
@@ -125,18 +133,18 @@ export const result =
         const leaseTokenHash = Uint8Array.from(await hasher.sha256(input.leaseToken));
         // 승인된 로컬 관측 결과는 서버 측 원본과 증거 검사 경로로 분기
         if (
-            input.payload.kind === "ANALYZED" &&
+            body.kind === "ANALYZED" &&
             ["video-local-observers-v1", "video-local-observers-av-v1"].includes(
-                input.payload.pipelineVersion
+                body.pipelineVersion
             )
         ) {
             // 관측 자료나 사전 검사 또는 저장소 기능 누락 확인
-            if (!input.payload.perception || !repository.preflight || !storage) {
+            if (!body.perception || !repository.preflight || !storage) {
                 // 실제 파일 검증 수단이 없는 결과 거부 반환
                 return { kind: "INVALID_RESULT", reason: "VERIFICATION_UNAVAILABLE" };
             }
             // 분기에서 확인한 분석 자료의 계약 보존
-            const analysis = input.payload;
+            const analysis = body;
             // 시간이 걸리는 파일 검증 전 기준 시각 읽음
             const initialNow = clock.now().toISOString();
             // 파일 검사 전 권한 확인 및 필요 시 검증된 경기 문맥 연결
@@ -155,7 +163,7 @@ export const result =
             // 현재 작업 임대의 접근 권한을 얻지 못하면 검사 중단
             if (preflight.kind !== "AUTHORIZED") return preflight;
             // 사실 채택과 별개인 모델 관측 실행 자료 읽음
-            const perception = input.payload.perception;
+            const perception = body.perception;
             // 업로드 원본과 분석 해시 및 관측 원본과 보존 기한 대조
             if (
                 !verifiedHash(preflight.sourceSha256, perception.sourceSha256) ||
@@ -252,7 +260,7 @@ export const result =
                 // 유효 기한 판단에 사용하는 현재 시각
                 now: completedAt.toISOString(),
                 // 작업에 전달하거나 제출하는 자료
-                payload: input.payload,
+                payload: body,
                 // 후보별 자동 규정 평가의 내부 결과 묶음
                 automaticReview: automatic,
                 // 비공개 관측 색인 또는 용량과 시한 초과에 따른 색인 생략 표시
@@ -269,6 +277,13 @@ export const result =
             }));
         }
 
+        // 저장과 재선점 시각 계산에 함께 쓰는 기준 시각 읽음
+        const now = clock.now();
+        // 작업자가 재시도 가능으로 분류한 실패에만 재선점 가능 시각 생성
+        const retryAt =
+            body.kind === "FAILED" && body.retryable && retryMs !== undefined
+                ? new Date(now.getTime() + retryMs).toISOString()
+                : undefined;
         // 작업 결과 저장
         return await step("PERSISTENCE", () => repository.result({
             // 처리 작업의 식별자
@@ -280,8 +295,10 @@ export const result =
             // 작업 임대 권한 비교용 토큰 해시
             leaseTokenHash,
             // 유효 기한 판단에 사용하는 현재 시각
-            now: clock.now().toISOString(),
+            now: now.toISOString(),
             // 작업에 전달하거나 제출하는 자료
-            payload: input.payload
+            payload: body,
+            // 재시도 가능한 실패를 다시 선점할 수 있는 가장 이른 시각
+            ...(retryAt ? { retryAt } : {})
         }));
     };

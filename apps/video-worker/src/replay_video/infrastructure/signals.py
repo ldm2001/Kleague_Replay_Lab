@@ -1,7 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
-from functools import lru_cache
 from pathlib import Path
+from typing import Callable
 import cv2
 import numpy as np
 from ..domain.models import VideoMetadata
@@ -25,10 +25,16 @@ def histogram(frame: np.ndarray) -> np.ndarray:
     # 히스토그램 정규화
     return cv2.normalize(histogram, histogram).flatten()
 
+# 원본과 표본 간격을 받아 변화 신호를 돌려주는 수집 계약
+Sampling = Callable[[Path | str, VideoMetadata, float], tuple[Signal, ...]]
+
 # 영상 변화 수집
-@lru_cache(maxsize=8)
 def signals(
-    source: Path | str, metadata: VideoMetadata, sample_fps: float = 2.0
+    source: Path | str,
+    metadata: VideoMetadata,
+    sample_fps: float = 2.0,
+    *,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> tuple[Signal, ...]:
     # 영상 캡처 열기
     capture = cv2.VideoCapture(str(source))
@@ -61,6 +67,10 @@ def signals(
                 frame_index += 1
                 # 분석 간격 밖 프레임은 복원 연산 없이 다음 프레임으로 이동
                 continue
+            # 표본 경계마다 작업 취소 확인
+            if check_cancelled is not None:
+                # 임대 상실 시 남은 디코딩 중단
+                check_cancelled()
 
             # 샘플 프레임 변환
             ok, frame = capture.retrieve()
@@ -101,3 +111,24 @@ def signals(
         capture.release()
     # 신호 결과 반환
     return tuple(result)
+
+# 작업 단위 변화 재사용기 생성
+def sampler(check_cancelled: Callable[[], None] | None = None) -> Sampling:
+    # 원본과 표본 간격별 변화 결과 보관소 생성
+    memo: dict[tuple[str, VideoMetadata, float], tuple[Signal, ...]] = {}
+
+    # 같은 작업의 같은 표본을 한 번만 디코딩
+    def sample(
+        source: Path | str, metadata: VideoMetadata, sample_fps: float = 2.0
+    ) -> tuple[Signal, ...]:
+        # 경로 표기와 기본값 생략 차이를 없앤 보관 키 생성
+        key = (str(source), metadata, float(sample_fps))
+        # 아직 계산하지 않은 표본인지 확인
+        if key not in memo:
+            # 취소 확인을 전달해 완료한 변화 결과만 보관
+            memo[key] = signals(source, metadata, sample_fps, check_cancelled=check_cancelled)
+        # 보관한 변화 결과 반환
+        return memo[key]
+
+    # 작업 단위 재사용기 반환
+    return sample

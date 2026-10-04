@@ -20,6 +20,7 @@ const dependencies = (): UploadApiDependencies => ({
         expiresAt: "2030-01-01T13:00:00.000Z",
     }),
     complete: async () => ({ kind: "COMPLETED", videoAssetId: VIDEO_ID }),
+    session: { ttlMs: 24 * 60 * 60 * 1000 },
 });
 
 describe("upload API", () => {

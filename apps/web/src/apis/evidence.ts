@@ -6,6 +6,8 @@ import {
     type EvidenceBody,
     type SessionRecord
 } from "@replay/application";
+// 세션 쿠키 해석 기능 가져옴
+import { token } from "./cookie";
 
 // 증거 요청 처리 의존 기능 계약 정의
 export type EvidenceApiDependencies = Readonly<{
@@ -19,23 +21,6 @@ export type EvidenceApiDependencies = Readonly<{
 
 // 시작과 끝 또는 끝에서부터 길이로 표현한 단일 바이트 구간 형식
 const RANGE = /^bytes=(?:(\d{1,15})-(\d{0,15})|-(\d{1,15}))$/;
-
-// 세션 쿠키 추출
-const token = (request: Request): string | null => {
-    // 요청 쿠키 헤더 조회
-    const value = request.headers.get("cookie");
-    // 쿠키가 없으면 빈 결과 반환
-    if (!value) return null;
-    // 세션 쿠키 항목 탐색
-    for (const item of value.split(";")) {
-        // 쿠키 이름과 값 분리
-        const [name, ...parts] = item.trim().split("=");
-        // 세션 토큰 반환
-        if (name === "replay_session") return decodeURIComponent(parts.join("="));
-    }
-    // 세션 토큰 없음 반환
-    return null;
-};
 
 // 저장소에 전달할 단일 바이트 구간 추출
 const range = (request: Request): string | undefined => {

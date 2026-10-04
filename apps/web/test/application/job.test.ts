@@ -327,6 +327,30 @@ class ResultStorage {
     }
 }
 
+// 관측 없는 기본 분석 결과의 유효 전송 자료 생성
+const baselinePayload = () => ({
+    kind: "ANALYZED",
+    pipelineVersion: "video-baseline-v1",
+    limitations: [],
+    shots: [{
+        index: 0, startMs: 0, endMs: 4_000, playbackSpeed: "UNKNOWN", isReplay: false, cameraAngle: null
+    }],
+    candidates: [{
+        index: 1, category: "OTHER", startMs: 500, endMs: 1_500, anchorMs: 1_000, confidence: 0.42,
+        cameraSufficiency: "MEDIUM", reasons: ["motion-spike"], shotIndices: [0]
+    }],
+    evidence: [{
+        candidateIndex: 1,
+        kind: "FRAME",
+        objectKey: `evidence/${PERCEPTION_ANALYSIS_ID}/${PERCEPTION_JOB_ID}/candidate-0001.jpg`,
+        contentSha256: "a".repeat(64),
+        startMs: 1_000,
+        endMs: 1_000,
+        width: 1_920,
+        height: 1_080
+    }]
+});
+
 describe("result", () => {
     it("rejects a newly submitted FRAME interval before preflight or storage reads", async () => {
         const repository = new PerceptionResultStore();
@@ -346,6 +370,73 @@ describe("result", () => {
         expect(repository.preflightCommands).toEqual([]);
         expect(repository.commands).toEqual([]);
         expect(storage.calls).toEqual([]);
+    });
+
+    it("accepts the valid baseline payload used by the malformed input cases", async () => {
+        const repository = new ResultStoreFake();
+        await expect(result({
+            clock, repository, hasher: { sha256: async () => Uint8Array.from([1]) }
+        })({
+            jobId: PERCEPTION_JOB_ID, workerId: "worker-1", jobRevision: 2,
+            leaseToken: "secret", payload: baselinePayload()
+        })).resolves.toEqual({ kind: "ACCEPTED" });
+        expect(repository.commands).toHaveLength(1);
+    });
+
+    it.each([
+        ["null shot", () => ({ ...baselinePayload(), shots: [null] })],
+        ["null candidate", () => ({ ...baselinePayload(), candidates: [null] })],
+        ["numeric candidate", () => ({ ...baselinePayload(), candidates: [7] })],
+        ["null evidence", () => ({ ...baselinePayload(), evidence: [null] })],
+        ["null observer evidence", () => ({ ...perceptionPayload(), evidence: [null] })],
+        ["array evidence object key", () => {
+            const payload = baselinePayload();
+            const [item] = payload.evidence;
+            return { ...payload, evidence: [{ ...item, objectKey: [item!.objectKey] }] };
+        }],
+        ["numeric failure code", () => ({ kind: "FAILED", failureCode: 123, retryable: false })],
+        ["array failure code", () => ({
+            kind: "FAILED", failureCode: ["WORKER_ERROR"], retryable: false
+        })]
+    ])("answers a malformed %s with invalid input instead of an exception", async (_name, build) => {
+        const repository = new PerceptionResultStore();
+        const storage = new ResultStorage();
+        const diagnostic = vi.fn();
+        // 실제 요청 변환과 유스케이스 검증을 거친 응답 생성
+        const output = await response(new Request("http://localhost/internal/jobs/result", {
+            method: "POST",
+            headers: { "x-worker-key": "key", "x-worker-protocol": WORKER_PROTOCOL },
+            body: JSON.stringify({
+                workerId: "worker-1", jobRevision: 2, leaseToken: "secret", payload: build()
+            })
+        }), { jobId: PERCEPTION_JOB_ID }, {
+            key: "key",
+            result: result({
+                clock, repository, storage,
+                hasher: { sha256: async () => Uint8Array.from([1]) },
+                diagnostic
+            }),
+            claim: async () => null,
+            progress: async () => ({ kind: "NOT_FOUND" }),
+            evidence: async () => ({ kind: "NOT_FOUND" })
+        });
+        expect(output.status).toBe(400);
+        expect(await output.json()).toEqual({ kind: "INVALID_INPUT", reason: "PAYLOAD" });
+        expect(repository.preflightCommands).toEqual([]);
+        expect(repository.commands).toEqual([]);
+        expect(storage.calls).toEqual([]);
+        expect(diagnostic).not.toHaveBeenCalled();
+    });
+
+    it.each([[null], [undefined], [[]], ["FAILED"], [7]])("rejects a non-object payload %j inside the use case", async (value) => {
+        const repository = new ResultStoreFake();
+        await expect(result({
+            clock, repository, hasher: { sha256: async () => Uint8Array.from([1]) }
+        })({
+            jobId: PERCEPTION_JOB_ID, workerId: "worker-1", jobRevision: 2,
+            leaseToken: "secret", payload: value
+        })).resolves.toEqual({ kind: "INVALID_INPUT", reason: "PAYLOAD" });
+        expect(repository.commands).toEqual([]);
     });
 
     it.each(["ARTIFACT", "REFERENCE"])("does not record a normal %s rejection as an exception", async (reason) => {
@@ -754,6 +845,61 @@ describe("result", () => {
             failureCode: "UNSUPPORTED_CODEC",
             retryable: false
         });
+    });
+
+    it.each<[string, unknown, number | undefined, string | undefined]>([
+        [
+            "a retryable failure with a retry delay",
+            { kind: "FAILED", failureCode: "WORKER_TRANSIENT_ERROR", retryable: true },
+            30_000,
+            "2026-08-29T00:00:30.000Z"
+        ],
+        [
+            "a retryable failure without a retry delay",
+            { kind: "FAILED", failureCode: "WORKER_TRANSIENT_ERROR", retryable: true },
+            undefined,
+            undefined
+        ],
+        [
+            "a nonretryable failure with a retry delay",
+            { kind: "FAILED", failureCode: "WORKER_ERROR", retryable: false },
+            30_000,
+            undefined
+        ],
+        [
+            "a validated result with a retry delay",
+            { kind: "VALIDATED", durationMs: 90_000, width: 1920, height: 1080 },
+            30_000,
+            undefined
+        ]
+    ])("passes a retry time only for %s that allows it", async (_name, body, retryMs, retryAt) => {
+        // 저장소 시험용 결과 저장소 모의 준비
+        const repository = new ResultStoreFake();
+        // 재시도 대기 정책 유무를 바꾼 결과 처리 준비
+        const operation = result({
+            clock,
+            hasher: { sha256: async () => Uint8Array.from([4, 5, 6]) },
+            repository,
+            ...(retryMs === undefined ? {} : { retryMs })
+        });
+
+        // 결과 저장 접수 확인
+        await expect(
+            operation({
+                jobId: "11111111-1111-4111-8111-111111111111",
+                workerId: "video-worker-1",
+                jobRevision: 2,
+                leaseToken: "lease-token",
+                payload: body
+            })
+        ).resolves.toEqual({ kind: "ACCEPTED" });
+
+        // 저장 명령 하나만 전달 확인
+        expect(repository.commands).toHaveLength(1);
+        // 재시도 가능한 실패와 대기 정책이 함께 있을 때만 기준 시각 뒤 재선점 시각 전달 확인
+        expect(repository.commands[0]?.retryAt).toBe(retryAt);
+        // 재선점 시각이 없으면 저장 명령에 항목 자체가 없음 확인
+        expect(Object.hasOwn(repository.commands[0] ?? {}, "retryAt")).toBe(retryAt !== undefined);
     });
 
     it("submits baseline analysis shots and candidates", async () => {

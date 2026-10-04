@@ -7,7 +7,7 @@ describe("migration discovery", () => {
         // 시험자료 결과를 목록에 저장
         const list = await migrations();
 
-        // 목록 항목변환 결과의 21개 항목 목록 기준 구조 일치 확인
+        // 목록 항목변환 결과의 23개 항목 목록 기준 구조 일치 확인
         expect(list.map((migration) => migration.name)).toEqual([
             "0000_initial_schema",
             "0001_ttl_expiry_policy",
@@ -30,7 +30,8 @@ describe("migration discovery", () => {
             "0018_perception_audio",
             "0019_judgment_contract",
             "0020_automatic_reviews",
-            "0021_private_incidents"
+            "0021_private_incidents",
+            "0022_job_requeue"
         ]);
         // 목록 중 선택 항목 체크섬의 지정 패턴 일치 확인
         expect(list[0]?.checksum).toMatch(/^[a-f0-9]{64}$/);
@@ -102,5 +103,13 @@ describe("migration discovery", () => {
         expect(audio?.sql).toContain("analysis_perception_runs_version_pair_check");
         // 음향 질의의 요약 음향 객체 포함 확인
         expect(audio?.sql).toContain("jsonb_typeof(summary->'audio') = 'object'");
+        // 재대기 시험용 목록 조회 결과 준비
+        const requeue = list.find((migration) => migration.name === "0022_job_requeue");
+        // 재대기 질의의 작업 이벤트 값 추가 포함 확인
+        expect(requeue?.sql).toContain(
+            "ALTER TYPE job_event_type ADD VALUE IF NOT EXISTS 'REQUEUED'"
+        );
+        // 재대기 질의가 기존 이력 변경과 삭제 없이 값만 추가함 확인
+        expect(requeue?.sql).not.toMatch(/\b(?:UPDATE|DELETE|TRUNCATE|DROP)\b/i);
     });
 });

@@ -1,7 +1,7 @@
 from __future__ import annotations
 from pathlib import Path
 from ..domain.models import Candidate, Shot, VideoMetadata
-from .signals import signals
+from .signals import Sampling, signals
 
 # 시간대 샷 검색
 def segment(timestamp_ms: int, items: tuple[Shot, ...]) -> Shot | None:
@@ -17,11 +17,13 @@ def candidates(
     motion_threshold: float = 0.18,
     min_gap_ms: int = 2500,
     max_candidates: int = 40,
+    sample_fps: float = 2.0,
+    sampler: Sampling | None = None,
 ) -> tuple[Candidate, ...]:
     # 변화 정점 결과 초기화
     peaks: list[tuple[int, float]] = []
-    # 영상 변화 신호 순회
-    for signal in signals(source, metadata):
+    # 샷 경계와 같은 표본 간격의 작업 단위 재사용기 또는 직접 수집한 변화 신호 순회
+    for signal in (sampler or signals)(source, metadata, sample_fps):
         # 신호의 샷 확인
         shot = segment(signal.timestamp_ms, shot_list)
         # 샷 경계 신호 제외

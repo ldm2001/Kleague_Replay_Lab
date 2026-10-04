@@ -17,17 +17,15 @@ import sys
 # 실행 시간과 제한 시간을 측정할 도구 읽음
 import time
 # 입출력 자료형과 호출 규약 읽음
-from typing import Any, Callable, Protocol
-# 영상과 모델 결과를 배열로 다룰 수치 도구 읽음
-import numpy as np
-# 검출 실증 관련 함수와 자료형 읽음
-from .inspection import failureReason, peakMemory, versions
-# 모델 목록 관련 함수와 자료형 읽음
-from .models import Detection
+from typing import Any, Callable
+# 실행 기록 공용 도구 읽음
+from .runtime import failureReason, peakMemory, versions
+# 모델 실행 규약 관련 자료형 읽음
+from .ports import PoseModel, RoleModel
 # 관측 보고서 관련 함수와 자료형 읽음
 from .journal import ObservationReport
 # 관측 목록 관련 함수와 자료형 읽음
-from .observations import PoseObservation, RoleDetection
+from .observations import PoseObservation
 # 프레임 목록 관련 함수와 자료형 읽음
 from .frames import RecordedFrames
 # 대응 연결 관련 함수와 자료형 읽음
@@ -47,27 +45,6 @@ MAX_RUNTIME_SECONDS = 1800
 # 최댓값 처리된 프레임 목록을 30000 값으로 설정
 MAX_PROCESSED_FRAMES = 30_000
 
-
-# 역할 모델의 필드와 동작을 묶을 자료형 선언
-class RoleModel(Protocol):
-    # 출처 정보를 보관할 자료형 선언
-    provenance: dict[str, Any]
-    # 마지막 좌표 변환을 보관할 자료형 선언
-    last_transform: dict[str, Any] | None
-
-    # 고정된 로컬 모델로 현재 삼원색 표본의 관측을 추론
-    def predict(self, rgb: np.ndarray) -> tuple[RoleDetection, ...]: ...
-
-
-# 자세 모델의 필드와 동작을 묶을 자료형 선언
-class PoseModel(Protocol):
-    # 출처 정보를 보관할 자료형 선언
-    provenance: dict[str, Any]
-
-    # 고정된 로컬 모델로 현재 삼원색 표본의 관측을 추론
-    def predict(
-        self, rgb: np.ndarray, detections: tuple[Detection, ...]
-    ) -> tuple[PoseObservation, ...]: ...
 
 # 동일 원본 표본의 역할·자세 관측 결합
 def observation(

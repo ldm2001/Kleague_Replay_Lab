@@ -60,6 +60,8 @@ export const jobs = (): JobApiDependencies => {
         repository,
         storage: source,
         privateStorage: source,
+        // 일시 장애 재대기를 작업자 소실 뒤 임대 만료 재선점과 같은 간격으로 맞춘 대기 시간
+        retryMs: lease(),
         // 원본 예외와 비밀값을 제외한 내부 실패 단계 기록
         diagnostic: ({ stage, jobId, jobRevision }) => {
             // 명시적으로 허용한 작업 메타데이터만 서버 로그 기록

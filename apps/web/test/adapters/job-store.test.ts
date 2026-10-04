@@ -664,6 +664,50 @@ describe("JobStore", () => {
         await expect(repository.result(result)).resolves.toEqual({ kind: "STALE_LEASE" });
     });
 
+    it.each<[string, string | undefined, string | null]>([
+        ["binds the retry time", "2026-08-29T00:00:30.000Z", "2026-08-29T00:00:30.000Z"],
+        ["binds no retry time", undefined, null]
+    ])("%s into one requeue or terminal failure statement", async (_name, retryAt, bound) => {
+        // 질의목록 시험용 0개 항목 목록 준비
+        const queries: ReturnType<PgDialect["sqlToQuery"]>[] = [];
+        // 저장소 시험용 작업 저장소 준비
+        const repository = new JobStore({
+            db: {
+                transaction: async (operation: (tx: unknown) => unknown) =>
+                    operation({
+                        execute: async (statement: SQL) => {
+                            // 질의목록 추가 결과 처리 수행
+                            queries.push(new PgDialect().sqlToQuery(statement));
+                            // 접수 결과 반환
+                            return [{ kind: "ACCEPTED" }];
+                        }
+                    })
+            }
+        } as never);
+
+        // 재시도 가능한 실패 결과 저장 접수 확인
+        await expect(
+            repository.result({
+                ...result,
+                payload: { kind: "FAILED", failureCode: "WORKER_TRANSIENT_ERROR", retryable: true },
+                ...(retryAt ? { retryAt } : {})
+            })
+        ).resolves.toEqual({ kind: "ACCEPTED" });
+
+        // 재대기와 최종 실패를 하나의 문장에서 결정 확인
+        expect(queries).toHaveLength(1);
+        // 재선점 시각과 남은 시도 및 원본 생존을 모두 갖춘 경우만 재대기 확인
+        expect(queries[0]?.sql).toMatch(
+            /::timestamptz is not null\s+and target\.attempt < target\.max_attempts\s+and target\.live/
+        );
+        // 재대기하지 않는 임대만 최종 실패로 닫음 확인
+        expect(queries[0]?.sql).toContain("where job.id = leased.id and not leased.requeue");
+        // 재대기 이력을 최종 실패 이력과 다른 이벤트로 기록 확인
+        expect(queries[0]?.sql).toContain("'REQUEUED', 'QUEUED', 0");
+        // 재대기 판단과 다음 선점 시각 두 곳에만 같은 재선점 시각 전달 확인
+        expect(queries[0]?.params.filter((value) => value === bound)).toHaveLength(2);
+    });
+
     it("maps authorized analysis evidence access", async () => {
         // 질의목록 시험용 0개 항목 목록 준비
         const queries: ReturnType<PgDialect["sqlToQuery"]>[] = [];
@@ -937,44 +981,48 @@ describe("JobStore", () => {
         // 전송자료 시험용 인식전송자료 결과 준비
         const payload = perceptionPayload();
         // 저장소 시험용 작업 저장소 준비
-        const repository = new JobStore({
-            db: {
-                transaction: async (operation: (tx: unknown) => unknown) =>
-                    operation({
-                        execute: async (statement: SQL) => {
-                            // 질의 시험용 의존성 모의객체 질의 질의 결과 준비
-                            const query = new PgDialect().sqlToQuery(statement);
-                            // 질의목록 추가 결과 처리 수행
-                            queries.push(query.sql);
-                            // 잠금 이후 생존 조건 질의에 보존 기한 비교 결과 응답
-                            if (livenessQuery(query))
-                                // 기준 시각과 보존 기한의 비교 결과 반환
-                                return liveness(
-                                    query,
-                                    PERCEPTION_JOB_ID,
-                                    "2026-09-04T00:00:00.000Z"
-                                );
-                            // 1개 항목 목록 반환
-                            return [
-                                {
-                                    id: PERCEPTION_JOB_ID,
-                                    status: "PROCESSING",
-                                    job_type: "ANALYZE_VIDEO",
-                                    job_revision: 2,
-                                    attempt: 1,
-                                    lease_owner: "worker-1",
-                                    lease_token_hash: Buffer.from([1, 2, 3]),
-                                    lease_until: "2030-01-01T00:00:00.000Z",
-                                    analysis_id: PERCEPTION_ANALYSIS_ID,
-                                    source_fingerprint: Buffer.from("d".repeat(64), "hex"),
-                                    content_sha256: Buffer.from("d".repeat(64), "hex"),
-                                    expires_at: "2026-09-04T00:00:00.000Z"
-                                }
-                            ];
-                        }
-                    })
-            }
-        } as never);
+        const repository = new JobStore(
+            {
+                db: {
+                    transaction: async (operation: (tx: unknown) => unknown) =>
+                        operation({
+                            execute: async (statement: SQL) => {
+                                // 질의 시험용 의존성 모의객체 질의 질의 결과 준비
+                                const query = new PgDialect().sqlToQuery(statement);
+                                // 질의목록 추가 결과 처리 수행
+                                queries.push(query.sql);
+                                // 잠금 이후 생존 조건 질의에 보존 기한 비교 결과 응답
+                                if (livenessQuery(query))
+                                    // 기준 시각과 보존 기한의 비교 결과 반환
+                                    return liveness(
+                                        query,
+                                        PERCEPTION_JOB_ID,
+                                        "2026-09-04T00:00:00.000Z"
+                                    );
+                                // 1개 항목 목록 반환
+                                return [
+                                    {
+                                        id: PERCEPTION_JOB_ID,
+                                        status: "PROCESSING",
+                                        job_type: "ANALYZE_VIDEO",
+                                        job_revision: 2,
+                                        attempt: 1,
+                                        lease_owner: "worker-1",
+                                        lease_token_hash: Buffer.from([1, 2, 3]),
+                                        lease_until: "2030-01-01T00:00:00.000Z",
+                                        analysis_id: PERCEPTION_ANALYSIS_ID,
+                                        source_fingerprint: Buffer.from("d".repeat(64), "hex"),
+                                        content_sha256: Buffer.from("d".repeat(64), "hex"),
+                                        expires_at: "2026-09-04T00:00:00.000Z"
+                                    }
+                                ];
+                            }
+                        })
+                }
+            } as never,
+            // 보존 기한 이전의 고정 시각으로 생존 조건을 통과시켜 원본 해시 불일치 경로 확인
+            () => new Date("2026-09-03T00:00:05.000Z")
+        );
         // 결과 자료 오류 내용을 포함한 기대 결과 일치 확인
         await expect(
             repository.result({

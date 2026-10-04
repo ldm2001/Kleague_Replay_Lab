@@ -258,6 +258,8 @@ export type JobResultCommand = Readonly<{
     now: string;
     // 작업에 전달하거나 제출하는 자료
     payload: JobResultPayload;
+    // 재시도 가능한 실패를 다시 선점할 수 있는 가장 이른 시각이며 없으면 실패를 최종 처리
+    retryAt?: string;
     // 원본과 증거 검증 및 사실 채택 검사 결과
     perceptionVerification?: Readonly<{
         // 분석 기록의 식별자

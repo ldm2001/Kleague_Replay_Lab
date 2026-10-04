@@ -14,6 +14,8 @@ DEFERRED = {
     # 검증 경로의 OpenCV와 수치 배열 및 운영 관측 포트 적재 차단
     ("src/replay_video/worker.py", "operating"),
 }
+# 안쪽부터 바깥 순서의 원본 계층
+LAYERS = ("domain", "application", "infrastructure")
 
 # 뿌리 기준 경로별 원본과 시험 파일 원문 생성
 def sources():
@@ -131,6 +133,45 @@ def layout(text):
     # 줄 번호 순서의 위반 항목 반환
     return sorted(found, key=lambda item: item[1])
 
+# 계층 파일이 자기보다 바깥 계층이나 명령행 진입 모듈을 가져온 대상 목록 생성
+def breaches(name, text):
+    # 원본 뿌리 기준 파일이 속한 점 경로 패키지
+    package = Path(name).relative_to("src").parent.parts
+    # 계층 밖 진입 모듈은 검사 제외
+    if len(package) < 2 or package[1] not in LAYERS:
+        return []
+    # 자기 계층까지의 안쪽 계층
+    allowed = LAYERS[: LAYERS.index(package[1]) + 1]
+    # 허용 밖 가져오기 대상
+    found = []
+    # 함수 안 지연 가져오기까지 포함한 전체 노드 순회
+    for node in ast.walk(ast.parse(text)):
+        # 모듈 가져오기는 이름 그대로 대상 기록
+        if isinstance(node, ast.Import):
+            modules = [alias.name for alias in node.names]
+        # 이름 가져오기는 상대 수준을 패키지 기준 절대 경로로 변환
+        elif isinstance(node, ast.ImportFrom):
+            # 상대 수준만큼 올라간 기준 패키지
+            base = ".".join(package[: len(package) - node.level + 1]) if node.level else ""
+            # 모듈 경로가 없으면 가져온 이름을 하위 모듈로 처리
+            modules = (
+                [".".join(filter(None, (base, node.module)))]
+                if node.module
+                else [f"{base}.{alias.name}" for alias in node.names]
+            )
+        # 가져오기가 아닌 노드 건너뜀
+        else:
+            continue
+        # 패키지 안 대상 중 허용 계층 밖 모듈 기록
+        found += [
+            module
+            for module in modules
+            if module.split(".")[0] == "replay_video"
+            and (module.split(".") + [""])[1] not in allowed
+        ]
+    # 위반 대상 반환
+    return found
+
 # 원본과 시험 파일마다 선두 묶음에 한 번만 선언하는 가져오기 배치 확인
 def test_declares_every_import_once_in_the_leading_block():
     # 뿌리 기준 경로별 원문
@@ -211,3 +252,43 @@ def test_accepts_commented_imports_patch_aliases_and_optional_dependency_skips()
 
     # 모듈 별칭과 이름 가져오기의 역할 분리와 건너뛰기 호출 허용 확인
     assert layout(text) == []
+
+# 안쪽 계층이 바깥 계층과 명령행 진입 모듈을 가져오지 않음 확인
+def test_layers_import_only_inner_layers():
+    # 계층 파일별 허용 밖 가져오기 대상
+    found = [
+        (name, module)
+        for name, text in sources().items()
+        if name.startswith("src/")
+        for module in breaches(name, text)
+    ]
+
+    # 계층 방향 위반 없음 확인
+    assert found == []
+
+# 상대·절대·하위 모듈 이름 가져오기의 계층 역전 판별 확인
+def test_rejects_relative_absolute_and_module_layer_breaches():
+    # 역전 형태와 허용 형태를 섞은 응용 계층 원본 문자열
+    text = "\n".join(
+        [
+            "from ..inspection import inspection",
+            "from .. import runner",
+            "import replay_video.http",
+            "from replay_video.infrastructure.probe import probe",
+            "from ..domain.models import Candidate",
+            "from .tracker import CandidateTracker",
+            "import json",
+            "def load():",
+            "    from ..infrastructure import ports",
+        ]
+    )
+
+    # 바깥 계층과 진입 모듈만 거부하고 진입 모듈 자체는 검사 제외 확인
+    assert breaches("src/replay_video/application/probe.py", text) == [
+        "replay_video.inspection",
+        "replay_video.runner",
+        "replay_video.http",
+        "replay_video.infrastructure.probe",
+        "replay_video.infrastructure",
+    ]
+    assert breaches("src/replay_video/runner.py", text) == []

@@ -5,8 +5,11 @@ import type {
     UploadInput,
     UploadResult,
     SessionGrant,
+    SessionPolicy,
     SessionRecord
 } from "@replay/application";
+// 세션 쿠키 해석과 발급 헤더 생성 기능 가져옴
+import { cookie, token } from "./cookie";
 
 // 업로드 요청 처리 의존 기능 계약 정의
 export type UploadApiDependencies = Readonly<{
@@ -18,12 +21,9 @@ export type UploadApiDependencies = Readonly<{
     upload: (input: UploadInput) => Promise<UploadResult>;
     // 업로드 완료와 후속 영상 검증 연결
     complete: (input: CompletionInput) => Promise<CompletionResult>;
+    // 세션 쿠키 보존 시간을 정하는 익명 세션 정책
+    session: SessionPolicy;
 }>;
-
-// 익명 세션 토큰을 저장하는 쿠키 이름 지정
-const COOKIE = "replay_session";
-// 익명 세션 쿠키의 하루 보존 시간을 초 단위로 지정
-const COOKIE_MAX_AGE = 24 * 60 * 60;
 
 // 직렬화 자료 응답 생성
 const json = (body: unknown, status: number, headers?: Record<string, string>): Response =>
@@ -39,27 +39,6 @@ const json = (body: unknown, status: number, headers?: Record<string, string>): 
             ...headers,
         },
     });
-
-// 세션 쿠키 조회
-const cookie = (request: Request): string | null => {
-    // 요청 쿠키 헤더 조회
-    const value = request.headers.get("cookie");
-    // 쿠키가 없으면 빈 결과 반환
-    if (!value) return null;
-    // 세션 쿠키 항목 탐색
-    for (const item of value.split(";")) {
-        // 쿠키 이름과 값 분리
-        const [name, ...parts] = item.trim().split("=");
-        // 세션 쿠키 반환
-        if (name === COOKIE) return decodeURIComponent(parts.join("="));
-    }
-    // 세션 쿠키 없음 반환
-    return null;
-};
-
-// 세션 쿠키 헤더 생성
-const headerCookie = (token: string): string =>
-    `${COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${COOKIE_MAX_AGE}`;
 
 // 요청 본문 읽기
 const body = async (request: Request): Promise<Record<string, unknown> | null> => {
@@ -154,7 +133,7 @@ export const upload = async (
     }
 
     // 기존 세션 조회
-    let record = await dependencies.resolve(cookie(request) ?? "");
+    let record = await dependencies.resolve(token(request) ?? "");
     // 새 세션 기본값
     let issued: SessionGrant | null = null;
     // 세션 존재 확인
@@ -172,7 +151,7 @@ export const upload = async (
     return json(
         result,
         uploadStatus(result),
-        issued ? { "set-cookie": headerCookie(issued.token) } : undefined
+        issued ? { "set-cookie": cookie(issued.token, dependencies.session.ttlMs) } : undefined
     );
 };
 
@@ -183,7 +162,7 @@ export const completion = async (
     dependencies: UploadApiDependencies,
 ): Promise<Response> => {
     // 세션 쿠키 확인
-    const record = await dependencies.resolve(cookie(request) ?? "");
+    const record = await dependencies.resolve(token(request) ?? "");
     // 세션 권한 확인
     if (!record) {
         // 인증 실패 응답
