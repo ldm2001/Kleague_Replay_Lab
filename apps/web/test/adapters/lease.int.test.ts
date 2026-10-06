@@ -194,6 +194,127 @@ describe.skipIf(!process.env.DATABASE_URL)("작업 수명", () => {
         expect(row?.status).toBe("PROCESSING");
     });
 
+    it("만료 시도마다 종료 이력 하나", async () => {
+        // 첫 시도의 임대가 현재 시각에 끝나는 분석 작업 준비
+        const { job } = await fixture("ANALYZE_VIDEO", now, 1);
+        // 새 작업자가 주어진 시각과 기한으로 분석 작업 선점
+        const takeover = (at: string, until: string) => store.claim({
+            workerId: "new-worker",
+            jobType: "ANALYZE_VIDEO",
+            now: at,
+            leaseUntil: until,
+            leaseTokenHash: successor
+        });
+        // 만료 시각과 같은 시각의 재선점이 다음 판본과 시도로 넘겨받음 확인
+        expect(await takeover(now, lease)).toMatchObject({
+            jobId: job,
+            jobRevision: 2,
+            attempt: 2
+        });
+        // 두 번째 시도의 임대 만료 뒤 마지막 시도로 넘겨받음 확인
+        expect(
+            await takeover("2026-09-05T00:02:00.000Z", "2026-09-05T00:03:00.000Z")
+        ).toMatchObject({ jobId: job, jobRevision: 3, attempt: 3 });
+        // 마지막 시도의 임대 만료 뒤에는 선점 없이 시간 초과로 종료 확인
+        expect(
+            await takeover("2026-09-05T00:04:00.000Z", "2026-09-05T00:05:00.000Z")
+        ).toBeNull();
+        // 작업 이력을 판본과 시각 순으로 조회
+        const events = await database.sql`
+            select event_type, job_revision, attempt, stage, progress_percent, message, created_at
+            from processing_job_events where job_id = ${job}
+            order by job_revision, created_at
+        `;
+        // 시도마다 선점 뒤 종료 이력 하나가 남고 만료 재선점의 종료는 직전 임대 기한에 기록됨 확인
+        expect(
+            events.map((event) => ({
+                ...event,
+                created_at: new Date(event.created_at).toISOString()
+            }))
+        ).toEqual([
+            {
+                event_type: "REQUEUED",
+                job_revision: 1,
+                attempt: 1,
+                stage: "QUEUED",
+                progress_percent: 0,
+                message: "WORKER_TIMEOUT",
+                created_at: now
+            },
+            {
+                event_type: "CLAIMED",
+                job_revision: 2,
+                attempt: 2,
+                stage: "SEGMENTING",
+                progress_percent: 0,
+                message: null,
+                created_at: now
+            },
+            {
+                event_type: "REQUEUED",
+                job_revision: 2,
+                attempt: 2,
+                stage: "QUEUED",
+                progress_percent: 0,
+                message: "WORKER_TIMEOUT",
+                created_at: lease
+            },
+            {
+                event_type: "CLAIMED",
+                job_revision: 3,
+                attempt: 3,
+                stage: "SEGMENTING",
+                progress_percent: 0,
+                message: null,
+                created_at: "2026-09-05T00:02:00.000Z"
+            },
+            {
+                event_type: "FAILED",
+                job_revision: 3,
+                attempt: 3,
+                stage: "FAILED",
+                progress_percent: 0,
+                message: "WORKER_TIMEOUT",
+                created_at: "2026-09-05T00:04:00.000Z"
+            }
+        ]);
+    });
+
+    it("잠긴 만료 작업 건너뜀과 해제 뒤 종료 이력 한 번", async () => {
+        // 첫 시도의 임대가 만료된 분석 작업 준비
+        const { job } = await fixture("ANALYZE_VIDEO", "2026-09-04T23:59:00.000Z", 1);
+        // 다른 선점 트랜잭션처럼 작업 행을 잠근 채 실행한 선점 결과
+        const skipped = await database.sql.begin(async (holder) => {
+            // 작업 행 잠금
+            await holder`select id from processing_jobs where id = ${job} for update`;
+            // 잠긴 행을 건너뛴 선점 결과 반환
+            return claim("ANALYZE_VIDEO");
+        });
+        // 잠긴 만료 작업을 넘겨받지 않음 확인
+        expect(skipped).toBeNull();
+        // 건너뛴 선점이 직전 시도 종료와 선점 이력을 남기지 않음 확인
+        expect(
+            await database.sql`select id from processing_job_events where job_id = ${job}`
+        ).toHaveLength(0);
+        // 잠금 해제 뒤 선점이 다음 판본과 시도로 넘겨받음 확인
+        expect(await claim("ANALYZE_VIDEO")).toMatchObject({
+            jobId: job,
+            jobRevision: 2,
+            attempt: 2
+        });
+        // 작업 이력을 판본과 시각 순으로 조회
+        const events = await database.sql`
+            select event_type, job_revision, attempt, message
+            from processing_job_events where job_id = ${job}
+            order by job_revision, created_at
+        `;
+        // 직전 시도의 시간 초과 재대기와 새 시도의 선점이 한 번씩 남음 확인
+        expect(events).toEqual([
+            { event_type: "REQUEUED", job_revision: 1, attempt: 1, message: "WORKER_TIMEOUT" },
+            { event_type: "CLAIMED", job_revision: 2, attempt: 2, message: null }
+        ]);
+    });
+
     it.each([
         { kind: "VALIDATE_VIDEO", lapse: "원본 만료" },
         { kind: "VALIDATE_VIDEO", lapse: "원본 삭제" },
@@ -244,10 +365,13 @@ describe.skipIf(!process.env.DATABASE_URL)("작업 수명", () => {
         }
         // 작업 상태 이력 조회
         const events = await database.sql`
-            select event_type, message from processing_job_events where job_id = ${target.job}
+            select event_type, job_revision, attempt, message
+            from processing_job_events where job_id = ${target.job}
         `;
-        // 같은 사유의 실패 이력 한 건 확인
-        expect(events).toEqual([{ event_type: "FAILED", message: "SOURCE_UNAVAILABLE" }]);
+        // 선점되지 않은 작업 행의 판본과 시도 그대로 같은 사유의 실패 이력 한 건 확인
+        expect(events).toEqual([
+            { event_type: "FAILED", job_revision: 1, attempt: 0, message: "SOURCE_UNAVAILABLE" }
+        ]);
         // 다시 선점해도 종료 이력을 중복 기록하지 않음
         await claim(kind);
         // 작업 처리 이력 조회 결과의 행 수가 1개임 확인
@@ -325,10 +449,73 @@ describe.skipIf(!process.env.DATABASE_URL)("작업 수명", () => {
         expect(job).toEqual({ status: "FAILED", failure_code: code, lease_owner: null });
         // 작업 상태 이력 조회
         const events = await database.sql`
-            select message from processing_job_events where job_id = ${target.job}
+            select event_type, job_revision, attempt, message, created_at
+            from processing_job_events where job_id = ${target.job}
         `;
-        // 같은 사유의 실패 이력 한 건 확인
-        expect(events).toEqual([{ message: code }]);
+        // 만료 시도의 판본과 시도로 같은 사유의 실패 이력 한 건이 임대 기한이 아닌 처리 시각에 남음 확인
+        expect(
+            events.map((event) => ({
+                ...event,
+                created_at: new Date(event.created_at).toISOString()
+            }))
+        ).toEqual([
+            {
+                event_type: "FAILED",
+                job_revision: 1,
+                attempt,
+                message: code,
+                created_at: now
+            }
+        ]);
+    });
+
+    it("재대기 중 보존 이탈 작업 종료 이력", async () => {
+        // 시도가 남은 처리 중 분석 작업 준비
+        const target = await fixture("ANALYZE_VIDEO", lease, 1);
+        // 재시도 가능한 실패로 임대 기한까지 재대기 확인
+        await expect(
+            store.result({
+                jobId: target.job,
+                workerId: "review-worker",
+                jobRevision: 1,
+                leaseTokenHash: hash,
+                now,
+                retryAt: lease,
+                payload: {
+                    kind: "FAILED",
+                    failureCode: "WORKER_TRANSIENT_ERROR",
+                    retryable: true
+                }
+            })
+        ).resolves.toEqual({ kind: "ACCEPTED" });
+        // 재대기 중 소유 세션 폐기
+        await lapses["세션 폐기"](target);
+        // 재선점 시각 전의 선점이 넘겨받을 작업 없이 보존 이탈 작업을 닫음 확인
+        expect(
+            await store.claim({
+                workerId: "new-worker",
+                jobType: "ANALYZE_VIDEO",
+                now: "2026-09-05T00:00:30.000Z",
+                leaseUntil: "2026-09-05T00:01:30.000Z",
+                leaseTokenHash: successor
+            })
+        ).toBeNull();
+        // 작업 이력을 판본과 시각 순으로 조회
+        const events = await database.sql`
+            select event_type, job_revision, attempt, message
+            from processing_job_events where job_id = ${target.job}
+            order by job_revision, created_at
+        `;
+        // 재대기로 끝난 시도 뒤 같은 판본과 시도 값의 원본 소멸 실패가 작업 종료로 남음 확인
+        expect(events).toEqual([
+            {
+                event_type: "REQUEUED",
+                job_revision: 1,
+                attempt: 1,
+                message: "WORKER_TRANSIENT_ERROR"
+            },
+            { event_type: "FAILED", job_revision: 1, attempt: 1, message: "SOURCE_UNAVAILABLE" }
+        ]);
     });
 
     it("보존 이탈 원본의 검증 결과 거부 후 실패 보고 접수", async () => {

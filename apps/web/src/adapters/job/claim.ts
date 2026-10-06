@@ -31,7 +31,16 @@ type JobRow = Readonly<{
     video_asset_id: string | null;
     // 객체 저장소에서 파일을 찾는 경로
     object_key: string | null;
+    // 잠근 행의 직전 작업 판본
+    previous_revision: number;
+    // 잠근 행의 직전 시도 횟수
+    previous_attempt: number;
+    // 넘겨받은 만료 임대의 기한이며 대기 작업 선점이면 빈 값
+    expired_at: string | null;
 }>;
+
+// 임대 만료로 끝난 시도의 실패 부호
+const timeout = "WORKER_TIMEOUT";
 
 // 선택한 작업을 재시도 없는 실패로 닫고 검증 영상과 분석 상태 및 실패 이벤트를 같은 사유로 한 문장에 기록
 const termination = (
@@ -82,7 +91,7 @@ export async function claim(
           and lease_until <= ${command.now} and attempt >= max_attempts
         order by lease_until, id
         for update skip locked limit 100
-      `, "WORKER_TIMEOUT", command.now));
+      `, timeout, command.now));
         // 대상 원본이나 소유 세션이 보존 규칙을 벗어나 다시 살아날 수 없는 선점 가능 작업을 작은 배치로 종료
         await transaction.execute(termination(sql`
         select job.id from processing_jobs as job
@@ -98,10 +107,10 @@ export async function claim(
         order by job.created_at, job.id
         for update skip locked limit 100
       `, "SOURCE_UNAVAILABLE", command.now));
-        // 보존 규칙 안의 선점 대상 선택과 잠금
+        // 보존 규칙 안의 선점 대상을 잠가 다음 시도로 갱신하고 잠근 행의 직전 시도 값 반환
         const selected = await transaction.execute(sql`
         with picked as (
-          select id
+          select id, status, job_revision, attempt, lease_until
           from processing_jobs as job
           where job_type = ${command.jobType}
             and (
@@ -149,12 +158,27 @@ export async function claim(
               job.video_asset_id,
               (select video_asset_id from analyses where id = job.analysis_id)
             )
-          ) as object_key
+          ) as object_key,
+          picked.job_revision as previous_revision,
+          picked.attempt as previous_attempt,
+          case when picked.status = 'PROCESSING' then picked.lease_until end as expired_at
       `);
         // 선점 행 선택
         const [selectedRow] = selected as unknown as JobRow[];
         // 대기 작업 없음
         if (!selectedRow) return selected;
+        // 만료 임대를 넘겨받았으면 직전 시도 종료를 만료 시각의 재대기 이벤트로 선점 이벤트보다 먼저 기록
+        if (selectedRow.expired_at !== null) {
+            await transaction.execute(sql`
+            insert into processing_job_events (
+              job_id, job_revision, attempt, event_type,
+              stage, progress_percent, message, created_at
+            ) values (
+              ${selectedRow.id}, ${selectedRow.previous_revision}, ${selectedRow.previous_attempt},
+              'REQUEUED', 'QUEUED', 0, ${timeout}, ${selectedRow.expired_at}
+            )
+          `);
+        }
         // 선점 이벤트 기록
         await transaction.execute(sql`
         insert into processing_job_events (

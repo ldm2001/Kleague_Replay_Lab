@@ -544,6 +544,28 @@ describeDatabase("PostgreSQL job result repository", () => {
     `;
         // 만료 임대의 해시가 새 작업자가 넘긴 해시로 교체됨 확인
         expect(row).toEqual({ lease_owner: "new-worker", lease_token_hash: successor });
+        // 작업 이력을 판본과 시각 순으로 조회
+        const events = await database.sql`
+            select event_type, job_revision, attempt, message, created_at
+            from processing_job_events where job_id = ${jobId}
+            order by job_revision, created_at
+        `;
+        // 삭제 작업도 직전 시도의 시간 초과 재대기를 직전 임대 기한에 남긴 뒤 새 시도를 선점함 확인
+        expect(
+            events.map((event) => ({
+                ...event,
+                created_at: new Date(event.created_at).toISOString()
+            }))
+        ).toEqual([
+            {
+                event_type: "REQUEUED",
+                job_revision: 1,
+                attempt: 1,
+                message: "WORKER_TIMEOUT",
+                created_at: "2030-01-01T11:59:00.000Z"
+            },
+            { event_type: "CLAIMED", job_revision: 2, attempt: 2, message: null, created_at: NOW }
+        ]);
     });
 
     it("marks an analysis failed for an accepted worker failure", async () => {
@@ -692,6 +714,17 @@ describeDatabase("PostgreSQL job result repository", () => {
         });
         // 다음 시도와 새 작업 판본으로 재배정 확인
         expect(claimed).toMatchObject({ jobId: job.jobId, jobRevision: 2, attempt: 2 });
+        // 재대기 뒤 선점 이력 조회
+        const history = await database.sql`
+            select event_type, job_revision, attempt
+            from processing_job_events where job_id = ${job.jobId}
+            order by job_revision, created_at
+        `;
+        // 재대기한 시도의 종료 이력을 선점이 다시 기록하지 않음 확인
+        expect(history).toEqual([
+            { event_type: "REQUEUED", job_revision: 1, attempt: 1 },
+            { event_type: "CLAIMED", job_revision: 2, attempt: 2 }
+        ]);
     });
 
     it.each<[string, (job: Awaited<ReturnType<typeof fixture>>) => Promise<unknown>, string | undefined]>([

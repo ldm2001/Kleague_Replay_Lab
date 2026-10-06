@@ -71,6 +71,24 @@ const database = (rows: unknown[]) => ({
     ) => operation({ execute: async () => rows })
 });
 
+// 직전 판본 2와 시도 1을 판본 5와 시도 3으로 넘긴 선점 행이며 직전 값을 새 값에서 계산하지 않고 반환 열에서 읽음을 구분하도록 새 값과 독립된 값 사용
+const takeover = (expiredAt: string | null) => ({
+    id: "11111111-1111-4111-8111-111111111111",
+    job_type: "ANALYZE_VIDEO",
+    payload_version: 1,
+    job_revision: 5,
+    attempt: 3,
+    stage: "SEGMENTING",
+    progress_percent: 0,
+    lease_until: command.leaseUntil,
+    analysis_id: "22222222-2222-4222-8222-222222222222",
+    video_asset_id: "33333333-3333-4333-8333-333333333333",
+    object_key: "uploads/video.mp4",
+    previous_revision: 2,
+    previous_attempt: 1,
+    expired_at: expiredAt
+});
+
 // 작업 저장소 테스트
 describe("JobStore", () => {
     it("rejects newly submitted FRAME intervals before opening a transaction", async () => {
@@ -559,7 +577,10 @@ describe("JobStore", () => {
                                     lease_until: command.leaseUntil,
                                     analysis_id: "22222222-2222-4222-8222-222222222222",
                                     video_asset_id: "33333333-3333-4333-8333-333333333333",
-                                    object_key: "uploads/video.mp4"
+                                    object_key: "uploads/video.mp4",
+                                    previous_revision: 1,
+                                    previous_attempt: 0,
+                                    expired_at: null
                                 }
                             ];
                         }
@@ -583,6 +604,119 @@ describe("JobStore", () => {
         expect(result).not.toHaveProperty("leaseToken");
         // 선점 갱신 문장이 받은 해시 바이트를 그대로 저장함 확인
         expect(queries[2]?.params).toContainEqual(Buffer.from(command.leaseTokenHash));
+    });
+
+    it.each([
+        { taken: "a queued job", expiredAt: null, events: ["CLAIMED"] },
+        {
+            taken: "an expired lease",
+            expiredAt: "2026-08-28T23:59:30.000Z",
+            events: ["REQUEUED", "CLAIMED"]
+        }
+    ] as const)("ends the previous attempt only when taking over $taken", async ({
+        expiredAt,
+        events
+    }) => {
+        // 질의목록 시험용 0개 항목 목록 준비
+        const queries: ReturnType<PgDialect["sqlToQuery"]>[] = [];
+        // 잠근 행의 직전 판본과 시도를 다음 시도로 넘긴 선점 행 준비
+        const row = takeover(expiredAt);
+        // 저장소 시험용 작업 저장소 준비
+        const repository = new JobStore({
+            db: {
+                transaction: async (operation: (tx: unknown) => unknown) =>
+                    operation({
+                        execute: async (statement: SQL) => {
+                            // 질의목록 추가 결과 처리 수행
+                            queries.push(new PgDialect().sqlToQuery(statement));
+                            // 선점된 작업 행 반환
+                            return [row];
+                        }
+                    })
+            }
+        } as never);
+
+        // 새 판본과 시도로 선점됨 확인
+        await expect(repository.claim(command)).resolves.toMatchObject({
+            jobRevision: 5,
+            attempt: 3
+        });
+        // 선점 문장이 잠근 행의 직전 판본 반환 확인
+        expect(queries[2]?.sql).toContain("picked.job_revision as previous_revision");
+        // 선점 문장이 잠근 행의 직전 시도 반환 확인
+        expect(queries[2]?.sql).toContain("picked.attempt as previous_attempt");
+        // 선점 문장이 처리 중이던 행의 임대 기한만 만료 시각으로 반환 확인
+        expect(queries[2]?.sql).toContain(
+            "case when picked.status = 'PROCESSING' then picked.lease_until end as expired_at"
+        );
+        // 선점 문장 뒤 이벤트 기록 순서 확인
+        expect(
+            queries.slice(3).map((query) => /'(REQUEUED|CLAIMED)'/.exec(query.sql)?.[1])
+        ).toEqual(events);
+        // 만료 임대를 넘겨받은 경우에만 직전 판본과 시도의 시간 초과 재대기를 만료 시각에 기록 확인
+        expect(queries.slice(3, -1).map((query) => query.params)).toEqual(
+            expiredAt === null ? [] : [[row.id, 2, 1, "WORKER_TIMEOUT", expiredAt]]
+        );
+        // 선점 이벤트는 새 판본과 시도로 현재 시각에 기록됨 확인
+        expect(queries.at(-1)?.params).toEqual([row.id, 5, 3, "SEGMENTING", 0, command.now]);
+    });
+
+    it("fails the claim when the expired attempt cannot be ended", async () => {
+        // 실행 문장 시험용 0개 항목 목록 준비
+        const queries: string[] = [];
+        // 재대기 이벤트 기록만 거절하는 작업 저장소 준비
+        const repository = new JobStore({
+            db: {
+                transaction: async (operation: (tx: unknown) => unknown) =>
+                    operation({
+                        execute: async (statement: SQL) => {
+                            // 실행 문장 변환
+                            const query = new PgDialect().sqlToQuery(statement).sql;
+                            // 실행 문장 기록
+                            queries.push(query);
+                            // 재대기 이벤트 기록 거절
+                            if (query.includes("'REQUEUED'")) throw new Error("event rejected");
+                            // 만료 임대를 넘겨받은 선점 행 반환
+                            return [takeover("2026-08-28T23:59:30.000Z")];
+                        }
+                    })
+            }
+        } as never);
+
+        // 재대기 이벤트 기록 실패가 선점 실패로 전달됨 확인
+        await expect(repository.claim(command)).rejects.toThrow("event rejected");
+        // 이력 없는 넘겨받기를 막도록 선점 이벤트를 기록하지 않음 확인
+        expect(queries.some((query) => query.includes("'CLAIMED'"))).toBe(false);
+    });
+
+    it("does not skip the expired attempt when the claim row lacks the expiry column", async () => {
+        // 실행 문장 시험용 0개 항목 목록 준비
+        const queries: ReturnType<PgDialect["sqlToQuery"]>[] = [];
+        // 선점 문장 반환 열이 바뀌어 만료 시각이 빠진 선점 행 준비
+        const { expired_at: _expiredAt, ...row } = takeover(null);
+        // 저장소 시험용 작업 저장소 준비
+        const repository = new JobStore({
+            db: {
+                transaction: async (operation: (tx: unknown) => unknown) =>
+                    operation({
+                        execute: async (statement: SQL) => {
+                            // 실행 문장 기록
+                            queries.push(new PgDialect().sqlToQuery(statement));
+                            // 만료 시각 열이 없는 선점 행 반환
+                            return [row];
+                        }
+                    })
+            }
+        } as never);
+
+        // 저장소 작업선점 실행
+        await repository.claim(command);
+        // 열 누락을 대기 작업 선점으로 통과시키지 않고 재대기 이벤트 기록으로 진입 확인
+        expect(queries[3]?.sql).toContain("'REQUEUED'");
+        // 만료 시각을 지어내지 않고 인자에서 제외함 확인
+        expect(queries[3]?.params).toEqual([row.id, 2, 1, "WORKER_TIMEOUT"]);
+        // 빈 시각 자리로 데이터베이스가 문장을 거절해 선점 전체가 되돌려지는 형태 확인
+        expect(queries[3]?.sql).toMatch(/\$4,\s*\)/);
     });
 
     it("returns null when the queue has no eligible row", async () => {
