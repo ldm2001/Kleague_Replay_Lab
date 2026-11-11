@@ -9,6 +9,9 @@
 .rule-grid > section {    min-width: 0;    padding: 22px 24px;    border-right: 1px solid #e3e9f2;    border-bottom: 1px solid #e3e9f2;    }
 .rule-grid > section:nth-child(2n) {    border-right: 0;    }
 .rule-grid h3 {    margin: 0 0 14px;    font-size: 14px;    }
+.rule-body {    padding: 22px 24px;    }
+.rule-body > :first-child {    margin-top: 0;    }
+.rule-body > :last-child {    margin-bottom: 0;    }
 .fact-grid, .var-grid {    display: grid;    grid-template-columns: repeat(2, minmax(0, 1fr));    gap: 12px;    margin: 0;    }
 .fact-grid div, .var-grid div {    padding: 10px;    border-radius: 7px;    background: #f5f7fb;    }
 .fact-grid dt, .var-grid dt {    color: var(--muted);    font-size: 12px;    }
@@ -25,10 +28,16 @@
 .rule-match.mismatch {    color: #b63e49;    background: #fff2f3;    }
 .rule-match.match {    color: #197348;    background: #edf9f2;    }
 .rule-grid > .var-panel {    grid-column: 1 / -1;    border-top: 1px solid #e3e9f2;    border-right: 0;    }
+.unassessed {    display: grid;    grid-template-columns: repeat(2, minmax(0, 1fr));    gap: 12px;    margin: 0;    padding: 0;    list-style: none;    }
+.unassessed > li {    min-width: 0;    padding: 10px 12px;    border-radius: 7px;    background: #f5f7fb;    }
+.unassessed > li > strong {    font-size: 14px;    }
+.unassessed > li > p {    margin: 5px 0 0;    color: var(--muted);    font-size: 13px;    line-height: 1.7;    overflow-wrap: anywhere;    }
+.unassessed .citation-list {    margin-top: 10px;    }
 
 @media (max-width: 820px) {
     .rule-grid {    grid-template-columns: 1fr;    }
     .rule-grid > section {    border-right: 0;    border-bottom: 1px solid #e3e9f2;    }
     .rule-grid > section:last-child {    border-bottom: 0;    }
     .rule-panel.pending, .rule-heading {    align-items: flex-start;    flex-direction: column;    }
+    .unassessed {    grid-template-columns: 1fr;    }
 }

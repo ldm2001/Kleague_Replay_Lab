@@ -19,6 +19,7 @@ const completedScope: VarScopeEvaluation = {
     season: "2026",
     ruleVersionId: "ui-only-competition-rule",
     citations: [],
+    delegations: [],
     evidenceIds: [],
     notAssessed: [
         "FOUL_DECISION",

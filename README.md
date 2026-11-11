@@ -222,6 +222,7 @@ npm run dev:worker:analyze
 
 접속 주소는 http://localhost:3100/analyze 입니다
 기존 혼합 Worker를 사용하고 있다면 활성 작업을 마친 뒤 종료하고 두 Worker를 실행합니다
+정지·재시작 순서와 재부팅 뒤 복구는 [로컬 인프라 재시작과 재부팅 뒤 복구](apps/video-worker/README.md#로컬-인프라-재시작과-재부팅-뒤-복구)를 따릅니다
 
 #### 테스트
 

@@ -68,6 +68,22 @@ describe("competition VAR scope", () => {
             expect(result.notAssessed).toContain("REFEREE_DECISION_CORRECTNESS");
             // 결과 미평가항목의 판본 포함 확인
             expect(result.notAssessed).toContain("IFAB_EDITION_ADOPTION");
+            // 위임 조항이 해당 대회요강의 판본 미지정 위임 한 건뿐임 확인
+            expect(result.delegations.map((item) => item.ruleId)).toEqual([
+                `${book.versionId}-var-ifab-fifa-reference`
+            ]);
+            // 위임 조항의 기관과 시즌과 조 번호 확인
+            expect(result.delegations[0]).toMatchObject({
+                authority: "KLEAGUE",
+                edition: season,
+                law: "25"
+            });
+            // 위임 조항이 특정 판본을 지정하지 않고 IFAB와 FIFA 규정을 따르게 함을 확인
+            expect(result.delegations[0]!.quoteSnapshot).toContain("IFAB/FIFA");
+            // 위임 조항이 범위 결론의 근거 인용에 섞이지 않음 확인
+            expect(result.citations.map((item) => item.ruleId)).not.toContain(
+                result.delegations[0]!.ruleId
+            );
             // 결과의 판정 항목 없음 확인
             expect(result).not.toHaveProperty("decision");
             // 결과의 지정 문자열 항목 없음 확인
@@ -100,6 +116,39 @@ describe("competition VAR scope", () => {
         ).toBeNull();
         // 적용범위 판단 결과의 빈 값 확인
         expect(scopeVerdict({ ...input, broadcastCue: { ...cue, endMs: 3000 } }, book)).toBeNull();
+    });
+
+    it("keeps the scope answer without a delegation clause and drops clauses of another book", () => {
+        // 규정집 시험용 대회 규정목록 결과 준비
+        const book = competitionRules("K리그2", "2026")!;
+        // 위임 조항 준비
+        const clause = book
+            .cite("VAR_REVIEW_PROCESS")
+            .find((item) => item.ruleId.endsWith("var-ifab-fifa-reference"))!;
+        // 위임 조항 대체 목록을 반영한 대회요강 생성
+        const swapped = (replaced: ReturnType<typeof book.cite>) => ({
+            ...book,
+            cite: (key: Parameters<typeof book.cite>[0]) =>
+                key === "VAR_REVIEW_PROCESS" ? replaced : book.cite(key)
+        });
+        // 위임 조항이 없는 대회요강의 범위 결과 준비
+        const without = scopeVerdict(input, swapped([]))!;
+        // 범위 결론이 위임 조항 없이도 완료됨 확인
+        expect(without).toMatchObject({ status: "COMPLETED", included: true });
+        // 위임 조항 목록의 빈 값 확인
+        expect(without.delegations).toEqual([]);
+        // 다른 시즌과 다른 기관과 다른 대회요강의 위임 조항 준비
+        const foreign = [
+            { ...clause, edition: "2025" },
+            { ...clause, authority: "IFAB" as const },
+            { ...clause, ruleId: "kleague1-2026-var-ifab-fifa-reference" }
+        ];
+        // 다른 묶음의 위임 조항을 담은 범위 결과 준비
+        const mixed = scopeVerdict(input, swapped(foreign))!;
+        // 범위 결론이 위임 조항 없이도 완료됨 확인
+        expect(mixed.status).toBe("COMPLETED");
+        // 다른 묶음의 위임 조항 제외 확인
+        expect(mixed.delegations).toEqual([]);
     });
 
     it("refuses league, season, provenance and source-citation mismatches", () => {

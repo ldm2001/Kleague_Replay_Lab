@@ -8,6 +8,9 @@ import {
     type VarScopeEvaluation
 } from "@replay/shared-types";
 
+// 판본을 지정하지 않고 IFAB와 FIFA 규정을 따르도록 위임한 대회요강 조항 키
+const IFAB_DELEGATION = "var-ifab-fifa-reference";
+
 // 비디오 판독 범위 평가 입력의 자료 구조 정의
 export type VarScopeInput = Readonly<{
     // 방송 화면에서 관측한 단서
@@ -74,6 +77,15 @@ export const scopeVerdict = (
         );
     // 결론에 연결된 규정 인용의 조건에 따라 처리 분기
     if (citations.length === 0) return null;
+    // 판본을 지정하지 않고 IFAB와 FIFA 규정에 위임하는 대회요강 조항 선별
+    const delegations = book
+        .cite("VAR_REVIEW_PROCESS")
+        .filter(
+            (item) =>
+                item.authority === "KLEAGUE" &&
+                item.edition === source.season &&
+                item.ruleId === `${book.versionId}-${IFAB_DELEGATION}`
+        );
     // 보관 시점을 포함한 규정 판본 이름 계산
     const editionLabel = book.source.snapshotDate
         ? `${book.title} (${book.source.snapshotDate} 보관본)`
@@ -100,6 +112,8 @@ export const scopeVerdict = (
         ruleVersionId: book.versionId,
         // 결론에 연결된 규정 인용 기록
         citations,
+        // 판본을 지정하지 않고 IFAB와 FIFA 규정을 따르도록 위임한 대회요강 조항 기록
+        delegations,
         // 연결된 증거 식별자 목록 기록
         evidenceIds: [...new Set(clips.map((item) => item.evidenceId))],
         // 이번 평가에서 판단하지 않은 질문 기록

@@ -12,7 +12,9 @@ import {
     AUTOMATIC_REVIEW_VERSION,
     publicAutomaticResult,
     broadcastCueData,
-    VAR_SCOPE_NOT_ASSESSED
+    VAR_SCOPE_NOT_ASSESSED,
+    type RuleCitation,
+    type VarScopeEvaluation
 } from "@replay/shared-types";
 // 조회 원자료의 내부 화면 모델 구성 기능 가져옴
 import { mediaView } from "./view";
@@ -39,6 +41,12 @@ export type ReportDependencies = Readonly<{
     repository: AnalysisResultStore;
 }>;
 
+// 대회요강 인용이 범주 평가와 같은 시즌과 규정 판본에 속하는지 확인
+const bookClause = (item: RuleCitation, value: VarScopeEvaluation): boolean =>
+    item.authority === "KLEAGUE" &&
+    item.edition === value.season &&
+    item.ruleId.startsWith(`${value.ruleVersionId}-`);
+
 // 서버의 범위 평가만 공개하며 기존 판정 이력과 단순 장면 인식은 완료 근거에서 제외
 const completedScope = (candidate: CandidateView): boolean => {
     // 후보에 연결한 영상 판독 범주 평가 읽음
@@ -63,6 +71,7 @@ const completedScope = (candidate: CandidateView): boolean => {
         !/^[0-9a-f]{64}$/.test(value.provenance.ruleDocumentSha256) ||
         !Array.isArray(value.citations) ||
         value.citations.length === 0 ||
+        !Array.isArray(value.delegations) ||
         !Array.isArray(value.evidenceIds) ||
         value.evidenceIds.length === 0 ||
         !Array.isArray(value.notAssessed) ||
@@ -77,15 +86,11 @@ const completedScope = (candidate: CandidateView): boolean => {
             .filter((item) => item.kind === "CLIP")
             .map((item) => item.evidenceId)
     );
-    // 실제 클립 근거와 같은 대회 시즌 규정 인용의 일치 여부 반환
+    // 실제 클립 근거와 같은 대회 시즌 규정 인용 및 위임 조항의 일치 여부 반환
     return (
         value.evidenceIds.every((id) => clips.has(id)) &&
-        value.citations.every(
-            (item) =>
-                item.authority === "KLEAGUE" &&
-                item.edition === value.season &&
-                item.ruleId.startsWith(`${value.ruleVersionId}-`)
-        )
+        value.citations.every((item) => bookClause(item, value)) &&
+        value.delegations.every((item) => bookClause(item, value))
     );
 };
 

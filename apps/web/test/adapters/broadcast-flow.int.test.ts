@@ -185,6 +185,13 @@ describe("broadcast scope adapter contracts", () => {
                         competition: "K리그2",
                         season: "2026",
                         evidenceIds: [evidenceRow.id],
+                        delegations: [
+                            expect.objectContaining({
+                                authority: "KLEAGUE",
+                                edition: "2026",
+                                ruleId: "kleague2-2026-var-ifab-fifa-reference"
+                            })
+                        ],
                         citations: expect.arrayContaining([
                             expect.objectContaining({
                                 authority: "KLEAGUE",
@@ -764,6 +771,13 @@ print(json.dumps(report(LocalStorage(),{},Path(sys.argv[1]))))`;
                     competition: "K리그2",
                     season: "2026",
                     ruleVersionId: "kleague2-2026",
+                    delegations: [
+                        expect.objectContaining({
+                            authority: "KLEAGUE",
+                            edition: "2026",
+                            ruleId: "kleague2-2026-var-ifab-fifa-reference"
+                        })
+                    ],
                     provenance: {
                         sourceSha256: context.source_sha256,
                         origin: "VIDEO_CUE_AND_COMPETITION_RULES"

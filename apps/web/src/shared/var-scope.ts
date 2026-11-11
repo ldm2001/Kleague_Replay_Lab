@@ -51,6 +51,9 @@ export const VAR_SCOPE_NOT_ASSESSED = Object.freeze([
     "VAR_INTERVENTION_NECESSITY", "REVIEW_TIME_WINDOW", "IFAB_EDITION_ADOPTION",
 ] as const);
 
+// 판단하지 않는 질문의 식별자 정의
+export type ScopeNotAssessed = (typeof VAR_SCOPE_NOT_ASSESSED)[number];
+
 // 비디오 판독 범위 평가 결과의 자료 구조 정의
 export type VarScopeEvaluation = Readonly<{
     // 결과 종류
@@ -73,6 +76,8 @@ export type VarScopeEvaluation = Readonly<{
     ruleVersionId: string;
     // 결론에 연결된 규정 인용
     citations: readonly RuleCitation[];
+    // 판본을 지정하지 않고 IFAB와 FIFA 규정을 따르도록 위임한 대회요강 조항
+    delegations: readonly RuleCitation[];
     // 연결된 증거 식별자 목록
     evidenceIds: readonly string[];
     // 이번 평가에서 판단하지 않은 질문

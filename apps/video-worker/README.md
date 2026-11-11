@@ -232,6 +232,82 @@ DB 열이나 마이그레이션은 추가하지 않으며 이전 Worker는 활�
 클립은 관찰된 장면을 먼저 확보하고 총 8건보다 적으면 나머지를 변화 신호 순으로 채운다
 관찰된 장면이 8건보다 많으면 해당 장면의 클립을 모두 보존한다
 
+### 로컬 인프라 재시작과 재부팅 뒤 복구
+
+`infra/local/docker-compose.yml`의 PostgreSQL과 MinIO는 `restart: unless-stopped`이며 MinIO 이미지는 digest로 고정한다
+수동으로 정지한 컨테이너는 Docker 재시작 뒤에도 정지 상태로 남고 Docker Desktop 종료·업데이트·충돌로 멈춘 컨테이너는 Docker가 다시 시작될 때 함께 실행된다
+재시작 정책은 컨테이너 종료에만 반응하며 실행 중인 unhealthy 컨테이너는 되살리지 않는다
+MinIO 이미지를 바꿀 때는 새 digest를 확인한 뒤 compose의 이미지 줄을 바꾸고 `npm run dev:infra`로 다시 만든다
+
+기동 순서는 인프라 → 웹 → Worker다. 웹과 두 Worker는 서로 다른 터미널에서 실행한다
+
+```sh
+# 인프라
+docker compose -f infra/local/docker-compose.yml start
+
+# 웹 서버
+npm run dev:web
+
+# 영상 검증 Worker
+npm run dev:worker:validate
+
+# 영상 분석 Worker
+npm run dev:worker:analyze
+```
+
+컨테이너가 없거나 compose를 바꾼 뒤에는 `start` 대신 `npm run dev:infra`로 컨테이너를 다시 만든다
+정지 순서는 Worker → 웹 → 인프라다. Worker는 활성 작업을 마친 뒤 종료한다
+저장소 밖 로컬 실행기를 쓰더라도 기동·정지 순서는 같다
+
+```sh
+docker compose -f infra/local/docker-compose.yml stop
+```
+
+`down`은 컨테이너를 지우므로 다음 기동은 `npm run dev:infra`로 한다. 볼륨을 지우는 `down -v`와 prune 명령은 사용하지 않는다
+
+웹의 선점 요청은 사람 확인 없이 다음 쓰기를 하며 DB가 돌아온 직후의 첫 요청도 같다(`apps/web/src/adapters/job/claim.ts`)
+- 선점 요청마다 작업 종류별로 회복할 수 없는 작업을 먼저 닫으며 선점할 작업이 없어 204를 반환해도 이 정리는 커밋한다
+- 시도를 모두 쓴 임대 만료 작업은 `WORKER_TIMEOUT`으로 닫고 원본·분석·익명 세션 중 하나라도 보존 기한을 넘긴 작업은 `SOURCE_UNAVAILABLE`로 닫는다. 종류별로 한 번에 최대 100건이다
+- 닫힌 작업은 재시도 없는 `FAILED`가 되고 검증 중인 영상은 `REJECTED`·끝나지 않은 분석은 `FAILED`가 되며 `FAILED` 이벤트가 남는다
+- 보존 판정은 `apps/web/src/adapters/visibility.ts`의 `liveJob`을 따르며 원본 보존 기간은 24시간이다(`apps/web/src/bootstrap/media.ts`)
+- 보존 기한 안의 대기 작업은 정상 선점되고 시도가 남은 임대 만료 작업은 다시 선점되며 직전 시도에 `REQUEUED` 이벤트가 남는다
+- 한 역할의 Worker가 빠지면 그 종류의 정리도 그 역할의 선점이 재개될 때까지 일어나지 않는다
+
+계획한 Docker 재시작이나 DB 복구 전에는 웹·Worker 실행 여부를 확인하고 실행 중이면 Worker → 웹 순서로 먼저 정지한다
+계획하지 않은 Docker 종료 뒤 DB가 돌아오면 실행 중인 웹·Worker가 위 쓰기를 사람 없이 수행한다
+
+```sh
+lsof -nP -iTCP:3100 -sTCP:LISTEN
+pgrep -lf 'scripts/worker.mjs|replay_video.runner'
+```
+
+Docker 재시작 시험이나 로그인 시 시작을 켜기 전에는 다른 프로젝트 컨테이너의 재시작 정책을 확인한다
+
+```sh
+docker inspect -f '{{.Name}} {{.HostConfig.RestartPolicy.Name}} {{.State.Status}}' $(docker ps -aq)
+```
+
+`always`는 수동 정지 뒤에도 Docker 재시작 때 다시 실행되고 `unless-stopped`는 수동 정지하지 않은 컨테이너만 다시 실행되며 `no`는 다시 실행되지 않는다
+Docker Desktop의 로그인 시 시작(Settings → General → Start Docker Desktop when you sign in)을 켜면 재부팅 뒤 인프라만 돌아오고 웹·Worker는 사람이 기동한다
+
+재부팅 뒤에는 다음을 확인한 뒤 웹 → Worker 순서로 기동한다
+
+```sh
+docker info --format '{{.ServerVersion}}'
+docker inspect -f '{{.Name}} {{.State.Status}} {{.State.Health.Status}} {{.RestartCount}} {{.State.StartedAt}}' local-postgres-1 local-storage-1
+lsof -nP +c 0 -iTCP:5432 -iTCP:9000 -iTCP:9001 -sTCP:LISTEN
+```
+
+- 두 컨테이너가 `running`·`healthy`인지 확인한다
+- 5432·9000·9001 포트의 수신 프로세스가 Docker Desktop 프로세스(현재 `com.docker.backend`)인지 확인한다
+- 코드를 갱신했다면 웹 기동 전에 미적용 마이그레이션을 적용한다(`npm run db:migrate` · `DATABASE_URL` 필요)
+- 기동 뒤 웹 로그의 첫 선점 응답(204·200)과 Worker 로그를 확인한다
+
+명령 출력에 비밀값이 섞이지 않게 한다
+- `docker inspect`는 `-f`로 필요한 필드만 읽고 환경 변수 필드는 출력하지 않는다
+- compose 확인은 `docker compose -f infra/local/docker-compose.yml config --quiet`로 구문만 검사한다
+- `apps/web/.env.local` 내용과 MinIO 시작 로그 전체는 출력하거나 공유하지 않으며 로그는 필요한 줄만 고른다
+
 ## 운영 관측·전송·규정 승인 경계
 
 - 동일 원본 PTS에서 검출·추적·일반 역할·17관절·손 주변 물체·사건 연결을 순차 관측한다

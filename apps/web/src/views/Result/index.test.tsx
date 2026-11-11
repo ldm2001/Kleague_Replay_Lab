@@ -502,6 +502,18 @@ describe("ResultView", () => {
                         // 인용 규정 식별자 결과의 기대값 참 일치 확인
                         expect(citation.ruleId.startsWith(`${book.versionId}-`)).toBe(true);
                     }
+                    // 적용범위 위임 조항 목록의 배열 형태 확인
+                    expect(Array.isArray(scope.delegations)).toBe(true);
+                    // 적용범위 위임 조항의 각 사례 순회
+                    for (const delegation of scope.delegations) {
+                        // 위임 조항의 권한과 판본 일치 확인
+                        expect(delegation).toMatchObject({
+                            authority: "KLEAGUE",
+                            edition: source!.season
+                        });
+                        // 위임 조항 규정 식별자 결과의 기대값 참 일치 확인
+                        expect(delegation.ruleId.startsWith(`${book.versionId}-`)).toBe(true);
+                    }
                     // 적용범위 근거 식별자목록 길이의 0 초과 확인
                     expect(scope.evidenceIds.length).toBeGreaterThan(0);
                     // 적용범위 근거 식별자목록 전체충족 결과의 기대값 참 일치 확인
@@ -553,6 +565,15 @@ describe("ResultView", () => {
                     expect(
                         citations.querySelector(`a[href='${citation.sourceUrl}']`)
                     ).not.toBeNull();
+                }
+                // 평가하지 않은 질문 구역 준비
+                const unassessedRegion = screen.getByRole("region", {
+                    name: "평가하지 않은 질문"
+                });
+                // 첫결과 적용범위 위임 조항의 각 사례 순회
+                for (const delegation of firstScope.delegations) {
+                    // 평가하지 않은 질문 구역의 위임 조항 문구 표시 확인
+                    expect(unassessedRegion).toHaveTextContent(delegation.quoteSnapshot);
                 }
                 // 화면의 제공된 대회요강의 적용 범주 분석이며 실제 득점 인정· 실시·원심 오류·개입 필요성을 뜻하지 않습니다 요소의 화면 표시 확인
                 expect(

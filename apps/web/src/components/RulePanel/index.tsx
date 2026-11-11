@@ -1,7 +1,12 @@
 // 화면 구성에 필요한 기능과 공유 자료 형식 읽음
 import * as React from "react";
 import type { AnalysisView, CandidateView, JudgmentView } from "@replay/application";
-import type { PipelineFilterReason } from "@replay/shared-types";
+import type {
+    PipelineFilterReason,
+    RuleCitation,
+    ScopeNotAssessed
+} from "@replay/shared-types";
+import { clause, delegationNote, question } from "./model";
 
 // 규정 필터 사유별 사용자 안내 문구 연결
 const filterReasons: Record<PipelineFilterReason, string> = {
@@ -152,9 +157,7 @@ const Citation = ({ citation }: Readonly<{ citation: JudgmentView["citations"][n
     // 규정 대조의 목록 항목 표시
     <li>
         {/* 조항 식별자와 원문 요약 표시 */}
-        <strong>
-            {citation.law} {citation.section}
-        </strong>
+        <strong>{clause(citation)}</strong>
         {/* 규정 대조의 안내 문구 표시 */}
         <p>{citation.quoteSnapshot}</p>
         {citation.sourceUrl ? (
@@ -202,6 +205,38 @@ const Citations = ({ citations }: Readonly<{ citations: JudgmentView["citations"
     );
 };
 
+// 평가하지 않은 질문별 사유와 판본 위임 조항 표시
+const Unassessed = ({
+    codes,
+    delegations
+}: Readonly<{ codes: readonly ScopeNotAssessed[]; delegations: readonly RuleCitation[] }>) => (
+    // 질문별 사유의 순서 없는 목록 표시
+    <ul className="unassessed">
+        {codes.map((code) => {
+            // 질문 식별자에 연결한 이름과 사유 읽음
+            const item = question(code);
+            // 질문 한 건의 이름과 사유 반환
+            return (
+                <li key={code}>
+                    {/* 평가하지 않은 질문의 이름 표시 */}
+                    <strong>{item.name}</strong>
+                    {/* 평가하지 않은 사유 표시 */}
+                    <p>{item.reason}</p>
+                    {code === "IFAB_EDITION_ADOPTION" && delegations.length > 0 ? (
+                        // 판본 질문 아래 위임 안내와 조항 표시
+                        <>
+                            {/* 판본을 지정하지 않은 위임 조항의 안내 문구 표시 */}
+                            <p>{delegationNote}</p>
+                            {/* 위임 조항 인용 목록 표시 */}
+                            <Citations citations={delegations} />
+                        </>
+                    ) : null}
+                </li>
+            );
+        })}
+    </ul>
+);
+
 // 화면 요소 구성
 export function RulePanel({
     analysis,
@@ -231,51 +266,64 @@ export function RulePanel({
                         {automatic.rule.ifabVersionId}
                     </span>
                 </header>
-                {/* 규정 대조의 안내 문구 표시 */}
-                <p>
-                    {automatic.result.decision === "FOUL"
-                        ? "이 장면의 밀기는 반칙에 해당합니다"
-                        : "이 장면에서 밀기 반칙은 성립하지 않습니다"}
-                </p>
-                {/* 확인 사실과 판정 항목의 항목 설명 목록 표시 */}
-                <dl className="fact-grid">
-                    {/* 규정 대조의 화면 묶음 표시 */}
-                    <div>
-                        {/* 재개의 항목 이름 표시 */}
-                        <dt>재개</dt>
-                        {/* 규정 대조의 항목 설명 표시 */}
-                        <dd>{labels[automatic.result.restart ?? "UNKNOWN"]}</dd>
-                    </div>
-                    {/* 규정 대조의 화면 묶음 표시 */}
-                    <div>
-                        {/* 징계의 항목 이름 표시 */}
-                        <dt>징계</dt>
-                        {/* 규정 대조의 항목 설명 표시 */}
-                        <dd>
-                            {automatic.result.disciplinary === "NONE"
-                                ? "카드 없음"
-                                : labels[automatic.result.disciplinary ?? "UNKNOWN"]}
-                        </dd>
-                    </div>
-                </dl>
-                {/* 규정 대조의 안내 문구 표시 */}
-                <p>
-                    지원하는 밀기 규정에 대한 평가입니다. 다른 파울 유형과 원심의 정확성, 득점 및
-                    VAR 개입 여부는 평가하지 않았습니다
-                </p>
-                {/* 규정 인용 목록 표시 */}
-                <Citations citations={automatic.result.citations} />
-                {scope?.status === "COMPLETED" ? (
-                    // 완료된 비디오 판독 범위 분석의 내용 구역 표시
-                    <section aria-label="완료된 VAR 범위 분석">
-                        {/* 비디오 판독 범위 분석의 항목 제목 표시 */}
-                        <h3>VAR 범위 분석</h3>
-                        {/* 규정 대조의 안내 문구 표시 */}
-                        <p>{scope.explanation}</p>
-                        {/* 규정 인용 목록 표시 */}
-                        <Citations citations={scope.citations} />
-                    </section>
-                ) : null}
+                {/* 판정과 인용 및 범위 분석의 본문 묶음 표시 */}
+                <div className="rule-body">
+                    {/* 규정 대조의 안내 문구 표시 */}
+                    <p>
+                        {automatic.result.decision === "FOUL"
+                            ? "이 장면의 밀기는 반칙에 해당합니다"
+                            : "이 장면에서 밀기 반칙은 성립하지 않습니다"}
+                    </p>
+                    {/* 확인 사실과 판정 항목의 항목 설명 목록 표시 */}
+                    <dl className="fact-grid">
+                        {/* 규정 대조의 화면 묶음 표시 */}
+                        <div>
+                            {/* 재개의 항목 이름 표시 */}
+                            <dt>재개</dt>
+                            {/* 규정 대조의 항목 설명 표시 */}
+                            <dd>{labels[automatic.result.restart ?? "UNKNOWN"]}</dd>
+                        </div>
+                        {/* 규정 대조의 화면 묶음 표시 */}
+                        <div>
+                            {/* 징계의 항목 이름 표시 */}
+                            <dt>징계</dt>
+                            {/* 규정 대조의 항목 설명 표시 */}
+                            <dd>
+                                {automatic.result.disciplinary === "NONE"
+                                    ? "카드 없음"
+                                    : labels[automatic.result.disciplinary ?? "UNKNOWN"]}
+                            </dd>
+                        </div>
+                    </dl>
+                    {/* 규정 대조의 안내 문구 표시 */}
+                    <p>
+                        지원하는 밀기 규정에 대한 평가입니다. 다른 파울 유형과 원심의 정확성, 득점 및
+                        VAR 개입 여부는 평가하지 않았습니다
+                    </p>
+                    {/* 규정 인용 목록 표시 */}
+                    <Citations citations={automatic.result.citations} />
+                    {scope?.status === "COMPLETED" ? (
+                        // 완료된 비디오 판독 범위 분석의 내용 구역 표시
+                        <section aria-label="완료된 VAR 범위 분석">
+                            {/* 비디오 판독 범위 분석의 항목 제목 표시 */}
+                            <h3>VAR 범위 분석</h3>
+                            {/* 규정 대조의 안내 문구 표시 */}
+                            <p>{scope.explanation}</p>
+                            {/* 규정 인용 목록 표시 */}
+                            <Citations citations={scope.citations} />
+                            {/* 범위 분석에서 평가하지 않은 질문의 내용 구역 표시 */}
+                            <section aria-label="평가하지 않은 질문">
+                                {/* 평가하지 않은 질문의 항목 제목 표시 */}
+                                <h4>평가하지 않은 질문</h4>
+                                {/* 질문별 사유와 판본 위임 조항 표시 */}
+                                <Unassessed
+                                    codes={scope.notAssessed}
+                                    delegations={scope.delegations}
+                                />
+                            </section>
+                        </section>
+                    ) : null}
+                </div>
             </section>
         );
     }
@@ -337,8 +385,13 @@ export function RulePanel({
                             제공된 대회요강의 적용 범주 분석이며 실제 득점 인정·VAR 실시·원심
                             오류·개입 필요성을 뜻하지 않습니다
                         </p>
-                        {/* 검토 시한과 규정 판본 채택의 미평가 범위 안내 표시 */}
-                        <p>검토 시한과 IFAB 판본 채택 여부는 평가하지 않습니다</p>
+                    </section>
+                    {/* 평가하지 않은 질문의 내용 구역 표시 */}
+                    <section className="var-panel" aria-label="평가하지 않은 질문">
+                        {/* 평가하지 않은 질문의 항목 제목 표시 */}
+                        <h3>평가하지 않은 질문</h3>
+                        {/* 질문별 사유와 판본 위임 조항 표시 */}
+                        <Unassessed codes={scope.notAssessed} delegations={scope.delegations} />
                     </section>
                 </div>
             </section>

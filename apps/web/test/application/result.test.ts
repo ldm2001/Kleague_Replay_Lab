@@ -192,6 +192,15 @@ describe("analysis result", () => {
         expect(value).toHaveProperty("rule", null);
         // 내부 후보목록의 항목 수 2 확인
         expect(internal.candidates).toHaveLength(2);
+        // 위임 조항이 공개 응답에 그대로 전달됨 확인
+        expect(value.candidates[0]?.varScopeEvaluation?.delegations).toEqual(scope.delegations);
+        // 위임 조항이 없는 평가도 같은 근거로 공개됨 확인
+        expect(
+            publicAnalysis({
+                ...internal,
+                candidates: [{ ...completed, varScopeEvaluation: { ...scope, delegations: [] } }]
+            } as AnalysisView)
+        ).toMatchObject({ completedScopeCount: 1 });
 
         // 3개 항목 목록의 각 사례 순회
         for (const legacySource of ["MODEL", "USER", "CURATOR"] as const) {
@@ -227,11 +236,33 @@ describe("analysis result", () => {
             expect(published.candidates[0]).not.toHaveProperty("factRevisionId");
         }
 
-        // 5개 항목 목록의 각 사례 순회
+        // 위임 조항 변조 사례의 평가 결과 생성
+        const delegated = (delegations: unknown) => ({
+            ...completed,
+            varScopeEvaluation: { ...scope, delegations }
+        });
+        // 인용 변조 사례의 평가 결과 생성
+        const cited = (citations: unknown) => ({
+            ...completed,
+            varScopeEvaluation: { ...scope, citations }
+        });
+        // 다른 시즌과 기관 및 규정 판본에 속한 조항 변형 목록 생성
+        const foreign = (items: typeof scope.citations) => [
+            items.map((item) => ({ ...item, edition: "2025" })),
+            items.map((item) => ({ ...item, authority: "IFAB" })),
+            items.map((item) => ({ ...item, ruleId: "kleague1-2026-var-ifab-fifa-reference" }))
+        ];
+        // 위임 조항 한 건과 인용 한 건 이상의 기록 확인
+        expect(scope.delegations).toHaveLength(1);
+        expect(scope.citations.length).toBeGreaterThan(0);
+        // 12개 항목 목록의 각 사례 순회
         for (const changed of [
             { ...completed, broadcastCue: null },
             { ...completed, evidence: [] },
             { ...completed, varScopeEvaluation: { ...scope, status: "OBSERVED" } },
+            delegated(undefined),
+            ...foreign(scope.delegations).map(delegated),
+            ...foreign(scope.citations).map(cited),
             {
                 ...completed,
                 varScopeEvaluation: {
