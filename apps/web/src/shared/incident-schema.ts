@@ -12,7 +12,7 @@ import { DISCIPLINARY_ACTIONS, GOAL_DECISIONS, RESTART_TYPES } from "./vocabular
 type Data = Record<string, unknown>;
 
 // 문자열 범위 확인
-const text = (v: unknown): v is string =>
+export const text = (v: unknown): v is string =>
     typeof v === "string" && v.trim().length > 0 && v.length <= 256;
 
 // 미확정 또는 유효한 문자열 확인
@@ -26,7 +26,7 @@ const time = (v: unknown): v is number =>
 const sha = (v: unknown) => typeof v === "string" && /^[a-f0-9]{64}$/.test(v);
 
 // 실제 달력에 존재하는 날짜 확인
-const calendarDate = (v: unknown) =>
+export const calendarDate = (v: unknown) =>
     typeof v === "string" &&
     /^\d{4}-\d{2}-\d{2}$/.test(v) &&
     Number.isFinite(Date.parse(`${v}T00:00:00.000Z`)) &&

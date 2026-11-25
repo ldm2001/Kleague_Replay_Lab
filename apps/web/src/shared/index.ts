@@ -38,3 +38,5 @@ export * from "./perception";
 export * from "./audio-observations";
 // 과거 관찰 전송 자료 하위 호환 공개
 export * from "./observation";
+// 규정 에이전트 판례 입력과 보정 계약을 공통 진입점에 공개
+export * from "./agent";
