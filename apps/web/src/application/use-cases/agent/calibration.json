@@ -1,0 +1,73 @@
+{
+  "schemaVersion": "agent-calibration-v1",
+  "method": {
+    "id": "brain-agent",
+    "version": "1"
+  },
+  "status": "UNCALIBRATED",
+  "reportSha256": null,
+  "facts": {
+    "actionObserved": {
+      "skill": "action",
+      "priority": 1,
+      "requires": [],
+      "rule": {
+        "nearBelow": 0.15,
+        "farAbove": 0.3,
+        "minMs": 120,
+        "minCoverage": 0.6
+      }
+    },
+    "bodyOrEquipmentContact": {
+      "skill": "contact",
+      "priority": 2,
+      "requires": ["actionObserved"],
+      "rule": {
+        "confirmBelow": 0.04,
+        "confirmMinMs": 100,
+        "refuteAbove": 0.12,
+        "minCoverage": 0.6
+      }
+    },
+    "directionObserved": {
+      "skill": "direction",
+      "priority": 3,
+      "requires": ["bodyOrEquipmentContact"],
+      "rule": {
+        "majority": 0.7,
+        "minCoverage": 0.6
+      }
+    },
+    "gripMaintained": {
+      "skill": "grip",
+      "priority": 4,
+      "requires": ["bodyOrEquipmentContact"],
+      "rule": {
+        "confirmMinMs": 400,
+        "refuteMaxMs": 150
+      }
+    },
+    "pulling": {
+      "skill": "pulling",
+      "priority": 5,
+      "requires": ["bodyOrEquipmentContact"],
+      "rule": {
+        "confirmDeltaDeg": 20,
+        "refuteDeltaDeg": 5,
+        "minMs": 200,
+        "minCoverage": 0.6
+      }
+    },
+    "movementImpeded": {
+      "skill": "impeded",
+      "priority": 6,
+      "requires": ["bodyOrEquipmentContact"],
+      "rule": {
+        "confirmDrop": 0.4,
+        "refuteDrop": 0.1,
+        "minBaseline": 0.5,
+        "minCoverage": 0.6
+      }
+    }
+  }
+}
